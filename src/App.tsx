@@ -48,6 +48,30 @@ export type Project = {
   vatRate: number;
 };
 
+export type OrderItem = {
+  id: string;
+  name: string;
+  date: string;
+  hours: number;
+};
+
+export type Order = {
+  id: string;
+  projectId: string;
+  orderNumber: string;
+  title: string;
+  priority: 'wysoki' | 'normalny' | 'niski';
+  problemDescription: string;
+  expectedStateDescription: string;
+  items: OrderItem[];
+  location: string;
+  methodologyRequired: boolean;
+  methodologyScope: string;
+  scheduleFrom: string;
+  scheduleTo: string;
+  createdAt: string;
+};
+
 // ==========================================
 // SERVICES
 // ==========================================
@@ -56,10 +80,78 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const getProjectCollection = () => collection(db, PROJECTS_PATH);
+const getOrderCollection = (projectId: string) => collection(db, `${PROJECTS_PATH}/${projectId}/orders`);
 
 // ==========================================
 // HOOKS
 // ==========================================
+
+export const useOrders = (projectId: string | undefined) => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const q = query(getOrderCollection(projectId));
+    const unsubscribe = onSnapshot(q, (querySnapshot: any) => {
+      const loadedOrders: Order[] = [];
+      querySnapshot.forEach((doc: any) => {
+        loadedOrders.push({ id: doc.id, ...doc.data() } as Order);
+      });
+      // Sort desc by order creation
+      loadedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setOrders(loadedOrders);
+      setIsLoading(false);
+    }, (err: any) => {
+      console.error("Firestore Orders Error:", err);
+      setError("Błąd pobierania zleceń.");
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [projectId]);
+
+  const addOrder = async (order: Omit<Order, 'id'>) => {
+    if (!projectId) return;
+    try {
+      await addDoc(getOrderCollection(projectId), order);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const updateOrder = async (id: string, updates: Partial<Order>) => {
+    if (!projectId) return;
+    try {
+      const docRef = doc(db, `${PROJECTS_PATH}/${projectId}/orders`, id);
+      await updateDoc(docRef, updates);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  const deleteOrder = async (id: string) => {
+    if (!projectId) return;
+    try {
+      const docRef = doc(db, `${PROJECTS_PATH}/${projectId}/orders`, id);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
+  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder };
+};
 type ProjectContextType = {
   projects: Project[];
   selectedProject: Project | null;
@@ -506,6 +598,7 @@ const ProjectModal = ({
 const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('dashboard');
 
   if (!selectedProject || !calculations) {
     return (
@@ -547,8 +640,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </span>
               )}
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1"><span className="text-gray-400 dark:text-gray-600 font-normal mr-2">Umowa:</span>{selectedProject.contractNo}</h1>
-            <h2 className="text-xl text-gray-600 dark:text-gray-400 font-medium">{selectedProject.name}</h2>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{selectedProject.name}</h1>
           </div>
           <button
             onClick={() => onEdit(selectedProject)}
@@ -558,101 +650,476 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           </button>
         </div>
 
-        {/* TIME PROGRESS */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2 text-gray-900 dark:text-white">
-              <Clock size={20} className="text-indigo-500" />
-              <h3 className="font-bold sm:text-lg">Postęp czasu realizacji</h3>
-            </div>
-            <div className="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-full">
-              {timeProgress}% upłynęło
-            </div>
-          </div>
-          <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 mb-3 overflow-hidden">
-            <div
-              className={`h-4 rounded-full transition-all duration-1000 ${timeProgress > 90 ? 'bg-rose-500' : timeProgress > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
-              style={{ width: `${Math.min(100, timeProgress)}%` }}
-            ></div>
-          </div>
-          <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 font-medium">
-            <span>Start: {selectedProject.dateFrom}</span>
-            {daysRemaining >= 0 ? <span>Pozostało dni: <strong className="text-gray-900 dark:text-gray-200">{daysRemaining}</strong></span> : <span className="text-red-500 font-bold">Po terminie od {-daysRemaining} dni</span>}
-            <span>Koniec: {selectedProject.dateTo}</span>
-          </div>
+        {/* NAVIGATION TABS */}
+        <div className="flex items-center gap-8 border-b border-gray-200 dark:border-gray-800 mb-6 font-medium text-sm">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'dashboard' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'orders' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Rejestr Zleceń
+          </button>
         </div>
 
-        {/* BENTO GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-          {/* KARTA INFO */}
-          <div className="col-span-1 md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
-            </h3>
-            <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Status Umowy</p>
-                <div className="flex items-center gap-2 font-medium">
-                  {isOverdue ? <><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-red-600 dark:text-red-400">Zakończona</span></>
-                    : <><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-emerald-600 dark:text-emerald-400">Aktywna</span></>}
+        {activeTab === 'dashboard' ? (
+          <>
+            {/* TIME PROGRESS */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                  <Clock size={20} className="text-indigo-500" />
+                  <h3 className="font-bold sm:text-lg">Postęp czasu realizacji</h3>
+                </div>
+                <div className="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-full">
+                  {timeProgress}% upłynęło
                 </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa (Netto)</p>
-                <p className="font-bold text-gray-900 dark:text-white sm:text-lg">{selectedProject.rateNetto.toLocaleString('pl-PL')} <span className="text-sm text-gray-500">PLN</span></p>
+              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 mb-3 overflow-hidden">
+                <div
+                  className={`h-4 rounded-full transition-all duration-1000 ${timeProgress > 90 ? 'bg-rose-500' : timeProgress > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${Math.min(100, timeProgress)}%` }}
+                ></div>
               </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min (Netto)</p>
-                <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
-                  {budgetMin.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Max (Netto)</p>
-                <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
-                  {budgetMax.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
-                </div>
+              <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 font-medium">
+                <span>Start: {selectedProject.dateFrom}</span>
+                {daysRemaining >= 0 ? <span>Pozostało dni: <strong className="text-gray-900 dark:text-gray-200">{daysRemaining}</strong></span> : <span className="text-red-500 font-bold">Po terminie od {-daysRemaining} dni</span>}
+                <span>Koniec: {selectedProject.dateTo}</span>
               </div>
             </div>
 
-            <div className="mt-8 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Prognoza wartości (Brutto MAX)</p>
-                <p className="text-xs text-gray-500 mt-0.5">W tym 23% VAT</p>
+            {/* BENTO GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+              {/* KARTA INFO */}
+              <div className="col-span-1 md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+                <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                  <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
+                </h3>
+                <div className="grid grid-cols-2 gap-y-8 gap-x-6">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Status Umowy</p>
+                    <div className="flex items-center gap-2 font-medium">
+                      {isOverdue ? <><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-red-600 dark:text-red-400">Zakończona</span></>
+                        : <><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-emerald-600 dark:text-emerald-400">Aktywna</span></>}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa (Netto)</p>
+                    <p className="font-bold text-gray-900 dark:text-white sm:text-lg">{selectedProject.rateNetto.toLocaleString('pl-PL')} <span className="text-sm text-gray-500">PLN</span></p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min (Netto)</p>
+                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
+                      {budgetMin.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Max (Netto)</p>
+                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
+                      {budgetMax.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">Prognoza wartości (Brutto MAX)</p>
+                    <p className="text-xs text-gray-500 mt-0.5">W tym 23% VAT</p>
+                  </div>
+                  <p className="font-bold text-xl text-indigo-600 dark:text-indigo-400">
+                    {(budgetMax * 1.23).toLocaleString('pl-PL')} PLN
+                  </p>
+                </div>
               </div>
-              <p className="font-bold text-xl text-indigo-600 dark:text-indigo-400">
-                {(budgetMax * 1.23).toLocaleString('pl-PL')} PLN
-              </p>
+
+              {/* CHARTS */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
+                <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                  <BarChartIcon className="text-indigo-500" size={20} /> Limity Godzin
+                </h3>
+                <div className="flex-1 min-h-[220px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12, fontWeight: 500 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
+                      <Tooltip
+                        cursor={{ fill: 'transparent' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: 'var(--tw-prose-invert, #fff)' }}
+                      />
+                      <Bar dataKey="Godziny" radius={[6, 6, 0, 0]} maxBarSize={60}>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
             </div>
+          </>
+        ) : (
+          <OrdersRegistryPlaceholder projectId={selectedProject.id} />
+        )}
+      </div>
+    </div>
+  );
+};
+
+const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
+  const { projects } = useProjectContext();
+  const project = projects.find(p => p.id === projectId);
+  const { orders, isLoading, addOrder, updateOrder, deleteOrder } = useOrders(projectId);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  if (!project) return null;
+
+  const handleOpenModal = () => {
+    setEditingOrder(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (order: Order) => {
+    setEditingOrder(order);
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (orderData: Omit<Order, 'id'>) => {
+    if (editingOrder) {
+      await updateOrder(editingOrder.id, orderData);
+    } else {
+      await addOrder(orderData);
+    }
+    setIsModalOpen(false);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-12">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
+            <Briefcase className="text-indigo-500" /> Rejestr Zleceń
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami do umowy {project.contractNo || project.code}</p>
+        </div>
+        <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
+          <Plus size={16} /> Nowe Zlecenie
+        </button>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+        {orders.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
+              <Briefcase size={28} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak zleceń</h3>
+            <p className="text-gray-500 dark:text-gray-400">W tym projekcie nie ma jeszcze żadnych zleceń.</p>
           </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
+                <tr>
+                  <th className="px-6 py-4">Nr Zlecenia</th>
+                  <th className="px-6 py-4">Tytuł</th>
+                  <th className="px-6 py-4">Priorytet</th>
+                  <th className="px-6 py-4 text-center">Data od-do</th>
+                  <th className="px-6 py-4 text-right">Suma Godzin</th>
+                  <th className="px-6 py-4 text-right">Kwota Netto</th>
+                  <th className="px-6 py-4 text-center">Akcje</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {orders.map(order => {
+                  const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+                  const total = totalHours * project.rateNetto;
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{order.orderNumber}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{order.title}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${order.priority === 'wysoki' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                            order.priority === 'normalny' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                              'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                          }`}>
+                          {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-gray-500">
+                        {order.scheduleFrom || '-'} do {order.scheduleTo || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-500">{totalHours}h</td>
+                      <td className="px-6 py-4 text-right font-medium text-indigo-600 dark:text-indigo-400">{total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</td>
+                      <td className="px-6 py-4 text-center">
+                        <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => { if (window.confirm('Czy na pewno chcesz usunąć to zlecenie?')) deleteOrder(order.id) }} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition">
+                          <X size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-          {/* CHARTS */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-              <BarChartIcon className="text-indigo-500" size={20} /> Limity Godzin
-            </h3>
-            <div className="flex-1 min-h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12, fontWeight: 500 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
-                  <Tooltip
-                    cursor={{ fill: 'transparent' }}
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: 'var(--tw-prose-invert, #fff)' }}
-                  />
-                  <Bar dataKey="Godziny" radius={[6, 6, 0, 0]} maxBarSize={60}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={project} orderToEdit={editingOrder} onSave={handleSave} />
+    </div>
+  );
+};
+
+const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
+  const [formData, setFormData] = useState<Omit<Order, 'id'>>({
+    projectId: project?.id || '',
+    orderNumber: '',
+    title: '',
+    priority: 'niski',
+    problemDescription: '',
+    expectedStateDescription: '',
+    items: [{ id: Date.now().toString(), name: '', date: '', hours: 0 }],
+    location: 'zdalnie',
+    methodologyRequired: false,
+    methodologyScope: '',
+    scheduleFrom: '',
+    scheduleTo: '',
+    createdAt: new Date().toISOString()
+  });
+
+  useEffect(() => {
+    if (orderToEdit) {
+      setFormData(orderToEdit);
+    } else if (project) {
+      setFormData({
+        projectId: project.id,
+        orderNumber: '',
+        title: '',
+        priority: 'niski',
+        problemDescription: '',
+        expectedStateDescription: '',
+        items: [{ id: Date.now().toString(), name: '', date: '', hours: 0 }],
+        location: 'zdalnie',
+        methodologyRequired: false,
+        methodologyScope: '',
+        scheduleFrom: '',
+        scheduleTo: '',
+        createdAt: new Date().toISOString()
+      });
+    }
+  }, [orderToEdit, isOpen, project]);
+
+  const handleChange = (e: any) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleItemChange = (id: string, field: string, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => item.id === id ? { ...item, [field]: value } : item)
+    }));
+  };
+
+  const addItemRow = () => {
+    setFormData(prev => ({
+      ...prev,
+      items: [...prev.items, { id: Date.now().toString(), name: '', date: '', hours: 0 }]
+    }));
+  };
+
+  const removeItemRow = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== id)
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await onSave(formData);
+  };
+
+  if (!isOpen) return null;
+
+  const totalHours = formData.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+  const totalAmount = totalHours * (project?.rateNetto || 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+
+        {/* MODAL HEADER */}
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-t-2xl">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Briefcase className="text-indigo-500" />
+            {orderToEdit ? 'Edytuj Formularz Zlecenia' : 'Nowy Formularz Zlecenia'}
+          </h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* MODAL BODY (SCROLLABLE) */}
+        <div className="p-6 overflow-y-auto flex-1">
+          <form id="order-form" onSubmit={handleSubmit} className="space-y-8">
+
+            {/* Sekcja 1: Podstawowe */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formularz zlecenia nr *</label>
+                <input required name="orderNumber" value={formData.orderNumber} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tytuł zlecenia *</label>
+                <input required name="title" value={formData.title} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priorytet zlecenia</label>
+                <select name="priority" value={formData.priority} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                  <option value="niski">Niski</option>
+                  <option value="normalny">Normalny</option>
+                  <option value="wysoki">Wysoki</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji od</label>
+                  <input type="date" name="scheduleFrom" value={formData.scheduleFrom} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji do</label>
+                  <input type="date" name="scheduleTo" value={formData.scheduleTo} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Sekcja 2: Opisy */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis problemu (przed wdrożeniem)</label>
+                <textarea name="problemDescription" value={formData.problemDescription} onChange={handleChange} rows={3} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis stanu oczekiwanego (po wdrożeniu)</label>
+                <textarea name="expectedStateDescription" value={formData.expectedStateDescription} onChange={handleChange} rows={3} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
+              </div>
+            </div>
+
+            {/* Sekcja 3: Wycena (Produkty) */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-gray-50 dark:bg-gray-900/80 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Wycena (Produkty zlecenia)</h3>
+                <button type="button" onClick={addItemRow} className="text-sm text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 hover:text-indigo-700 transition">
+                  <Plus size={16} /> Dodaj wiersz
+                </button>
+              </div>
+              <div className="p-0 overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50/50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800/50">
+                    <tr>
+                      <th className="py-3 px-4 w-10 text-center">Lp.</th>
+                      <th className="py-3 px-4">Produkty zlecenia</th>
+                      <th className="py-3 px-4 w-36">Data wykonania</th>
+                      <th className="py-3 px-4 w-28 text-center">L. godzin rob.</th>
+                      <th className="py-3 px-4 w-32 text-right">Stawka za h</th>
+                      <th className="py-3 px-4 w-36 text-right">Kwota</th>
+                      <th className="py-3 px-4 w-12 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {formData.items.map((item, idx) => (
+                      <tr key={item.id} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
+                        <td className="py-2 px-4 text-center text-gray-400">{idx + 1}.</td>
+                        <td className="py-2 px-4">
+                          <input value={item.name} onChange={e => handleItemChange(item.id, 'name', e.target.value)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition" placeholder="Wpisz nazwę..." />
+                        </td>
+                        <td className="py-2 px-4">
+                          <input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'date', e.target.value)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
+                        </td>
+                        <td className="py-2 px-4">
+                          <input type="number" min="0" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
+                        </td>
+                        <td className="py-2 px-4 text-right text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">
+                          {project?.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        </td>
+                        <td className="py-2 px-4 text-right font-bold text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                          {((item.hours || 0) * (project?.rateNetto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        </td>
+                        <td className="py-2 px-4 text-center">
+                          <button type="button" onClick={() => removeItemRow(item.id)} className="text-gray-300 hover:text-red-500 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition focus:opacity-100">
+                            <X size={16} />
+                          </button>
+                        </td>
+                      </tr>
                     ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                    {formData.items.length === 0 && (
+                      <tr><td colSpan={7} className="py-6 text-center text-gray-500 dark:text-gray-400">Tabela jest pusta. Dodaj przynajmniej jeden produkt zlecenia.</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 font-bold">
+                    <tr>
+                      <td colSpan={3} className="py-4 px-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
+                      <td className="py-4 px-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">{totalHours}</td>
+                      <td></td>
+                      <td className="py-4 px-4 text-right text-indigo-600 dark:text-indigo-400 text-lg whitespace-nowrap">{totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          </div>
 
+            {/* Sekcja 4: Dodatkowe */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 dark:bg-gray-900/30 p-5 rounded-xl border border-gray-100 dark:border-gray-800/50">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Miejsce wykonywania usługi</label>
+                <input name="location" value={formData.location} onChange={handleChange} placeholder="np. zdalnie / w siedzibie" className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition" />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 mt-[2px]">
+                  <input type="checkbox" name="methodologyRequired" checked={formData.methodologyRequired} onChange={handleChange} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600" />
+                  Wymagane zastosowanie metodyki wdrożenia (TAK)
+                </label>
+                {formData.methodologyRequired && (
+                  <div className="animate-in slide-in-from-top-2 duration-200">
+                    <input name="methodologyScope" placeholder="Podaj w jakim zakresie..." value={formData.methodologyScope} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition shadow-sm" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </form>
         </div>
+
+        {/* MODAL FOOTER STATIC */}
+        <div className="px-6 py-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-b-2xl">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+            Anuluj
+          </button>
+          <button type="submit" form="order-form" className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition">
+            Zapisz Zlecenie
+          </button>
+        </div>
+
       </div>
     </div>
   );
