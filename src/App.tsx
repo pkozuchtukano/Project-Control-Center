@@ -15,7 +15,7 @@ import {
 import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
-  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info
+  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer
 } from 'lucide-react';
 
 // ==========================================
@@ -69,6 +69,9 @@ export type Order = {
   methodologyScope: string;
   scheduleFrom: string;
   scheduleTo: string;
+  handoverDate?: string;
+  acceptanceDate?: string;
+  systemModule: string;
   notes?: string;
   createdAt: string;
 };
@@ -703,6 +706,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </h3>
                 <div className="grid grid-cols-2 gap-y-8 gap-x-6">
                   <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Nr Umowy</p>
+                    <p className="font-semibold text-gray-900 dark:text-white">{selectedProject.contractNo || 'Brak'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Przedmiot Umowy</p>
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{selectedProject.contractSubject || 'Brak'}</p>
+                  </div>
+                  <div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Status Umowy</p>
                     <div className="flex items-center gap-2 font-medium">
                       {isOverdue ? <><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-red-600 dark:text-red-400">Zakończona</span></>
@@ -778,6 +789,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
   const project = projects.find(p => p.id === projectId);
   const { orders, isLoading, addOrder, updateOrder, deleteOrder } = useOrders(projectId);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   if (!project) return null;
@@ -818,9 +830,14 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {project.code}</p>
         </div>
-        <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
-          <Plus size={16} /> Nowe Zlecenie
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setIsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
+            <FileText size={16} /> Raport Końcowy (CBCP)
+          </button>
+          <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
+            <Plus size={16} /> Nowe Zlecenie
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -834,13 +851,13 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
+            <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
-                  <th className="px-6 py-4">Nr Zlecenia</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Nr</th>
                   <th className="px-6 py-4">Tytuł</th>
-                  <th className="px-6 py-4 text-center">Data do</th>
-                  <th className="px-6 py-4 text-right">Suma Godzin</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Daty</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Suma Godzin</th>
                   <th className="px-6 py-4 text-right">Kwota Brutto <span className="text-xs font-normal text-gray-400">(Netto)</span></th>
                   <th className="px-6 py-4 text-center">Akcje</th>
                 </tr>
@@ -851,26 +868,33 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                   const total = totalHours * project.rateNetto;
                   return (
                     <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
-                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{order.orderNumber}</td>
+                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">{order.orderNumber}</td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
                         <div className="flex items-center gap-2">
                           {order.title}
                           {order.notes && (
-                            <Info size={16} className="text-indigo-400 dark:text-indigo-500 cursor-help" title={order.notes} />
+                            <span title={order.notes} className="flex items-center cursor-help">
+                              <Info size={16} className="text-indigo-400 dark:text-indigo-500" />
+                            </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center text-gray-500">
-                        {order.scheduleTo || '-'}
+                      <td className="px-6 py-4 text-center leading-tight whitespace-nowrap">
+                        <div className="text-gray-900 dark:text-gray-300 font-medium">
+                          {order.scheduleFrom || '-'} – {order.scheduleTo || '-'}
+                        </div>
+                        <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5" title="Przekazanie , Odbiór">
+                          {order.handoverDate || '-'} , {order.acceptanceDate || '-'}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-500">{totalHours}h</td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="font-medium text-indigo-600 dark:text-indigo-400 mr-2">
+                      <td className="px-6 py-4 text-right text-gray-500 whitespace-nowrap">{totalHours}h</td>
+                      <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
+                        <div className="text-indigo-600 dark:text-indigo-400 font-medium">
                           {(totalHours * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                        </span>
-                        <span className="text-sm text-gray-400 dark:text-gray-500">
+                        </div>
+                        <div className="text-[13px] text-gray-400 dark:text-gray-500 mt-0.5">
                           ({total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
-                        </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
@@ -890,13 +914,13 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                   <td className="px-6 py-4 text-right text-indigo-600 dark:text-indigo-400 text-base">
                     {orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0)}h
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-indigo-600 dark:text-indigo-400 text-base mr-2">
+                  <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
+                    <div className="text-indigo-600 dark:text-indigo-400 text-base">
                       {(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                    </span>
-                    <span className="text-sm text-gray-400 font-normal uppercase tracking-wider mt-0.5">
+                    </div>
+                    <div className="text-sm text-gray-400 font-normal uppercase tracking-wider mt-0.5">
                       ({(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateNetto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
-                    </span>
+                    </div>
                   </td>
                   <td></td>
                 </tr>
@@ -907,6 +931,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
       </div>
 
       <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={project} orderToEdit={editingOrder} onSave={handleSave} />
+      <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={project} orders={orders} />
     </div>
   );
 };
@@ -925,6 +950,9 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
     methodologyScope: '',
     scheduleFrom: '',
     scheduleTo: '',
+    handoverDate: '',
+    acceptanceDate: '',
+    systemModule: project?.code || '',
     notes: '',
     createdAt: new Date().toISOString()
   });
@@ -946,6 +974,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
         methodologyScope: '',
         scheduleFrom: '',
         scheduleTo: '',
+        systemModule: project.code,
         createdAt: new Date().toISOString()
       });
     }
@@ -1017,13 +1046,19 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tytuł zlecenia *</label>
                 <input required name="title" value={formData.title} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priorytet zlecenia</label>
-                <select name="priority" value={formData.priority} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
-                  <option value="niski">Niski</option>
-                  <option value="normalny">Normalny</option>
-                  <option value="wysoki">Wysoki</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">System / Moduł</label>
+                  <input name="systemModule" value={formData.systemModule || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priorytet zlecenia</label>
+                  <select name="priority" value={formData.priority} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                    <option value="niski">Niski</option>
+                    <option value="normalny">Normalny</option>
+                    <option value="wysoki">Wysoki</option>
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1033,6 +1068,16 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji do</label>
                   <input type="date" name="scheduleTo" value={formData.scheduleTo} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data przekazania</label>
+                  <input type="date" name="handoverDate" value={formData.handoverDate || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data odbioru zlecenia</label>
+                  <input type="date" name="acceptanceDate" value={formData.acceptanceDate || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
               </div>
             </div>
@@ -1154,6 +1199,145 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
           </button>
         </div>
 
+      </div>
+    </div>
+  );
+};
+
+const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean, onClose: () => void, project: Project, orders: Order[] }) => {
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [periodFrom, setPeriodFrom] = useState(project?.dateFrom || '');
+  const [periodTo, setPeriodTo] = useState(project?.dateTo || '');
+
+  if (!isOpen) return null;
+
+  const filteredOrders = orders.filter(o => {
+    const pFrom = periodFrom ? new Date(periodFrom) : new Date(0);
+    const pTo = periodTo ? new Date(periodTo) : new Date(8640000000000000);
+    // Include end of the day for the 'to' date
+    pTo.setHours(23, 59, 59, 999);
+
+    if (o.acceptanceDate) {
+      const aDate = new Date(o.acceptanceDate);
+      return aDate >= pFrom && aDate <= pTo;
+    } else {
+      const cDate = new Date(o.createdAt);
+      return cDate >= pFrom && cDate <= pTo;
+    }
+  }).sort((a, b) => a.orderNumber.localeCompare(b.orderNumber, undefined, { numeric: true }));
+
+  const realizedOrders = filteredOrders.filter(o => o.acceptanceDate);
+  const remainingOrders = filteredOrders.length - realizedOrders.length;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto">
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 15mm; }
+          body { background: white; }
+          .no-print { display: none !important; }
+          .print-section { display: block !important; padding: 0 !important; }
+          .print-table th, .print-table td { border: 1px solid black !important; padding: 6px !important; font-size: 11px !important; }
+        }
+      `}</style>
+
+      {/* HEADER CONTROLS (Nie drukuje się) */}
+      <div className="no-print sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 p-4 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center z-10">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Sporządzono:</label>
+            <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Okres od:</label>
+            <input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Do:</label>
+            <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+            Zamknij
+          </button>
+          <button onClick={() => window.print()} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-sm">
+            <Printer size={16} /> Export PDF / Drukuj
+          </button>
+        </div>
+      </div>
+
+      {/* DOCUMENT TO PRINT */}
+      <div className="print-section max-w-[297mm] mx-auto p-12 bg-white min-h-screen font-serif text-[12px] leading-relaxed text-black">
+        <div className="text-right font-bold mb-6">
+          Załącznik nr 14. Wzór raportu końcowego z realizacji usług.
+        </div>
+
+        <h1 className="text-center font-bold text-lg mb-8">
+          <span>Raport Końcowy</span> realizacji usług w ramach Umowy <span className="border-b-2 border-dotted border-black px-4">{project.contractNo}</span>
+        </h1>
+
+        <div className="flex justify-between items-start mb-8 gap-8">
+          <div className="space-y-2">
+            <div>
+              Data sporządzenia raportu: <span className="border-b border-dotted border-black inline-block min-w-[120px] text-center px-2">{reportDate}</span>
+            </div>
+            <div>
+              Raport za okres od <span className="border-b border-dotted border-black inline-block px-2 min-w-[80px] text-center">{periodFrom}</span> do <span className="border-b border-dotted border-black inline-block px-2 min-w-[80px] text-center">{periodTo}</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div>
+              Liczba zgłoszeń w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{filteredOrders.length}</span>
+            </div>
+            <div>
+              Liczba zgłoszeń zrealizowanych w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{realizedOrders.length}</span>
+            </div>
+            <div>
+              Liczba zgłoszeń pozostających w realizacji <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{remainingOrders}</span>
+            </div>
+          </div>
+        </div>
+
+        <table className="w-full text-left border-collapse print-table">
+          <thead>
+            <tr className="bg-gray-50 font-bold">
+              <th className="border border-black p-2 w-12 text-center">Nr<br />zgł.</th>
+              <th className="border border-black p-2">Nazwa zlecenia</th>
+              <th className="border border-black p-2">Produkty</th>
+              <th className="border border-black p-2 text-center">System/<br />Moduł</th>
+              <th className="border border-black p-2 text-center">Data<br />zlecenia</th>
+              <th className="border border-black p-2 text-center">Data<br />przekazania</th>
+              <th className="border border-black p-2 text-center w-24">Data odbioru<br />zlecenia</th>
+              <th className="border border-black p-2 text-center w-24">Czas realizacji<br />zlecenia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredOrders.map(order => {
+              const totalHours = order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0);
+              const itemsList = order.items.map(i => i.name).join(", ");
+              return (
+                <tr key={order.id}>
+                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.orderNumber}</td>
+                  <td className="border border-black p-2">{order.title}</td>
+                  <td className="border border-black p-2 text-xs">{itemsList}</td>
+                  <td className="border border-black p-2 text-center text-xs">{order.systemModule || ''}</td>
+                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.scheduleFrom || order.createdAt.split('T')[0]}</td>
+                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.handoverDate || ''}</td>
+                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.acceptanceDate || ''}</td>
+                  <td className="border border-black p-2 text-center whitespace-nowrap">{totalHours}h</td>
+                </tr>
+              )
+            })}
+            {filteredOrders.length === 0 && (
+              <tr>
+                <td colSpan={8} className="border border-black p-4 text-center italic text-gray-500">
+                  Brak zleceń w wybranym okresie.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
