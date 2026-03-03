@@ -15,7 +15,7 @@ import {
 import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
-  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon
+  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info
 } from 'lucide-react';
 
 // ==========================================
@@ -69,6 +69,7 @@ export type Order = {
   methodologyScope: string;
   scheduleFrom: string;
   scheduleTo: string;
+  notes?: string;
   createdAt: string;
 };
 
@@ -765,7 +766,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             </div>
           </>
         ) : (
-          <OrdersRegistryPlaceholder projectId={selectedProject.id} />
+          <OrdersRegistryView projectId={selectedProject.id} />
         )}
       </div>
     </div>
@@ -815,7 +816,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <Briefcase className="text-indigo-500" /> Rejestr Zleceń
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami do umowy {project.contractNo || project.code}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {project.code}</p>
         </div>
         <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
           <Plus size={16} /> Nowe Zlecenie
@@ -838,10 +839,9 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                 <tr>
                   <th className="px-6 py-4">Nr Zlecenia</th>
                   <th className="px-6 py-4">Tytuł</th>
-                  <th className="px-6 py-4">Priorytet</th>
-                  <th className="px-6 py-4 text-center">Data od-do</th>
+                  <th className="px-6 py-4 text-center">Data do</th>
                   <th className="px-6 py-4 text-right">Suma Godzin</th>
-                  <th className="px-6 py-4 text-right">Kwota Netto</th>
+                  <th className="px-6 py-4 text-right">Kwota Brutto <span className="text-xs font-normal text-gray-400">(Netto)</span></th>
                   <th className="px-6 py-4 text-center">Akcje</th>
                 </tr>
               </thead>
@@ -852,20 +852,26 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                   return (
                     <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{order.orderNumber}</td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{order.title}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${order.priority === 'wysoki' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                            order.priority === 'normalny' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                              'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                          }`}>
-                          {order.priority.charAt(0).toUpperCase() + order.priority.slice(1)}
-                        </span>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                        <div className="flex items-center gap-2">
+                          {order.title}
+                          {order.notes && (
+                            <Info size={16} className="text-indigo-400 dark:text-indigo-500 cursor-help" title={order.notes} />
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center text-gray-500">
-                        {order.scheduleFrom || '-'} do {order.scheduleTo || '-'}
+                        {order.scheduleTo || '-'}
                       </td>
                       <td className="px-6 py-4 text-right text-gray-500">{totalHours}h</td>
-                      <td className="px-6 py-4 text-right font-medium text-indigo-600 dark:text-indigo-400">{total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="font-medium text-indigo-600 dark:text-indigo-400 mr-2">
+                          {(totalHours * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        </span>
+                        <span className="text-sm text-gray-400 dark:text-gray-500">
+                          ({total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
                           <Edit2 size={16} />
@@ -878,6 +884,23 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                   )
                 })}
               </tbody>
+              <tfoot className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 font-bold">
+                <tr>
+                  <td colSpan={3} className="px-6 py-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
+                  <td className="px-6 py-4 text-right text-indigo-600 dark:text-indigo-400 text-base">
+                    {orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0)}h
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="text-indigo-600 dark:text-indigo-400 text-base mr-2">
+                      {(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                    </span>
+                    <span className="text-sm text-gray-400 font-normal uppercase tracking-wider mt-0.5">
+                      ({(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateNetto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                    </span>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
@@ -902,6 +925,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
     methodologyScope: '',
     scheduleFrom: '',
     scheduleTo: '',
+    notes: '',
     createdAt: new Date().toISOString()
   });
 
@@ -961,7 +985,8 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   if (!isOpen) return null;
 
   const totalHours = formData.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-  const totalAmount = totalHours * (project?.rateNetto || 0);
+  const totalAmountNetto = totalHours * (project?.rateNetto || 0);
+  const totalAmountBrutto = totalHours * (project?.rateBrutto || 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -1022,6 +1047,10 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis stanu oczekiwanego (po wdrożeniu)</label>
                 <textarea name="expectedStateDescription" value={formData.expectedStateDescription} onChange={handleChange} rows={3} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
               </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Uwagi dodatkowe (wewnętrzne)</label>
+                <textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none" placeholder="Opcjonalne uwagi do zlecenia. Pojawią się jako informacja po najechaniu w rejestrze."></textarea>
+              </div>
             </div>
 
             {/* Sekcja 3: Wycena (Produkty) */}
@@ -1040,8 +1069,8 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                       <th className="py-3 px-4">Produkty zlecenia</th>
                       <th className="py-3 px-4 w-36">Data wykonania</th>
                       <th className="py-3 px-4 w-28 text-center">L. godzin rob.</th>
-                      <th className="py-3 px-4 w-32 text-right">Stawka za h</th>
-                      <th className="py-3 px-4 w-36 text-right">Kwota</th>
+                      <th className="py-3 px-4 w-32 text-right">Stawka za h <span className="block text-[10px] text-gray-400 font-normal">Brutto (Netto)</span></th>
+                      <th className="py-3 px-4 w-40 text-right">Kwota <span className="block text-[10px] text-gray-400 font-normal">Brutto (Netto)</span></th>
                       <th className="py-3 px-4 w-12 text-center"></th>
                     </tr>
                   </thead>
@@ -1058,11 +1087,13 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                         <td className="py-2 px-4">
                           <input type="number" min="0" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
                         </td>
-                        <td className="py-2 px-4 text-right text-gray-500 dark:text-gray-400 font-medium whitespace-nowrap">
-                          {project?.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        <td className="py-2 px-4 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap leading-tight">
+                          <div className="font-medium text-gray-900 dark:text-white">{project?.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                          <div className="text-[11px] text-gray-400">({project?.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
                         </td>
-                        <td className="py-2 px-4 text-right font-bold text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                          {((item.hours || 0) * (project?.rateNetto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        <td className="py-2 px-4 text-right whitespace-nowrap leading-tight">
+                          <div className="font-bold text-gray-900 dark:text-gray-200">{((item.hours || 0) * (project?.rateBrutto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                          <div className="text-[11px] text-gray-400">({((item.hours || 0) * (project?.rateNetto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
                         </td>
                         <td className="py-2 px-4 text-center">
                           <button type="button" onClick={() => removeItemRow(item.id)} className="text-gray-300 hover:text-red-500 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition focus:opacity-100">
@@ -1080,7 +1111,10 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                       <td colSpan={3} className="py-4 px-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
                       <td className="py-4 px-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">{totalHours}</td>
                       <td></td>
-                      <td className="py-4 px-4 text-right text-indigo-600 dark:text-indigo-400 text-lg whitespace-nowrap">{totalAmount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</td>
+                      <td className="py-4 px-4 text-right leading-tight whitespace-nowrap">
+                        <div className="text-indigo-600 dark:text-indigo-400 text-lg">{totalAmountBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider font-normal mt-0.5">({totalAmountNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
+                      </td>
                       <td></td>
                     </tr>
                   </tfoot>
