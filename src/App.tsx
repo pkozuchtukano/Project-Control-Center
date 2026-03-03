@@ -38,12 +38,14 @@ export type Project = {
   code: string;
   name: string;
   contractNo: string;
+  contractSubject?: string;
   dateFrom: string;
   dateTo: string;
   minHours: number;
   maxHours: number;
   rateNetto: number;
   rateBrutto: number;
+  vatRate: number;
 };
 
 // ==========================================
@@ -174,31 +176,32 @@ export const useProjectContext = () => {
 export const useProjectCalculations = (project: Project | null) => {
   if (!project) return null;
   const today = new Date();
-  const start = parseISO(project.dateFrom);
-  const end = parseISO(project.dateTo);
 
-  const totalDays = differenceInDays(end, start);
-  const daysPassed = differenceInDays(today, start);
+  const start = project.dateFrom ? parseISO(project.dateFrom) : today;
+  const end = project.dateTo ? parseISO(project.dateTo) : today;
+
+  const totalDays = project.dateFrom && project.dateTo ? differenceInDays(end, start) : 0;
+  const daysPassed = project.dateFrom ? differenceInDays(today, start) : 0;
 
   let timeProgress = 0;
   if (totalDays > 0) {
     timeProgress = Math.max(0, Math.min(100, (daysPassed / totalDays) * 100));
-  } else if (today >= start) {
+  } else if (project.dateFrom && today >= start) {
     timeProgress = 100;
   }
 
-  const isEndingSoon = differenceInDays(end, today) <= 14 && differenceInDays(end, today) > 0;
-  const isOverdue = isAfter(today, end);
+  const isEndingSoon = project.dateTo ? differenceInDays(end, today) <= 14 && differenceInDays(end, today) > 0 : false;
+  const isOverdue = project.dateTo ? isAfter(today, end) : false;
 
   return {
     timeProgress: Math.round(timeProgress),
-    daysRemaining: differenceInDays(end, today),
+    daysRemaining: project.dateTo ? differenceInDays(end, today) : 0,
     totalDays,
     daysPassed,
     isEndingSoon,
     isOverdue,
-    budgetMin: project.minHours * project.rateNetto,
-    budgetMax: project.maxHours * project.rateNetto,
+    budgetMin: project.minHours ? project.minHours * project.rateNetto : 0,
+    budgetMax: project.maxHours ? project.maxHours * project.rateNetto : 0,
   };
 };
 
@@ -303,9 +306,9 @@ const ProjectModal = ({
 }) => {
   const { addProject, updateProject } = useProjectContext();
   const [formData, setFormData] = useState<Omit<Project, 'id'>>({
-    code: '', name: '', contractNo: '',
+    code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
-    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0
+    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -316,18 +319,20 @@ const ProjectModal = ({
         code: projectToEdit.code,
         name: projectToEdit.name,
         contractNo: projectToEdit.contractNo,
+        contractSubject: projectToEdit.contractSubject || '',
         dateFrom: projectToEdit.dateFrom,
         dateTo: projectToEdit.dateTo,
         minHours: projectToEdit.minHours,
         maxHours: projectToEdit.maxHours,
         rateNetto: projectToEdit.rateNetto,
-        rateBrutto: projectToEdit.rateBrutto
+        rateBrutto: projectToEdit.rateBrutto,
+        vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23
       });
     } else {
       setFormData({
-        code: '', name: '', contractNo: '',
+        code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
-        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0
+        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23
       });
     }
   }, [projectToEdit, isOpen]);
@@ -342,8 +347,14 @@ const ProjectModal = ({
 
     setFormData(prev => {
       const updated = { ...prev, [name]: newValue };
-      if (name === 'rateNetto') {
-        updated.rateBrutto = parseFloat((newValue * 1.23).toFixed(2));
+
+      const currentVatRate = name === 'vatRate' ? newValue : prev.vatRate;
+      const vatMultiplier = 1 + (currentVatRate / 100);
+
+      if (name === 'rateNetto' || name === 'vatRate') {
+        updated.rateBrutto = parseFloat((updated.rateNetto * vatMultiplier).toFixed(2));
+      } else if (name === 'rateBrutto') {
+        updated.rateNetto = parseFloat((newValue / vatMultiplier).toFixed(2));
       }
       return updated;
     });
@@ -354,12 +365,12 @@ const ProjectModal = ({
     setError('');
 
     // Walidacja dat
-    if (new Date(formData.dateTo) < new Date(formData.dateFrom)) {
+    if (formData.dateFrom && formData.dateTo && new Date(formData.dateTo) < new Date(formData.dateFrom)) {
       setError('Data zakonczenia musi byc pozniejsza niz data rozpoczecia.');
       return;
     }
 
-    if (formData.minHours > formData.maxHours) {
+    if (formData.minHours && formData.maxHours && formData.minHours > formData.maxHours) {
       setError('Limit minimalny nie moze byc wiekszy niz maksymalny.');
       return;
     }
@@ -404,19 +415,24 @@ const ProjectModal = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kod (Skrót)</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kod (Skrót) *</label>
                 <input required name="code" value={formData.code} onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                   placeholder="np. PRJ-01" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pełna Nazwa</label>
-                <input required name="name" value={formData.name} onChange={handleChange}
+                <input name="name" value={formData.name} onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nr Umowy</label>
-                <input required name="contractNo" value={formData.contractNo} onChange={handleChange}
+                <input name="contractNo" value={formData.contractNo} onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Przedmiot Umowy</label>
+                <input name="contractSubject" value={formData.contractSubject} onChange={handleChange}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
               </div>
             </div>
@@ -425,37 +441,44 @@ const ProjectModal = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data Od</label>
-                  <input required type="date" name="dateFrom" value={formData.dateFrom} onChange={handleChange}
+                  <input type="date" name="dateFrom" value={formData.dateFrom} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data Do</label>
-                  <input required type="date" name="dateTo" value={formData.dateTo} onChange={handleChange}
+                  <input type="date" name="dateTo" value={formData.dateTo} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Min Godzin</label>
-                  <input required type="number" min="0" name="minHours" value={formData.minHours} onChange={handleChange}
+                  <input type="number" min="0" name="minHours" value={formData.minHours} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Godzin</label>
-                  <input required type="number" min="0" name="maxHours" value={formData.maxHours} onChange={handleChange}
+                  <input type="number" min="0" name="maxHours" value={formData.maxHours} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stawka Netto (PLN)</label>
-                  <input required type="number" min="0" step="0.01" name="rateNetto" value={formData.rateNetto} onChange={handleChange}
+                  <input type="number" min="0" step="0.01" name="rateNetto" value={formData.rateNetto} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stawka Brutto (+23%)</label>
-                  <input readOnly type="number" value={formData.rateBrutto}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm text-gray-500 cursor-not-allowed" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stawka Brutto (+{formData.vatRate}%)</label>
+                  <input type="number" min="0" step="0.01" name="rateBrutto" value={formData.rateBrutto} onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stawka VAT (%)</label>
+                  <input type="number" min="0" step="1" name="vatRate" value={formData.vatRate} onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
               </div>
             </div>
