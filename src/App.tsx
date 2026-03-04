@@ -15,7 +15,8 @@ import {
 import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
-  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer
+  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
+  Layers, FileSpreadsheet, Activity
 } from 'lucide-react';
 
 // ==========================================
@@ -602,7 +603,8 @@ const ProjectModal = ({
 const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status'>('dashboard');
+  const { orders } = useOrders(selectedProject?.id);
 
   if (!selectedProject || !calculations) {
     return (
@@ -621,8 +623,17 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     budgetMin, budgetMax
   } = calculations;
 
+  const settledHours = orders?.filter(o => o.acceptanceDate).reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) || 0;
+  const contractedHours = orders?.filter(o => !o.acceptanceDate).reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) || 0;
+  const totalHoursUsed = settledHours + contractedHours;
+  const remainingToMax = Math.max(0, selectedProject.maxHours - totalHoursUsed);
+
   const chartData = [
     { name: 'Min', Godziny: selectedProject.minHours, fill: '#6366f1' },
+    { name: 'Rozlicz.', Godziny: settledHours, fill: '#10b981' },
+    { name: 'Zakontr.', Godziny: contractedHours, fill: '#f59e0b' },
+    { name: 'Suma', Godziny: totalHoursUsed, fill: '#3b82f6' },
+    { name: 'Zostaje', Godziny: remainingToMax, fill: '#c026d3' },
     { name: 'Max', Godziny: selectedProject.maxHours, fill: '#818cf8' }
   ];
 
@@ -668,9 +679,27 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           >
             Rejestr Zleceń
           </button>
+          <button
+            onClick={() => setActiveTab('work')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'work' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Rejestr Pracy
+          </button>
+          <button
+            onClick={() => setActiveTab('settlements')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'settlements' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Rozliczenia
+          </button>
+          <button
+            onClick={() => setActiveTab('status')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'status' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Status
+          </button>
         </div>
 
-        {activeTab === 'dashboard' ? (
+        {activeTab === 'dashboard' && (
           <>
             {/* TIME PROGRESS */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
@@ -705,49 +734,67 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
                 </h3>
                 <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Nr Umowy</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">{selectedProject.contractNo || 'Brak'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Przedmiot Umowy</p>
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{selectedProject.contractSubject || 'Brak'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Status Umowy</p>
-                    <div className="flex items-center gap-2 font-medium">
-                      {isOverdue ? <><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-red-600 dark:text-red-400">Zakończona</span></>
-                        : <><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-emerald-600 dark:text-emerald-400">Aktywna</span></>}
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Nr Umowy i Status</p>
+                    <div className="flex items-center gap-3">
+                      <p className="font-semibold text-gray-900 dark:text-white">{selectedProject.contractNo || 'Brak'}</p>
+                      <div className="flex items-center gap-1.5 font-medium text-sm border-l border-gray-200 dark:border-gray-700 pl-3">
+                        {isOverdue ? <><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-red-600 dark:text-red-400">Zakończona</span></>
+                          : <><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-emerald-600 dark:text-emerald-400">Aktywna</span></>}
+                      </div>
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa (Netto)</p>
-                    <p className="font-bold text-gray-900 dark:text-white sm:text-lg">{selectedProject.rateNetto.toLocaleString('pl-PL')} <span className="text-sm text-gray-500">PLN</span></p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min (Netto)</p>
-                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
-                      {budgetMin.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa Brutto (Netto)</p>
+                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                      {selectedProject.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                      <span className="text-sm text-gray-400 dark:text-gray-500 font-normal pb-0.5 ml-1">({selectedProject.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN)</span>
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Max (Netto)</p>
-                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-xl">
-                      {budgetMax.toLocaleString('pl-PL')} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min / Max (Brutto)</p>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                        {(budgetMin * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-400 font-normal">/</span> {(budgetMax * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal">PLN</span>
+                      </div>
+                      <div className="flex items-baseline gap-1 text-gray-400 dark:text-gray-500 font-medium text-sm">
+                        <span>Netto:</span>
+                        <span>{budgetMin.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {budgetMax.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN</span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Liczba Godzin Min / Max</p>
+                    <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                      {selectedProject.minHours} <span className="text-sm text-gray-400 font-normal">/</span> {selectedProject.maxHours} <span className="text-sm text-gray-500 font-normal">h</span>
+                    </div>
+                  </div>
 
-                <div className="mt-8 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Prognoza wartości (Brutto MAX)</p>
-                    <p className="text-xs text-gray-500 mt-0.5">W tym 23% VAT</p>
+                  <div className="col-span-2 pt-4 pb-2 border-t border-gray-100 dark:border-gray-800">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4 text-sm uppercase tracking-wider">Wykorzystanie Godzin w Projekcie</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/30">
+                        <p className="text-sm flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium mb-1 truncate" title="Suma rozliczonych">Rozliczone</p>
+                        <p className="font-bold text-gray-900 dark:text-white sm:text-xl">{settledHours} <span className="text-sm font-normal text-gray-500">h</span></p>
+                      </div>
+                      <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-100 dark:border-amber-800/30">
+                        <p className="text-sm flex items-center gap-1.5 text-amber-700 dark:text-amber-400 font-medium mb-1 truncate" title="Suma zakontraktowanych">Zakontraktowane</p>
+                        <p className="font-bold text-gray-900 dark:text-white sm:text-xl">{contractedHours} <span className="text-sm font-normal text-gray-500">h</span></p>
+                      </div>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/30">
+                        <p className="text-sm flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-medium mb-1 truncate" title="Całkowita suma wykorzystanych godzin">Wykorzystane</p>
+                        <p className="font-bold text-gray-900 dark:text-white sm:text-xl">{totalHoursUsed} <span className="text-sm font-normal text-gray-500">h</span></p>
+                      </div>
+                      <div className="bg-fuchsia-50 dark:bg-fuchsia-900/20 p-4 rounded-xl border border-fuchsia-100 dark:border-fuchsia-800/30 relative overflow-hidden">
+                        <p className="text-sm flex items-center gap-1.5 text-fuchsia-700 dark:text-fuchsia-400 font-medium mb-1 truncate" title="Pozostało do limitu MAX">Pozostało</p>
+                        <p className="font-bold text-gray-900 dark:text-white sm:text-xl relative z-10">{remainingToMax} <span className="text-sm font-normal text-gray-500">h</span></p>
+                        {remainingToMax <= 0 && <div className="absolute inset-0 bg-red-100 dark:bg-red-900/40 opacity-50 z-0"></div>}
+                      </div>
+                    </div>
                   </div>
-                  <p className="font-bold text-xl text-indigo-600 dark:text-indigo-400">
-                    {(budgetMax * 1.23).toLocaleString('pl-PL')} PLN
-                  </p>
                 </div>
               </div>
+
 
               {/* CHARTS */}
               <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
@@ -758,7 +805,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12, fontWeight: 500 }} dy={10} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 11, fontWeight: 500 }} dy={10} interval={0} angle={-20} textAnchor="end" height={40} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
                       <Tooltip
                         cursor={{ fill: 'transparent' }}
@@ -776,11 +823,44 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
             </div>
           </>
-        ) : (
+        )}
+
+        {activeTab === 'orders' && (
           <OrdersRegistryView projectId={selectedProject.id} />
         )}
+
+        {activeTab === 'work' && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
+            <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/50 rounded-full flex items-center justify-center mb-4">
+              <Layers size={28} className="text-indigo-400 dark:text-indigo-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Rejestr Pracy</h3>
+            <p className="text-gray-500 dark:text-gray-400 max-w-sm">Moduł ewidencji i raportowania czasu pracy jest w przygotowaniu.</p>
+          </div>
+        )}
+
+        {activeTab === 'settlements' && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
+            <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-4">
+              <FileSpreadsheet size={28} className="text-emerald-400 dark:text-emerald-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Rozliczenia</h3>
+            <p className="text-gray-500 dark:text-gray-400 max-w-sm">Moduł fakturowania i rozliczeń finansowych projektu jest w przygotowaniu.</p>
+          </div>
+        )}
+
+        {activeTab === 'status' && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
+            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-4">
+              <Activity size={28} className="text-blue-400 dark:text-blue-500" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Status Projektu</h3>
+            <p className="text-gray-500 dark:text-gray-400 max-w-sm">Rozbudowany moduł śledzenia postępów i alertów jest w przygotowaniu.</p>
+          </div>
+        )}
+
       </div>
-    </div>
+    </div >
   );
 };
 
