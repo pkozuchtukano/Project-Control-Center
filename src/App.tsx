@@ -1,13 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, type User } from 'firebase/auth';
-import {
-  getFirestore, collection, doc, updateDoc,
-  onSnapshot, query, addDoc, deleteDoc
-} from 'firebase/firestore';
 import {
   differenceInDays, isAfter, parseISO
 } from 'date-fns';
+
+declare global {
+  interface Window {
+    electron: {
+      readDb: () => Promise<{ projects: Project[], orders: Order[] }>;
+      writeDb: (data: { projects: Project[], orders: Order[] }) => Promise<{ success: boolean }>;
+    }
+  }
+}
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, CartesianGrid
@@ -22,17 +25,6 @@ import {
 // ==========================================
 // CONFIG & CONSTANTS
 // ==========================================
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "dummy",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "dummy",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "dummy"
-};
-
-const APP_ID = 'project-control-center';
-const PROJECTS_PATH = `artifacts/${APP_ID}/public/data/projects`;
 
 export type Project = {
   id: string;
@@ -78,87 +70,12 @@ export type Order = {
 };
 
 // ==========================================
-// SERVICES
-// ==========================================
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-const getProjectCollection = () => collection(db, PROJECTS_PATH);
-const getOrderCollection = (projectId: string) => collection(db, `${PROJECTS_PATH}/${projectId}/orders`);
-
-// ==========================================
-// HOOKS
+// SERVICES & HOOKS
 // ==========================================
 
-export const useOrders = (projectId: string | undefined) => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!projectId) {
-      setOrders([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    const q = query(getOrderCollection(projectId));
-    const unsubscribe = onSnapshot(q, (querySnapshot: any) => {
-      const loadedOrders: Order[] = [];
-      querySnapshot.forEach((doc: any) => {
-        loadedOrders.push({ id: doc.id, ...doc.data() } as Order);
-      });
-      // Sort desc by order creation
-      loadedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setOrders(loadedOrders);
-      setIsLoading(false);
-    }, (err: any) => {
-      console.error("Firestore Orders Error:", err);
-      setError("Błąd pobierania zleceń.");
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [projectId]);
-
-  const addOrder = async (order: Omit<Order, 'id'>) => {
-    if (!projectId) return;
-    try {
-      await addDoc(getOrderCollection(projectId), order);
-    } catch (err) {
-      console.error(err);
-      throw err;
-    }
-  };
-
-  const updateOrder = async (id: string, updates: Partial<Order>) => {
-    if (!projectId) return;
-    try {
-      const docRef = doc(db, `${PROJECTS_PATH}/${projectId}/orders`, id);
-      await updateDoc(docRef, updates);
-    } catch (err) {
-      console.error(err);
-      throw err;
-    }
-  };
-
-  const deleteOrder = async (id: string) => {
-    if (!projectId) return;
-    try {
-      const docRef = doc(db, `${PROJECTS_PATH}/${projectId}/orders`, id);
-      await deleteDoc(docRef);
-    } catch (err) {
-      console.error(err);
-      throw err;
-    }
-  };
-
-  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder };
-};
 type ProjectContextType = {
   projects: Project[];
+  orders: Order[];
   selectedProject: Project | null;
   setSelectedProject: (p: Project | null) => void;
   isLoading: boolean;
@@ -166,97 +83,118 @@ type ProjectContextType = {
   addProject: (p: Omit<Project, 'id'>) => Promise<void>;
   updateProject: (id: string, p: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
-  user: User | null;
+  addOrder: (o: Omit<Order, 'id'>) => Promise<void>;
+  updateOrder: (id: string, o: Partial<Order>) => Promise<void>;
+  deleteOrder: (id: string) => Promise<void>;
 };
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    let unsubscribeProjects: () => void;
-
-    const initAuth = async () => {
-      try {
-        const userCredential = await signInAnonymously(auth);
-        setUser(userCredential.user);
-
-        // Setup real-time listener for projects
-        const q = query(getProjectCollection());
-        unsubscribeProjects = onSnapshot(q, (querySnapshot: any) => {
-          const loadedProjects: Project[] = [];
-          querySnapshot.forEach((doc: any) => {
-            loadedProjects.push({ id: doc.id, ...doc.data() } as Project);
-          });
-          setProjects(loadedProjects);
-          // Update selected project if it exists
-          if (selectedProject) {
-            const updatedSelected = loadedProjects.find((p: Project) => p.id === selectedProject.id);
-            if (updatedSelected) setSelectedProject(updatedSelected);
-          }
-          setIsLoading(false);
-        }, (err: any) => {
-          console.error("Firestore Error:", err);
-          setError("Błąd pobierania danych. Upewnij się, że masz poprawną konfigurację Firebase.");
-          setIsLoading(false);
-        });
-
-      } catch (err: any) {
-        console.error("Auth Error:", err);
-        setError("Błąd autentykacji. Sprawdź bazę i konfigurację.");
-        setIsLoading(false);
-      }
-    };
-
-    initAuth();
-
-    return () => {
-      unsubscribeProjects && unsubscribeProjects();
-    };
-  }, []);
-
-  const addProject = async (project: Omit<Project, 'id'>) => {
-    if (!user) return;
+  const syncDb = async (newProjects: Project[], newOrders: Order[]) => {
     try {
-      await addDoc(getProjectCollection(), project);
-    } catch (err) {
+      if (!window.electron) {
+        console.warn("Aplikacja uruchomiona poza Electronem. Zapis do localStorage.");
+        localStorage.setItem('pcc_projects', JSON.stringify(newProjects));
+        localStorage.setItem('pcc_orders', JSON.stringify(newOrders));
+      } else {
+        await window.electron.writeDb({ projects: newProjects, orders: newOrders });
+      }
+      setProjects(newProjects);
+      setOrders(newOrders);
+    } catch (err: any) {
       console.error(err);
+      setError("Błąd zapisu do pliku: " + err.message);
       throw err;
     }
   };
 
+  const generateId = () => {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+  };
+
+  useEffect(() => {
+    const initDb = async () => {
+      try {
+        if (!window.electron) {
+          console.warn("Aplikacja uruchomiona poza Electronem. Odczyt z localStorage.");
+          const storedProjects = localStorage.getItem('pcc_projects');
+          const storedOrders = localStorage.getItem('pcc_orders');
+          if (storedProjects) setProjects(JSON.parse(storedProjects));
+
+          if (storedOrders) {
+            const parsedOrders = JSON.parse(storedOrders);
+            parsedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setOrders(parsedOrders);
+          }
+          setIsLoading(false);
+          return;
+        }
+
+        const data = await window.electron.readDb();
+        setProjects(data.projects || []);
+
+        const loadedOrders = data.orders || [];
+        loadedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setOrders(loadedOrders);
+        setIsLoading(false);
+      } catch (err: any) {
+        console.error("Local DB Error:", err);
+        setError("Błąd pobierania danych z lokalnego pliku JSON.");
+        setIsLoading(false);
+      }
+    };
+    initDb();
+  }, []);
+
+  const addProject = async (p: Omit<Project, 'id'>) => {
+    const newProject = { ...p, id: generateId() };
+    await syncDb([...projects, newProject], orders);
+  };
+
   const updateProject = async (id: string, updates: Partial<Project>) => {
-    if (!user) return;
-    try {
-      const docRef = doc(db, PROJECTS_PATH, id);
-      await updateDoc(docRef, updates);
-    } catch (err) {
-      console.error(err);
-      throw err;
+    const updated = projects.map(proj => proj.id === id ? { ...proj, ...updates } : proj);
+    await syncDb(updated, orders);
+    if (selectedProject?.id === id) {
+      setSelectedProject({ ...selectedProject, ...updates });
     }
   };
 
   const deleteProject = async (id: string) => {
-    if (!user) return;
-    try {
-      const docRef = doc(db, PROJECTS_PATH, id);
-      if (selectedProject?.id === id) setSelectedProject(null);
-      await deleteDoc(docRef);
-    } catch (err) {
-      console.error(err);
-      throw err;
-    }
+    const updated = projects.filter(proj => proj.id !== id);
+    const updatedOrders = orders.filter(o => o.projectId !== id); // Cascade delete
+    await syncDb(updated, updatedOrders);
+    if (selectedProject?.id === id) setSelectedProject(null);
+  };
+
+  const addOrder = async (o: Omit<Order, 'id'>) => {
+    const newOrder = { ...o, id: generateId() };
+    await syncDb(projects, [newOrder, ...orders]);
+  };
+
+  const updateOrder = async (id: string, updates: Partial<Order>) => {
+    const updated = orders.map(order => order.id === id ? { ...order, ...updates } : order);
+    await syncDb(projects, updated);
+  };
+
+  const deleteOrder = async (id: string) => {
+    const updated = orders.filter(order => order.id !== id);
+    await syncDb(projects, updated);
   };
 
   return (
     <ProjectContext.Provider value={{
-      projects, selectedProject, setSelectedProject,
-      isLoading, error, addProject, updateProject, deleteProject, user
+      projects, orders, selectedProject, setSelectedProject,
+      isLoading, error, addProject, updateProject, deleteProject,
+      addOrder, updateOrder, deleteOrder
     }}>
       {children}
     </ProjectContext.Provider>
@@ -267,6 +205,12 @@ export const useProjectContext = () => {
   const context = useContext(ProjectContext);
   if (!context) throw new Error('useProjectContext must be used within ProjectProvider');
   return context;
+};
+
+export const useOrders = (projectId: string | undefined) => {
+  const { orders: allOrders, isLoading, error, addOrder, updateOrder, deleteOrder } = useProjectContext();
+  const orders = projectId ? allOrders.filter(o => o.projectId === projectId) : [];
+  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder };
 };
 
 // Custom Hook for Analytics Calculations

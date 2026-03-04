@@ -1,0 +1,7 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose safe context to the React app
+contextBridge.exposeInMainWorld('electron', {
+    readDb: () => ipcRenderer.invoke('read-db'),
+    writeDb: (data: any) => ipcRenderer.invoke('write-db', data),
+});
