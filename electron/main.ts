@@ -25,6 +25,7 @@ async function createWindow() {
             preload: path.join(__dirname, 'preload.mjs'),
             contextIsolation: true,
             nodeIntegration: false,
+            sandbox: false,
         },
         autoHideMenuBar: true,
     });
@@ -76,6 +77,50 @@ ipcMain.handle('write-db', async (_, data) => {
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu bazy JSON:', error);
+        throw error;
+    }
+});
+
+// ==========================================
+// IPC YOUTRACK API HANDLERS (Bypass CORS)
+// ==========================================
+
+ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, params, data, responseType }) => {
+    try {
+        // Build URL with query params
+        const urlObj = new URL(url);
+        if (params) {
+            Object.keys(params).forEach(key => urlObj.searchParams.append(key, params[key]));
+        }
+
+        const fetchOptions: RequestInit = {
+            method,
+            headers: headers as HeadersInit,
+        };
+
+        if (data) {
+            fetchOptions.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(urlObj.toString(), fetchOptions);
+
+        if (!response.ok) {
+            // Throw an object we can catch on the other side
+            throw {
+                status: response.status,
+                statusText: response.statusText,
+                message: await response.text()
+            };
+        }
+
+        if (responseType === 'arraybuffer') {
+            const buffer = await response.arrayBuffer();
+            return Buffer.from(buffer);
+        }
+
+        return await response.json();
+    } catch (error: any) {
+        console.error(`Błąd zapytania fetch-youtrack do ${url}:`, error);
         throw error;
     }
 });

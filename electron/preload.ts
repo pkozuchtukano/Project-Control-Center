@@ -4,4 +4,5 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('electron', {
     readDb: () => ipcRenderer.invoke('read-db'),
     writeDb: (data: any) => ipcRenderer.invoke('write-db', data),
+    fetchYouTrack: (options: any) => ipcRenderer.invoke('fetch-youtrack', options),
 });

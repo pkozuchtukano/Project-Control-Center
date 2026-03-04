@@ -26,17 +26,6 @@ export default defineConfig({
         entry: 'electron/preload.ts',
         onstart(options) {
           options.reload()
-        },
-        vite: {
-          build: {
-            outDir: 'dist-electron',
-            rollupOptions: {
-              output: {
-                format: 'es',
-                entryFileNames: '[name].mjs',
-              }
-            }
-          }
         }
       }
     ]),

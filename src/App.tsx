@@ -5,9 +5,10 @@ import {
 
 declare global {
   interface Window {
-    electron: {
+    electron?: {
       readDb: () => Promise<{ projects: Project[], orders: Order[], settings?: Settings }>;
       writeDb: (data: { projects: Project[], orders: Order[], settings?: Settings }) => Promise<{ success: boolean }>;
+      fetchYouTrack: (options: any) => Promise<any>;
     }
   }
 }
@@ -40,6 +41,7 @@ export type Project = {
   rateNetto: number;
   rateBrutto: number;
   vatRate: number;
+  youtrackQuery?: string;
 };
 
 export type OrderItem = {
@@ -159,7 +161,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         if (data.settings) setSettings(data.settings);
 
         const loadedOrders = data.orders || [];
-        loadedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        loadedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setOrders(loadedOrders);
         setIsLoading(false);
       } catch (err: any) {
