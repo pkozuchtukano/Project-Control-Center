@@ -34,6 +34,10 @@ export interface YouTrackIssue {
         minutes: number;
     } | null;
     state?: string | null;
+    attachments?: {
+        name: string;
+        url: string;
+    }[];
 }
 
 export interface ActivityItem {
@@ -106,7 +110,7 @@ export const fetchIssuesActivity = async (
 
     const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
         query,
-        fields: 'id,idReadable,summary,resolved,description,customFields(name,value(presentation,name,id,minutes))',
+        fields: 'id,idReadable,summary,resolved,description,customFields(name,value(presentation,name,id,minutes)),attachments(name,url)',
         $top: 100 // reasonable limit for typical usage
     });
 
@@ -293,6 +297,7 @@ export const fetchIssuesActivity = async (
                 estimation,
                 spentTime,
                 state,
+                attachments: issue.attachments || [],
                 timeline
             };
         } catch (err) {

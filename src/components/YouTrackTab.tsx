@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useYouTrack } from '../hooks/useYouTrack';
 import { useProjectContext, type Project } from '../App';
 import { format } from 'date-fns';
-import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown } from 'lucide-react';
+import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { type ActivityItem, formatMinutesToDuration } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
@@ -14,6 +14,13 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [useCache, setUseCache] = useState(true);
     const [hasFetched, setHasFetched] = useState(false);
+
+    // Lightbox state
+    const [lightboxImage, setLightboxImage] = useState<{ src: string, alt: string } | null>(null);
+    const [lightboxScale, setLightboxScale] = useState(1);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+    const [startPos, setStartPos] = useState({ x: 0, y: 0 });
 
     const { data, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
 
@@ -45,11 +52,36 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
     }, [projectQuery, project.id]);
 
-    const renderTextWithImages = (text: string) => {
+    // Lightbox handlers
+    const openLightbox = (src: string, alt: string) => {
+        setLightboxImage({ src, alt });
+        setLightboxScale(1);
+        setDragPos({ x: 0, y: 0 });
+    };
+
+    const closeLightbox = () => setLightboxImage(null);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') closeLightbox();
+        };
+        if (lightboxImage) window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [lightboxImage]);
+
+    const handleWheel = (e: React.WheelEvent) => {
+        e.preventDefault();
+        const delta = e.deltaY * -0.001;
+        const newScale = Math.min(Math.max(0.5, lightboxScale + delta), 4);
+        setLightboxScale(newScale);
+    };
+
+    const renderTextWithImages = (text: string, attachments: { name: string, url: string }[] = []) => {
         if (!text) return null;
 
         // Dopasowuje Markdown: ![alt](url) LUB tag HTML: <img ... src="url" ...>
-        const regex = /(?:!\[([^\]]*)\]\(([^)]+)\))|(?:<img\b[^>]*src="([^"]+)"[^>]*>(?:<\/img>)?)/gi;
+        // UWAGA: dodano obsługę `src='url'` i `src="url"` oraz upewniono się, że wyciągamy sam link
+        const regex = /(?:!\[([^\]]*)\]\(([^)]+)\))|(?:<img\b[^>]*src=(?:"|')([^"']+)(?:"|')[^>]*>(?:<\/img>)?)/gi;
         const parts = [];
         let lastIndex = 0;
         let match;
@@ -67,23 +99,47 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                 alt = match[1] || '';
                 url = match[2];
             } else if (match[3]) {
-                // Format tagu HTML <img src="url">
+                // Format tagu HTML <img src="url"> LUB <img src='url'>
                 url = match[3];
                 // Spróbuj wyciągnąć atrybut alt
-                const altMatch = match[0].match(/alt="([^"]*)"/i);
+                const altMatch = match[0].match(/alt=(?:"|')([^"']+)(?:"|')/i);
                 if (altMatch) {
                     alt = altMatch[1];
                 }
             }
 
             if (url) {
+                // YouTrack formals HTML tags like `<img src="...&amp;updated=...">` 
+                // Browsers decode `&amp;` automatically when parsing HTML, but our regex extracts it literally.
+                // We must unescape it to `&` so the `fetch` signature remains valid.
+                let decodedUrl = url.replace(/&amp;/g, '&');
+
+                // Jeśli YouTrack podaje jako src tylko nazwę obrazka (np: image.png), to znak, że jest to Markdown odwołujący się do załącznika w API
+                if (!decodedUrl.includes('/') && !decodedUrl.startsWith('http')) {
+                    const attachment = attachments.find(a => a.name === decodedUrl);
+                    if (attachment && attachment.url) {
+                        decodedUrl = attachment.url;
+                    }
+                }
+
+                // Często YouTrack zwraca adresy względne np `/api/files/...` - w takiej sytuacji musimy wkleić z przodu prawidłowy BaseURL z ustawień.
+                if (decodedUrl.startsWith('/')) {
+                    decodedUrl = `${settings?.youtrackBaseUrl?.replace(/\/$/, '') || ''}${decodedUrl}`;
+                }
+
+                // Dodano wywołanie pełnoekranowego Lightboxa na kliknięcie
                 parts.push(
-                    <AuthenticatedImage
-                        key={`img-${match.index}`}
-                        src={url}
-                        alt={alt}
-                        className="max-h-96 object-contain"
-                    />
+                    <div
+                        key={`img-wrap-${match.index}`}
+                        className="my-3 inline-block cursor-zoom-in transition-transform hover:scale-[1.02]"
+                        onClick={() => openLightbox(decodedUrl, alt)}
+                    >
+                        <AuthenticatedImage
+                            src={decodedUrl}
+                            alt={alt}
+                            className="max-h-[500px] object-contain rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+                        />
+                    </div>
                 );
             }
 
@@ -153,7 +209,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                             <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-md">Komentarz</span>
                         </div>
                         <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                            {renderTextWithImages(content)}
+                            {renderTextWithImages(content, [])}
                         </div>
                     </div>
                 );
@@ -164,8 +220,8 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                         <span className="font-medium text-gray-500 mr-2">{group.timeStr}</span>
                         <span className="font-semibold text-blue-800 dark:text-blue-400">{group.authorName}:</span> zaktualizowano treść zadania. Zmieniono:
                         <div className="mt-1 text-xs text-gray-500 bg-gray-50 dark:bg-gray-900 p-2 rounded">
-                            <span className="line-through text-red-500/80 mr-2">{renderTextWithImages(item.removed || 'Brak')}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">=&gt; {renderTextWithImages(item.added || 'Brak')}</span>
+                            <span className="line-through text-red-500/80 mr-2">{renderTextWithImages(item.removed || 'Brak', [])}</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">=&gt; {renderTextWithImages(item.added || 'Brak', [])}</span>
                         </div>
                     </div>
                 );
@@ -394,8 +450,8 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
                         <div className="px-5 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
                             {issue.description ? (
-                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
-                                    {renderTextWithImages(issue.description)}
+                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                    {renderTextWithImages(issue.description, issue.attachments || [])}
                                 </div>
                             ) : (
                                 <p className="text-sm text-gray-400 italic">Brak opisu zadania.</p>
@@ -503,6 +559,60 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     </div>
                 )}
             </div>
+
+            {/* LIGHTBOX MODAL */}
+            {lightboxImage && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) closeLightbox();
+                    }}
+                    onWheel={handleWheel}
+                    onMouseMove={(e) => {
+                        if (isDragging) {
+                            setDragPos({
+                                x: dragPos.x + (e.clientX - startPos.x),
+                                y: dragPos.y + (e.clientY - startPos.y)
+                            });
+                            setStartPos({ x: e.clientX, y: e.clientY });
+                        }
+                    }}
+                    onMouseUp={() => setIsDragging(false)}
+                    onMouseLeave={() => setIsDragging(false)}
+                >
+                    <button
+                        onClick={closeLightbox}
+                        className="absolute top-6 right-6 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors z-50 focus:outline-none"
+                    >
+                        <X size={24} />
+                    </button>
+
+                    <div className="absolute bottom-6 flex items-center gap-4 px-4 py-2 bg-black/50 rounded-full text-white backdrop-blur-md z-50 border border-white/10">
+                        <button onClick={(e) => { e.stopPropagation(); setLightboxScale(s => Math.max(0.5, s - 0.25)); }} className="p-1.5 hover:bg-white/20 rounded-full transition-colors"><ZoomOut size={20} /></button>
+                        <span className="text-sm font-medium w-12 text-center">{Math.round(lightboxScale * 100)}%</span>
+                        <button onClick={(e) => { e.stopPropagation(); setLightboxScale(s => Math.min(4, s + 0.25)); }} className="p-1.5 hover:bg-white/20 rounded-full transition-colors"><ZoomIn size={20} /></button>
+                    </div>
+
+                    <div
+                        className="relative transition-transform duration-75 ease-out cursor-grab active:cursor-grabbing max-w-[90vw] max-h-[90vh] flex items-center justify-center"
+                        style={{
+                            transform: `translate(${dragPos.x}px, ${dragPos.y}px) scale(${lightboxScale})`
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            setIsDragging(true);
+                            setStartPos({ x: e.clientX, y: e.clientY });
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <AuthenticatedImage
+                            src={lightboxImage.src}
+                            alt={lightboxImage.alt}
+                            className="max-h-[90vh] max-w-[90vw] object-contain rounded shadow-2xl pointer-events-none"
+                        />
+                    </div>
+                </div>
+            )}
 
         </div >
     );
