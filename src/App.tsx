@@ -6,8 +6,8 @@ import {
 declare global {
   interface Window {
     electron: {
-      readDb: () => Promise<{ projects: Project[], orders: Order[] }>;
-      writeDb: (data: { projects: Project[], orders: Order[] }) => Promise<{ success: boolean }>;
+      readDb: () => Promise<{ projects: Project[], orders: Order[], settings?: Settings }>;
+      writeDb: (data: { projects: Project[], orders: Order[], settings?: Settings }) => Promise<{ success: boolean }>;
     }
   }
 }
@@ -19,12 +19,13 @@ import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
   Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
-  Layers, FileSpreadsheet, Activity
+  Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon
 } from 'lucide-react';
 
 // ==========================================
 // CONFIG & CONSTANTS
 // ==========================================
+import { YouTrackTab } from './components/YouTrackTab';
 
 export type Project = {
   id: string;
@@ -69,6 +70,11 @@ export type Order = {
   createdAt: string;
 };
 
+export type Settings = {
+  youtrackBaseUrl: string;
+  youtrackToken: string;
+};
+
 // ==========================================
 // SERVICES & HOOKS
 // ==========================================
@@ -86,6 +92,8 @@ type ProjectContextType = {
   addOrder: (o: Omit<Order, 'id'>) => Promise<void>;
   updateOrder: (id: string, o: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
+  settings: Settings | null;
+  updateSettings: (s: Settings) => Promise<void>;
 };
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -93,21 +101,25 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const syncDb = async (newProjects: Project[], newOrders: Order[]) => {
+  const syncDb = async (newProjects: Project[], newOrders: Order[], newSettings?: Settings) => {
+    const sToSave = newSettings !== undefined ? newSettings : settings;
     try {
       if (!window.electron) {
         console.warn("Aplikacja uruchomiona poza Electronem. Zapis do localStorage.");
         localStorage.setItem('pcc_projects', JSON.stringify(newProjects));
         localStorage.setItem('pcc_orders', JSON.stringify(newOrders));
+        if (sToSave) localStorage.setItem('pcc_settings', JSON.stringify(sToSave));
       } else {
-        await window.electron.writeDb({ projects: newProjects, orders: newOrders });
+        await window.electron.writeDb({ projects: newProjects, orders: newOrders, settings: sToSave || undefined });
       }
       setProjects(newProjects);
       setOrders(newOrders);
+      if (sToSave) setSettings(sToSave);
     } catch (err: any) {
       console.error(err);
       setError("Błąd zapisu do pliku: " + err.message);
@@ -128,7 +140,10 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
           console.warn("Aplikacja uruchomiona poza Electronem. Odczyt z localStorage.");
           const storedProjects = localStorage.getItem('pcc_projects');
           const storedOrders = localStorage.getItem('pcc_orders');
+          const storedSettings = localStorage.getItem('pcc_settings');
+
           if (storedProjects) setProjects(JSON.parse(storedProjects));
+          if (storedSettings) setSettings(JSON.parse(storedSettings));
 
           if (storedOrders) {
             const parsedOrders = JSON.parse(storedOrders);
@@ -141,6 +156,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
         const data = await window.electron.readDb();
         setProjects(data.projects || []);
+        if (data.settings) setSettings(data.settings);
 
         const loadedOrders = data.orders || [];
         loadedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -190,11 +206,15 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     await syncDb(projects, updated);
   };
 
+  const updateSettings = async (newSettings: Settings) => {
+    await syncDb(projects, orders, newSettings);
+  };
+
   return (
     <ProjectContext.Provider value={{
-      projects, orders, selectedProject, setSelectedProject,
+      projects, orders, settings, selectedProject, setSelectedProject,
       isLoading, error, addProject, updateProject, deleteProject,
-      addOrder, updateOrder, deleteOrder
+      addOrder, updateOrder, deleteOrder, updateSettings
     }}>
       {children}
     </ProjectContext.Provider>
@@ -265,10 +285,11 @@ export const useDarkMode = () => {
 // COMPONENTS
 // ==========================================
 
-const Sidebar = ({ isDark, toggleDark, onOpenModal }: {
+const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings }: {
   isDark: boolean,
   toggleDark: () => void,
-  onOpenModal: () => void
+  onOpenModal: () => void,
+  onOpenSettings: () => void
 }) => {
   const { projects, selectedProject, setSelectedProject, isLoading } = useProjectContext();
 
@@ -281,9 +302,14 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal }: {
           </div>
           <h1 className="font-bold text-lg text-gray-900 dark:text-white">PCC</h1>
         </div>
-        <button onClick={toggleDark} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors">
-          {isDark ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={onOpenSettings} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors" title="Ustawienia Główne">
+            <SettingsIcon size={18} />
+          </button>
+          <button onClick={toggleDark} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors" title="Zmień motyw">
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
@@ -547,7 +573,8 @@ const ProjectModal = ({
 const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack'>('dashboard');
+  const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
 
   if (!selectedProject || !calculations) {
@@ -641,6 +668,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           >
             Status
           </button>
+          <button
+            onClick={() => setActiveTab('youtrack')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'youtrack' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            YouTrack
+          </button>
         </div>
 
         {activeTab === 'dashboard' && (
@@ -674,9 +707,19 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
               {/* KARTA INFO */}
               <div className="col-span-1 md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-                <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-                  <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
-                </h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                    <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
+                  </h3>
+                  <button
+                    onClick={() => setIsFinancialDataVisible(!isFinancialDataVisible)}
+                    className={`p-2 rounded-lg transition-colors ${isFinancialDataVisible ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'}`}
+                    title={isFinancialDataVisible ? "Ukryj dane finansowe" : "Pokaż dane finansowe"}
+                  >
+                    <DollarSign size={18} />
+                  </button>
+                </div>
+
                 <div className="grid grid-cols-2 gap-y-8 gap-x-6">
                   <div className="flex flex-col gap-1">
                     <p className="text-sm text-gray-500 dark:text-gray-400">Nr Umowy i Status</p>
@@ -689,30 +732,35 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa Brutto (Netto)</p>
-                    <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
-                      {selectedProject.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
-                      <span className="text-sm text-gray-400 dark:text-gray-500 font-normal pb-0.5 ml-1">({selectedProject.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN)</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min / Max (Brutto)</p>
-                    <div className="flex flex-col gap-0.5">
-                      <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
-                        {(budgetMin * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-400 font-normal">/</span> {(budgetMax * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal">PLN</span>
-                      </div>
-                      <div className="flex items-baseline gap-1 text-gray-400 dark:text-gray-500 font-medium text-sm">
-                        <span>Netto:</span>
-                        <span>{budgetMin.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {budgetMax.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Liczba Godzin Min / Max</p>
                     <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
                       {selectedProject.minHours} <span className="text-sm text-gray-400 font-normal">/</span> {selectedProject.maxHours} <span className="text-sm text-gray-500 font-normal">h</span>
                     </div>
                   </div>
+
+                  {isFinancialDataVisible && (
+                    <div className="col-span-2 grid grid-cols-2 gap-x-6 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa Brutto (Netto)</p>
+                        <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                          {selectedProject.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                          <span className="text-sm text-gray-400 dark:text-gray-500 font-normal pb-0.5 ml-1">({selectedProject.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN)</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Budżet Min / Max (Brutto)</p>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                            {(budgetMin * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-400 font-normal">/</span> {(budgetMax * (1 + selectedProject.vatRate / 100)).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm text-gray-500 font-normal">PLN</span>
+                          </div>
+                          <div className="flex items-baseline gap-1 text-gray-400 dark:text-gray-500 font-medium text-sm">
+                            <span>Netto:</span>
+                            <span>{budgetMin.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {budgetMax.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="col-span-2 pt-4 pb-2 border-t border-gray-100 dark:border-gray-800">
                     <h4 className="font-semibold text-gray-900 dark:text-white mb-4 text-sm uppercase tracking-wider">Wykorzystanie Godzin w Projekcie</h4>
@@ -801,6 +849,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Status Projektu</h3>
             <p className="text-gray-500 dark:text-gray-400 max-w-sm">Rozbudowany moduł śledzenia postępów i alertów jest w przygotowaniu.</p>
           </div>
+        )}
+
+        {activeTab === 'youtrack' && (
+          <YouTrackTab project={selectedProject} />
         )}
 
       </div>
@@ -1367,6 +1419,76 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
   );
 };
 
+const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const { settings, updateSettings } = useProjectContext();
+  const [formData, setFormData] = useState<Settings>({ youtrackBaseUrl: '', youtrackToken: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setFormData({
+        youtrackBaseUrl: settings.youtrackBaseUrl || '',
+        youtrackToken: settings.youtrackToken || ''
+      });
+    }
+  }, [settings, isOpen]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await updateSettings(formData);
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <SettingsIcon size={20} className="text-indigo-500" />
+            Ustawienia Główne
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">YouTrack Base URL</label>
+              <input required name="youtrackBaseUrl" value={formData.youtrackBaseUrl} onChange={e => setFormData({ ...formData, youtrackBaseUrl: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                placeholder="np. https://twojadomena.youtrack.cloud" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Permanent Token</label>
+              <input type="password" required name="youtrackToken" value={formData.youtrackToken} onChange={e => setFormData({ ...formData, youtrackToken: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                placeholder="Wprowadź token API" />
+            </div>
+          </div>
+
+          <div className="mt-8 flex justify-end gap-3">
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+              Anuluj
+            </button>
+            <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900 transition flex items-center justify-center min-w-[120px]">
+              {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : 'Zapisz'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   return (
     <ProjectProvider>
@@ -1378,6 +1500,7 @@ export default function App() {
 const MainLayout = () => {
   const { isDark, toggleDark } = useDarkMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const handleOpenModal = () => {
@@ -1392,13 +1515,18 @@ const MainLayout = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans transition-colors dark:bg-gray-950 dark:text-gray-100 overflow-hidden">
-      <Sidebar isDark={isDark} toggleDark={toggleDark} onOpenModal={handleOpenModal} />
+      <Sidebar isDark={isDark} toggleDark={toggleDark} onOpenModal={handleOpenModal} onOpenSettings={() => setIsSettingsOpen(true)} />
       <DashboardView onEdit={handleEditProject} />
 
       <ProjectModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         projectToEdit={editingProject}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );
