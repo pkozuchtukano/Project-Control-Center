@@ -4,6 +4,10 @@ import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // config
 export default defineConfig({
@@ -17,7 +21,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['fs/promises', 'path', 'url', 'fs']
+              external: ['fs/promises', 'path', 'url', 'fs', 'better-sqlite3']
             }
           }
         }

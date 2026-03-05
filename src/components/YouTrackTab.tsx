@@ -365,8 +365,8 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     const bTime = b.timeline.length > 0 ? b.timeline[0].timestamp : Number.MAX_SAFE_INTEGER;
                     return aTime - bTime;
                 }).map(issue => (
-                    <div key={issue.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-                        <div className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between">
+                    <details open key={issue.id} className="group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden outline-none">
+                        <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors">
                             <div className="flex-1">
                                 <div className="flex flex-wrap items-center gap-3 mb-1">
                                     <a
@@ -374,6 +374,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                        onClick={(e) => e.stopPropagation()}
                                     >
                                         {issue.idReadable}
                                     </a>
@@ -412,7 +413,10 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                         );
                                     })()}
                                 </div>
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{issue.summary}</h3>
+                                <div className="flex items-center gap-2">
+                                    <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
+                                    <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{issue.summary}</h3>
+                                </div>
 
                                 {/* TTIME TRACKING & PROGRESS BAR */}
                                 {(issue.estimation || issue.spentTime) && (
@@ -477,7 +481,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                     Rozwiązane
                                 </span>
                             )}
-                        </div>
+                        </summary>
 
                         <div className="px-5 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
                             {issue.description ? (
@@ -601,7 +605,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                 <p className="text-sm text-gray-400 dark:text-gray-500 italic p-2">Nie wykryto wpisów w historii.</p>
                             )}
                         </div>
-                    </div>
+                    </details>
                 ))}
 
                 {isLoading && data.length === 0 && (

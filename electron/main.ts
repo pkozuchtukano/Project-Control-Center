@@ -4,25 +4,49 @@ const { app, BrowserWindow, ipcMain } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// To address '__filename is not defined' in built ESM Vite-Electron environments,
+// we use app.getAppPath() to reliably locate resources instead of __dirname
 const isDev = !app.isPackaged;
+const appDir = app.getAppPath();
 
-// Odnalezienie prawidłowego miejsca na bazę (obok .exe jeśli zbudowana)
+// Odnalezienie prawidłowego miejsca na bazę
 const dbPath = isDev
-    ? path.join(__dirname, '../../baza_danych.json')
-    : path.join(path.dirname(app.getPath('exe')), 'baza_danych.json');
+    ? path.join(appDir, 'baza_danych.db')
+    : path.join(path.dirname(app.getPath('exe')), 'baza_danych.db');
+
+// Inicjalizacja SQLite
+const db = new Database(dbPath);
+db.pragma('journal_mode = WAL'); // Wydajniejszy tryb zapisu
+
+// Tworzenie tabel Key-Value dla projektów, zgłoszeń i ustawień
+db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
+`);
 
 let mainWindow: BrowserWindowType | null = null;
+
+// Re-implementing __dirname safely for ESM context in Electron
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.mjs'),
+            preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: false,
@@ -54,29 +78,64 @@ app.on('window-all-closed', () => {
 });
 
 // ==========================================
-// IPC DATABASE HANDLERS (Portable JSON)
+// IPC DATABASE HANDLERS (SQLite)
 // ==========================================
 
 ipcMain.handle('read-db', async () => {
     try {
-        const data = await fs.readFile(dbPath, 'utf8');
-        return JSON.parse(data);
-    } catch (error: any) {
-        if (error.code === 'ENOENT') {
-            // Jeśli plik nie istnieje, zwróć pusty stan bazy z upewnieniem, że stworzone zostaną pliki po pierwszym zapisie
-            return { projects: [], orders: [] };
+        const fetchAll = (table: string) => db.prepare(`SELECT data FROM ${table}`).all().map((r: any) => JSON.parse(r.data));
+
+        const projects = fetchAll('projects');
+        const orders = fetchAll('orders');
+
+        // Settings are stored as a single object but technically could be multiple rows. For now, we take row 'default'
+        const settingsRow = db.prepare(`SELECT data FROM settings WHERE id = 'default'`).get() as { data: string } | undefined;
+        let settings = undefined;
+        if (settingsRow && settingsRow.data) {
+            settings = JSON.parse(settingsRow.data);
         }
-        console.error('Błąd odczytu bazy JSON:', error);
+
+        return { projects, orders, settings };
+    } catch (error) {
+        console.error('Błąd odczytu bazy SQLite:', error);
         throw error;
     }
 });
 
-ipcMain.handle('write-db', async (_, data) => {
+// Stary zapis całego pliku zastępujemy transakcją czyszczenia i wstawiania na nowo, 
+// lub optymalniej UPSERT-ami, ale aby zachować kompatybilność z pełnym zapisem `writeDb`, zrobimy transakcję kasująco-wstawiającą.
+ipcMain.handle('write-db', async (_, data: { projects?: any[]; orders?: any[]; settings?: any }) => {
     try {
-        await fs.writeFile(dbPath, JSON.stringify(data, null, 2), 'utf8');
+        const transaction = db.transaction(() => {
+            // Nadpisywanie projektów
+            if (data.projects) {
+                db.prepare('DELETE FROM projects').run();
+                const insertProject = db.prepare('INSERT INTO projects (id, data) VALUES (?, ?)');
+                for (const proj of data.projects) {
+                    insertProject.run(proj.id, JSON.stringify(proj));
+                }
+            }
+
+            // Nadpisywanie zamówień
+            if (data.orders) {
+                db.prepare('DELETE FROM orders').run();
+                const insertOrder = db.prepare('INSERT INTO orders (id, data) VALUES (?, ?)');
+                for (const ord of data.orders) {
+                    insertOrder.run(ord.id, JSON.stringify(ord));
+                }
+            }
+
+            // Zapis settings jako id "default"
+            if (data.settings) {
+                const insertSettings = db.prepare('INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)');
+                insertSettings.run('default', JSON.stringify(data.settings));
+            }
+        });
+
+        transaction();
         return { success: true };
     } catch (error) {
-        console.error('Błąd zapisu bazy JSON:', error);
+        console.error('Błąd zapisu bazy SQLite:', error);
         throw error;
     }
 });

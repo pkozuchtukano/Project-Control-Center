@@ -191,6 +191,16 @@ export const fetchIssuesActivity = async (
                         return; // Pomijamy techniczne "puste" zmiany
                     }
 
+                    // Formatowanie dat (np. dla pola resolved dostajemy czysty timestamp w ms)
+                    if (fieldName.toLowerCase() === 'resolved date') {
+                        if (added !== 'Brak' && !isNaN(Number(added))) {
+                            added = new Date(Number(added)).toLocaleString('pl-PL');
+                        }
+                        if (removed !== 'Brak' && !isNaN(Number(removed))) {
+                            removed = new Date(Number(removed)).toLocaleString('pl-PL');
+                        }
+                    }
+
                     timeline.push({
                         type: 'field-change',
                         id: activity.id,
