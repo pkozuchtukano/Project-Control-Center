@@ -9,6 +9,8 @@ declare global {
       readDb: () => Promise<{ projects: Project[], orders: Order[], settings?: Settings }>;
       writeDb: (data: { projects: Project[], orders: Order[], settings?: Settings }) => Promise<{ success: boolean }>;
       fetchYouTrack: (options: any) => Promise<any>;
+      getExcludedIssues: () => Promise<string[]>;
+      setIssueExcluded: (id: string, excluded: boolean) => Promise<{ success: boolean }>;
     }
   }
 }

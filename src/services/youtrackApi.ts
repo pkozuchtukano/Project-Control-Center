@@ -51,6 +51,8 @@ export interface ActivityItem {
     text?: string;
     minutes?: number; // dla work-item
     dateStr?: string; // dla work-item YYYY-MM-DD
+    workComments?: string[]; // komunikaty przy logowaniu czasu
+    workItemType?: string; // typ pracy (np. Development, Testing)
 }
 
 export interface IssueWithHistory extends YouTrackIssue {
@@ -114,8 +116,8 @@ export const fetchIssuesActivity = async (
 
     const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
         query,
-        fields: 'id,idReadable,summary,resolved,description,customFields(name,value(presentation,name,id,minutes)),attachments(name,url)',
-        $top: 100 // reasonable limit for typical usage
+        fields: 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login),assignee(name,login),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))',
+        $top: 100
     });
 
     // 2. For each issue, fetch full activity (comments + field changes)
@@ -124,8 +126,8 @@ export const fetchIssuesActivity = async (
         try {
             // Activities endpoint
             const rawActivities = await makeRequest(`${apiBase}/issues/${issue.id}/activities`, token, {
-                categories: 'CommentsCategory,IssueCreatedCategory,ProjectCategory,IssueResolvedCategory,CustomFieldCategory,SummaryCategory,DescriptionCategory,WorkItemCategory',
-                fields: 'id,timestamp,author(name,login),category(id),added(name,text,presentation,duration(minutes,presentation),date),removed(name,text,presentation,duration(minutes,presentation),date),field(customField(name),name),text'
+                categories: 'CommentsCategory,IssueCreatedCategory,ProjectCategory,IssueResolvedCategory,CustomFieldCategory,SummaryCategory,DescriptionCategory,WorkItemCategory,AttachmentCategory,TagsCategory',
+                fields: 'id,timestamp,author(name,login,email),category(id),added(name,text,presentation,duration(minutes,presentation),date,type(name)),removed(name,text,presentation,duration(minutes,presentation),date,type(name)),field(customField(name),name),targetMember,text'
             }) || [];
             const timeline: ActivityItem[] = [];
 
@@ -228,9 +230,15 @@ export const fetchIssuesActivity = async (
                     if (workItem && workItem.duration && workItem.duration.minutes) {
                         const dateStr = workItem.date ? new Date(workItem.date).toISOString().split('T')[0] : new Date(activity.timestamp).toISOString().split('T')[0];
                         const tempId = `work-${author.login}-${dateStr}`;
+                        const comment = workItem.text || '';
+                        const workItemTypeName = workItem.type?.name || '';
 
                         if (workAggregator[tempId]) {
                             workAggregator[tempId].minutes = (workAggregator[tempId].minutes || 0) + workItem.duration.minutes;
+                            if (comment) {
+                                workAggregator[tempId].workComments = workAggregator[tempId].workComments || [];
+                                workAggregator[tempId].workComments!.push(comment);
+                            }
                             // Aktualizujemy timestamp na najnowszy
                             if (activity.timestamp > workAggregator[tempId].timestamp) {
                                 workAggregator[tempId].timestamp = activity.timestamp;
@@ -242,7 +250,9 @@ export const fetchIssuesActivity = async (
                                 timestamp: activity.timestamp,
                                 author,
                                 minutes: workItem.duration.minutes,
-                                dateStr
+                                dateStr,
+                                workComments: comment ? [comment] : [],
+                                workItemType: workItemTypeName || undefined
                             };
                         }
                     }
@@ -261,6 +271,7 @@ export const fetchIssuesActivity = async (
             let estimation = null;
             let spentTime = null;
             let state: string | null = null;
+            let assignee: { name: string; login: string } | null = null;
 
             if (issue.customFields) {
                 issue.customFields.forEach((f: any) => {
@@ -297,6 +308,14 @@ export const fetchIssuesActivity = async (
                         if (f.value) {
                             state = f.value.name || f.value.presentation || String(f.value);
                         }
+                    } else if (fname === 'assignee' || fname === 'przypisany' || fname === 'osoba odpowiedzialna') {
+                        if (f.value) {
+                            // SingleUserIssueCustomField: value is a user object
+                            const user = Array.isArray(f.value) ? f.value[0] : f.value;
+                            if (user && (user.name || user.login)) {
+                                assignee = { name: user.name || user.login, login: user.login || user.name };
+                            }
+                        }
                     }
                 });
             }
@@ -307,11 +326,18 @@ export const fetchIssuesActivity = async (
                 summary: issue.summary,
                 description: issue.description,
                 resolved: issue.resolved,
+                created: issue.created,
+                updated: issue.updated,
+                reporter: issue.reporter,
+                assignee: assignee || issue.assignee || null,
                 dueDate,
                 estimation,
                 spentTime,
                 state,
                 attachments: issue.attachments || [],
+                tags: issue.tags || [],
+                links: issue.links || [],
+                rawCustomFields: issue.customFields || [],
                 timeline
             };
         } catch (err) {

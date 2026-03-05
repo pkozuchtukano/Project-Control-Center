@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useYouTrack } from '../hooks/useYouTrack';
 import { useProjectContext, type Project } from '../App';
 import { format } from 'date-fns';
-import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { type ActivityItem, formatMinutesToDuration } from '../services/youtrackApi';
+import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit } from 'lucide-react';
+import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
 export const YouTrackTab = ({ project }: { project: Project }) => {
@@ -14,6 +14,39 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [useCache, setUseCache] = useState(true);
     const [hasFetched, setHasFetched] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [excludedIssues, setExcludedIssues] = useState<Set<string>>(new Set());
+
+    // Load excluded issue IDs from DB on mount
+    useEffect(() => {
+        const loadExcluded = async () => {
+            try {
+                if (window.electron?.getExcludedIssues) {
+                    const ids: string[] = await window.electron.getExcludedIssues();
+                    setExcludedIssues(new Set(ids));
+                }
+            } catch (e) {
+                console.error('Failed to load excluded issues:', e);
+            }
+        };
+        loadExcluded();
+    }, []);
+
+    const toggleExclusion = async (idReadable: string) => {
+        const willExclude = !excludedIssues.has(idReadable);
+        setExcludedIssues(prev => {
+            const next = new Set(prev);
+            if (willExclude) next.add(idReadable); else next.delete(idReadable);
+            return next;
+        });
+        try {
+            if (window.electron?.setIssueExcluded) {
+                await window.electron.setIssueExcluded(idReadable, willExclude);
+            }
+        } catch (e) {
+            console.error('Failed to save exclusion:', e);
+        }
+    };
 
     // Tab state
     const [activeTab, setActiveTab] = useState<'Aktywności' | 'Do zrobienia'>('Aktywności');
@@ -41,6 +74,145 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
 
         fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, currentTab);
+    };
+
+    // Anonymization helpers
+    const anonymizeName = (name: string): string => {
+        if (!name) return name;
+        const parts = name.trim().split(/\s+/);
+        if (parts.length === 1) return parts[0][0] + '.';
+        return parts[0][0] + '. ' + parts[1].substring(0, 3) + '.';
+    };
+
+    const anonymizeLogin = (login: string): string => {
+        if (!login) return login;
+        const parts = login.split('.');
+        if (parts.length < 2) return login;
+        return parts[0] + '.' + parts[1][0];
+    };
+
+    const anonymizeEmail = (email: string): string => {
+        if (!email || !email.includes('@')) return email;
+        const [local, domain] = email.split('@');
+        const parts = local.split('.');
+        const anonLocal = parts.map(p => p[0]).join('.');
+        return anonLocal + '@' + domain;
+    };
+
+    const anonymizePerson = (person: any): any => {
+        if (!person) return person;
+        return {
+            ...(person.name !== undefined ? { name: anonymizeName(person.name) } : {}),
+            ...(person.login !== undefined ? { login: anonymizeLogin(person.login) } : {}),
+            ...(person.email !== undefined ? { email: anonymizeEmail(person.email) } : {}),
+        };
+    };
+
+    const serializeIssues = (issues: typeof data) => issues.map(issue => ({
+        id: issue.idReadable,
+        internalId: issue.id,
+        summary: issue.summary,
+        description: issue.description || null,
+        state: issue.state || null,
+        resolved: issue.resolved ? new Date(issue.resolved).toISOString() : null,
+        created: (issue as any).created ? new Date((issue as any).created).toISOString() : null,
+        updated: (issue as any).updated ? new Date((issue as any).updated).toISOString() : null,
+        reporter: anonymizePerson((issue as any).reporter) || null,
+        assignee: anonymizePerson((issue as any).assignee) || null,
+        dueDate: issue.dueDate ? new Date(issue.dueDate).toISOString() : null,
+        estimation: issue.estimation || null,
+        spentTime: issue.spentTime || null,
+        tags: (issue as any).tags || [],
+        links: (issue as any).links || [],
+        attachments: (issue.attachments || []).map((a: any) => ({ name: a.name, url: a.url, mimeType: a.mimeType, size: a.size })),
+        customFields: ((issue as any).rawCustomFields || []).map((f: any) => ({
+            name: f.name,
+            value: f.value?.presentation || f.value?.name || f.value
+        })),
+        timeline: issue.timeline.map((item: any) => ({
+            type: item.type,
+            id: item.id,
+            timestamp: new Date(item.timestamp).toISOString(),
+            author: anonymizePerson(item.author),
+            ...(item.type === 'comment' ? { text: item.text } : {}),
+            ...(item.type === 'field-change' ? { field: item.field, from: item.removed, to: item.added } : {}),
+            ...(item.type === 'description-change' ? { field: item.field, from: item.removed?.substring(0, 200), to: item.added?.substring(0, 200) } : {}),
+            ...(item.type === 'work-item' ? {
+                dateStr: item.dateStr,
+                durationMinutes: item.minutes,
+                durationFormatted: (() => { const h = Math.floor((item.minutes || 0) / 60); const m = (item.minutes || 0) % 60; return h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`; })(),
+                workType: item.workItemType || null,
+                comments: item.workComments || []
+            } : {}),
+        }))
+    }));
+
+    const makeSummary = (issues: typeof data) => ({
+        totalIssues: issues.length,
+        resolvedIssues: issues.filter(i => i.resolved).length,
+        openIssues: issues.filter(i => !i.resolved).length,
+        totalLoggedMinutes: issues.reduce((acc, i) => acc + (i.spentTime?.minutes || 0), 0),
+        totalLoggedHours: Math.round(issues.reduce((acc, i) => acc + (i.spentTime?.minutes || 0), 0) / 60 * 10) / 10,
+        totalEstimatedMinutes: issues.reduce((acc, i) => acc + (i.estimation?.minutes || 0), 0),
+        authors: [...new Set(issues.flatMap(i => i.timeline.map((t: any) => anonymizeName(t.author?.name || t.author?.login || '')).filter(Boolean)))],
+    });
+
+    const handleExportJson = async () => {
+        if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
+        setIsExporting(true);
+        try {
+            const [activityIssues, todoIssues] = await Promise.all([
+                fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Aktywności'),
+                fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Do zrobienia'),
+            ]);
+
+            // Filter out excluded issues from both tabs
+            const filteredActivity = activityIssues.filter(i => !excludedIssues.has(i.idReadable));
+            const filteredTodo = todoIssues.filter(i => !excludedIssues.has(i.idReadable));
+
+            // Merge: deduplicate by id, todoIssues may overlap with activityIssues
+            const allById = new Map<string, (typeof activityIssues)[0]>();
+            filteredActivity.forEach(i => allById.set(i.id, i));
+            filteredTodo.forEach(i => { if (!allById.has(i.id)) allById.set(i.id, i); });
+            const allIssues = Array.from(allById.values());
+
+            const exportPayload = {
+                exportInfo: {
+                    generatedAt: new Date().toISOString(),
+                    generatedAtLocal: new Date().toLocaleString('pl-PL'),
+                    project: projectQuery,
+                    dateFrom,
+                    dateTo,
+                    totalIssues: allIssues.length,
+                    description: `Pełny eksport danych YouTrack z projektu "${projectQuery}" za okres ${dateFrom} - ${dateTo}. Zawiera aktywności i zadania do zrobienia. Przygotowany do analizy AI.`
+                },
+                summary: makeSummary(allIssues),
+                aktywnosci: {
+                    description: `Zadania zaktualizowane w przedziale ${dateFrom} - ${dateTo}`,
+                    ...makeSummary(filteredActivity),
+                    issues: serializeIssues(filteredActivity),
+                },
+                doZrobienia: {
+                    description: `Zadania ze statusem "Do zrobienia" (bez filtra dat)`,
+                    ...makeSummary(filteredTodo),
+                    issues: serializeIssues(filteredTodo),
+                },
+                allIssues: serializeIssues(allIssues),
+            };
+
+            const json = JSON.stringify(exportPayload, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `youtrack-export-${projectQuery.replace(/[^a-zA-Z0-9]/g, '_')}-${dateFrom}-${dateTo}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Błąd eksportu JSON:', err);
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     useEffect(() => {
@@ -244,7 +416,16 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                 const h = Math.floor(mins / 60);
                 const m = mins % 60;
                 const durationStr = h > 0 ? `${h}h${m > 0 ? ` ${m}m` : ''}` : `${m}m`;
-                return <span key={idx}>zarejestrowano pracę <span className="text-emerald-600 dark:text-emerald-400 font-medium">{durationStr}</span></span>;
+
+                let commentsNode = null;
+                if (item.workComments && item.workComments.length > 0) {
+                    const combined = item.workComments.filter(c => c.trim() !== '').join(', ');
+                    if (combined) {
+                        commentsNode = <span className="text-gray-500 dark:text-gray-400 italic ml-1">("{combined}")</span>;
+                    }
+                }
+
+                return <span key={idx}>zarejestrowano pracę <span className="text-emerald-600 dark:text-emerald-400 font-medium">{durationStr}</span>{commentsNode}</span>;
             }
             if (item.type === 'issue-created') return <span key={idx}>dodano zadanie</span>;
             return null;
@@ -311,6 +492,15 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                         {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                         {isLoading ? "Pobieranie..." : "Pobierz dane"}
                     </button>
+                    <button
+                        onClick={handleExportJson}
+                        disabled={isExporting || !settings?.youtrackBaseUrl || !settings?.youtrackToken}
+                        title="Eksportuj do JSON (do analizy AI)"
+                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isExporting ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+                        {isExporting ? 'Eksportowanie...' : 'Eksport JSON'}
+                    </button>
                 </div>
             </div>
 
@@ -364,249 +554,270 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     const aTime = a.timeline.length > 0 ? a.timeline[0].timestamp : Number.MAX_SAFE_INTEGER;
                     const bTime = b.timeline.length > 0 ? b.timeline[0].timestamp : Number.MAX_SAFE_INTEGER;
                     return aTime - bTime;
-                }).map(issue => (
-                    <details open key={issue.id} className="group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden outline-none">
-                        <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors">
-                            <div className="flex-1">
-                                <div className="flex flex-wrap items-center gap-3 mb-1">
-                                    <a
-                                        href={`${settings.youtrackBaseUrl}/issue/${issue.idReadable}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        {issue.idReadable}
-                                    </a>
+                }).map(issue => {
+                    const isExcluded = excludedIssues.has(issue.idReadable);
+                    return (
+                        <details open key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'}`}>
+                            <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors">
+                                <div className="flex-1">
+                                    <div className="flex flex-wrap items-center gap-3 mb-1">
+                                        <a
+                                            href={`${settings.youtrackBaseUrl}/issue/${issue.idReadable}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {issue.idReadable}
+                                        </a>
 
-                                    {issue.state && (
-                                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
-                                            {issue.state}
-                                        </span>
-                                    )}
-
-                                    {issue.dueDate && (() => {
-                                        const now = new Date();
-                                        now.setHours(0, 0, 0, 0);
-                                        const due = new Date(issue.dueDate);
-                                        due.setHours(0, 0, 0, 0);
-
-                                        const MS_PER_DAY = 1000 * 60 * 60 * 24;
-                                        const remainingDays = Math.round((due.getTime() - now.getTime()) / MS_PER_DAY);
-
-                                        let colorClass = "text-gray-500 dark:text-gray-400";
-                                        let iconColorClass = "text-gray-400";
-
-                                        if (remainingDays <= 1) {
-                                            colorClass = "text-red-600 dark:text-red-400 font-bold";
-                                            iconColorClass = "text-red-500 dark:text-red-400";
-                                        } else if (remainingDays <= 2) {
-                                            colorClass = "text-yellow-600 dark:text-yellow-400 font-bold";
-                                            iconColorClass = "text-yellow-500 dark:text-yellow-400";
-                                        }
-
-                                        return (
-                                            <span className={`text-xs flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 ${colorClass}`}>
-                                                <Calendar size={12} className={iconColorClass} />
-                                                Termin: {format(due, 'dd.MM.yyyy')}
+                                        {issue.state && (
+                                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
+                                                {issue.state}
                                             </span>
-                                        );
-                                    })()}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
-                                    <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{issue.summary}</h3>
-                                </div>
+                                        )}
 
-                                {/* TTIME TRACKING & PROGRESS BAR */}
-                                {(issue.estimation || issue.spentTime) && (
-                                    <div className="mt-3 bg-gray-100/50 dark:bg-gray-900/50 rounded-lg p-3 border border-gray-200/50 dark:border-gray-700/50">
-                                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm mb-2">
-                                            {issue.estimation && (
-                                                <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                                                    <span className="font-medium">Estymacja:</span>
-                                                    <span className="font-bold">{issue.estimation.presentation}</span>
-                                                </div>
-                                            )}
-                                            {issue.spentTime && (
-                                                <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                                                    <Clock size={14} />
-                                                    <span className="font-medium">Przepracowano:</span>
-                                                    <span className="font-bold">{issue.spentTime.presentation}</span>
-                                                </div>
-                                            )}
-                                            {issue.estimation && issue.spentTime && issue.estimation.minutes > 0 && (
-                                                <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-                                                    <span className="font-medium">Pozostało:</span>
-                                                    <span className="font-bold">
-                                                        {Math.max(0, issue.estimation.minutes - issue.spentTime.minutes) === 0
-                                                            ? '0m'
-                                                            : formatMinutesToDuration(Math.max(0, issue.estimation.minutes - issue.spentTime.minutes))}
-                                                    </span>
+                                        {(issue as any).assignee?.name && (
+                                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border border-violet-200 dark:border-violet-800/50 flex items-center gap-1">
+                                                <span className="font-normal opacity-80">Realizuje:</span>
+                                                {(issue as any).assignee.name}
+                                            </span>
+                                        )}
+
+                                        {issue.dueDate && (() => {
+                                            const now = new Date();
+                                            now.setHours(0, 0, 0, 0);
+                                            const due = new Date(issue.dueDate);
+                                            due.setHours(0, 0, 0, 0);
+
+                                            const MS_PER_DAY = 1000 * 60 * 60 * 24;
+                                            const remainingDays = Math.round((due.getTime() - now.getTime()) / MS_PER_DAY);
+
+                                            let colorClass = "text-gray-500 dark:text-gray-400";
+                                            let iconColorClass = "text-gray-400";
+
+                                            if (remainingDays <= 1) {
+                                                colorClass = "text-red-600 dark:text-red-400 font-bold";
+                                                iconColorClass = "text-red-500 dark:text-red-400";
+                                            } else if (remainingDays <= 2) {
+                                                colorClass = "text-yellow-600 dark:text-yellow-400 font-bold";
+                                                iconColorClass = "text-yellow-500 dark:text-yellow-400";
+                                            }
+
+                                            return (
+                                                <span className={`text-xs flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 ${colorClass}`}>
+                                                    <Calendar size={12} className={iconColorClass} />
+                                                    Termin: {format(due, 'dd.MM.yyyy')}
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
+                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{issue.summary}</h3>
+                                    </div>
+
+                                    {/* TTIME TRACKING & PROGRESS BAR */}
+                                    {(issue.estimation || issue.spentTime) && (
+                                        <div className="mt-3 bg-gray-100/50 dark:bg-gray-900/50 rounded-lg p-3 border border-gray-200/50 dark:border-gray-700/50">
+                                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm mb-2">
+                                                {issue.estimation && (
+                                                    <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                                                        <span className="font-medium">Estymacja:</span>
+                                                        <span className="font-bold">{issue.estimation.presentation}</span>
+                                                    </div>
+                                                )}
+                                                {issue.spentTime && (
+                                                    <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                                                        <Clock size={14} />
+                                                        <span className="font-medium">Przepracowano:</span>
+                                                        <span className="font-bold">{issue.spentTime.presentation}</span>
+                                                    </div>
+                                                )}
+                                                {issue.estimation && issue.spentTime && issue.estimation.minutes > 0 && (
+                                                    <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                                                        <span className="font-medium">Pozostało:</span>
+                                                        <span className="font-bold">
+                                                            {Math.max(0, issue.estimation.minutes - issue.spentTime.minutes) === 0
+                                                                ? '0m'
+                                                                : formatMinutesToDuration(Math.max(0, issue.estimation.minutes - issue.spentTime.minutes))}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* PROGRESS BAR */}
+                                            {issue.estimation && issue.estimation.minutes > 0 && (
+                                                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-1 flex">
+                                                    {(() => {
+                                                        const estMin = issue.estimation.minutes;
+                                                        const spentMin = issue.spentTime ? issue.spentTime.minutes : 0;
+                                                        let percent = Math.round((spentMin / estMin) * 100);
+
+                                                        // Kolor paska: zielony jeśli ok, pomarańczowy jeśli blisko, czerwony jeśli przekroczony
+                                                        let bgClass = "bg-emerald-500";
+                                                        if (percent > 100) {
+                                                            bgClass = "bg-red-500";
+                                                            percent = 100;
+                                                        } else if (percent > 85) {
+                                                            bgClass = "bg-orange-500";
+                                                        }
+
+                                                        return (
+                                                            <div
+                                                                className={`h-full ${bgClass} transition-all duration-500`}
+                                                                style={{ width: `${percent}%` }}
+                                                            />
+                                                        );
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>
+                                    )}
+                                </div>
+                                {issue.resolved && (
+                                    <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 flex-shrink-0 ml-4 mt-1">
+                                        Rozwiązane
+                                    </span>
+                                )}
+                                <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleExclusion(issue.idReadable); }}
+                                    title={isExcluded ? 'Włącz analizę AI (zadanie będzie w eksporcie)' : 'Wyklucz z analizy AI (zadanie nie pojawi się w eksporcie JSON)'}
+                                    className={`ml-3 mt-1 p-1.5 rounded-lg flex-shrink-0 transition-all ${isExcluded
+                                            ? 'bg-red-100 text-red-500 dark:bg-red-900/40 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60'
+                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500 hover:bg-violet-100 hover:text-violet-500 dark:hover:bg-violet-900/30 dark:hover:text-violet-400'
+                                        }`}
+                                >
+                                    <BrainCircuit size={15} />
+                                </button>
+                            </summary>
 
-                                        {/* PROGRESS BAR */}
-                                        {issue.estimation && issue.estimation.minutes > 0 && (
-                                            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-1 flex">
-                                                {(() => {
-                                                    const estMin = issue.estimation.minutes;
-                                                    const spentMin = issue.spentTime ? issue.spentTime.minutes : 0;
-                                                    let percent = Math.round((spentMin / estMin) * 100);
-
-                                                    // Kolor paska: zielony jeśli ok, pomarańczowy jeśli blisko, czerwony jeśli przekroczony
-                                                    let bgClass = "bg-emerald-500";
-                                                    if (percent > 100) {
-                                                        bgClass = "bg-red-500";
-                                                        percent = 100;
-                                                    } else if (percent > 85) {
-                                                        bgClass = "bg-orange-500";
-                                                    }
-
-                                                    return (
-                                                        <div
-                                                            className={`h-full ${bgClass} transition-all duration-500`}
-                                                            style={{ width: `${percent}%` }}
-                                                        />
-                                                    );
-                                                })()}
-                                            </div>
-                                        )}
+                            {/* ISSUE BODY */}
+                            <div className="px-5 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+                                {issue.description ? (
+                                    <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                        {renderTextWithImages(issue.description, issue.attachments || [])}
                                     </div>
+                                ) : (
+                                    <p className="text-sm text-gray-400 italic">Brak opisu zadania.</p>
                                 )}
                             </div>
-                            {issue.resolved && (
-                                <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 flex-shrink-0 ml-4 mt-1">
-                                    Rozwiązane
-                                </span>
-                            )}
-                        </summary>
 
-                        <div className="px-5 py-4 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
-                            {issue.description ? (
-                                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                    {renderTextWithImages(issue.description, issue.attachments || [])}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-400 italic">Brak opisu zadania.</p>
-                            )}
-                        </div>
+                            <div className="p-4 bg-gray-50/30 dark:bg-gray-900/20">
+                                {issue.timeline.length > 0 ? (
+                                    <div className="space-y-1">
+                                        {(() => {
+                                            const groupedItems: any[] = [];
+                                            let currentGroup: any = null;
 
-                        <div className="p-4 bg-gray-50/30 dark:bg-gray-900/20">
-                            {issue.timeline.length > 0 ? (
-                                <div className="space-y-1">
-                                    {(() => {
-                                        const groupedItems: any[] = [];
-                                        let currentGroup: any = null;
+                                            issue.timeline.forEach(item => {
+                                                const isDateOnly = item.type === 'work-item' || item.type === 'issue-created';
+                                                const timeStr = format(new Date(item.timestamp), isDateOnly ? 'dd.MM.yyyy' : 'dd.MM.yyyy HH:mm');
+                                                const authorName = item.author.name || item.author.login;
+                                                const groupKey = `${timeStr}-${authorName}`;
 
-                                        issue.timeline.forEach(item => {
-                                            const isDateOnly = item.type === 'work-item' || item.type === 'issue-created';
-                                            const timeStr = format(new Date(item.timestamp), isDateOnly ? 'dd.MM.yyyy' : 'dd.MM.yyyy HH:mm');
-                                            const authorName = item.author.name || item.author.login;
-                                            const groupKey = `${timeStr}-${authorName}`;
-
-                                            if (
-                                                currentGroup &&
-                                                currentGroup.key === groupKey &&
-                                                item.type !== 'comment' &&
-                                                item.type !== 'description-change' &&
-                                                currentGroup.items[0].type !== 'comment' &&
-                                                currentGroup.items[0].type !== 'description-change'
-                                            ) {
-                                                currentGroup.items.push(item);
-                                            } else {
-                                                currentGroup = {
-                                                    key: groupKey,
-                                                    timeStr,
-                                                    authorName,
-                                                    items: [item]
-                                                };
-                                                groupedItems.push(currentGroup);
-                                            }
-                                        });
-
-                                        const dFrom = new Date(dateFrom); dFrom.setHours(0, 0, 0, 0);
-                                        const dTo = new Date(dateTo); dTo.setHours(23, 59, 59, 999);
-                                        const fromTime = dFrom.getTime();
-                                        const toTime = dTo.getTime();
-
-                                        const historyInRange: any[] = [];
-                                        const historyOutRange: any[] = [];
-                                        const commentsOnly: any[] = [];
-
-                                        groupedItems.forEach(group => {
-                                            if (activeTab === 'Do zrobienia') {
-                                                if (group.items[0].type === 'comment') {
-                                                    commentsOnly.push(group);
+                                                if (
+                                                    currentGroup &&
+                                                    currentGroup.key === groupKey &&
+                                                    item.type !== 'comment' &&
+                                                    item.type !== 'description-change' &&
+                                                    currentGroup.items[0].type !== 'comment' &&
+                                                    currentGroup.items[0].type !== 'description-change'
+                                                ) {
+                                                    currentGroup.items.push(item);
                                                 } else {
-                                                    historyOutRange.push(group);
+                                                    currentGroup = {
+                                                        key: groupKey,
+                                                        timeStr,
+                                                        authorName,
+                                                        items: [item]
+                                                    };
+                                                    groupedItems.push(currentGroup);
                                                 }
-                                            } else {
-                                                const groupTime = group.items[0].timestamp;
-                                                if (groupTime >= fromTime && groupTime <= toTime) {
-                                                    historyInRange.push(group);
+                                            });
+
+                                            const dFrom = new Date(dateFrom); dFrom.setHours(0, 0, 0, 0);
+                                            const dTo = new Date(dateTo); dTo.setHours(23, 59, 59, 999);
+                                            const fromTime = dFrom.getTime();
+                                            const toTime = dTo.getTime();
+
+                                            const historyInRange: any[] = [];
+                                            const historyOutRange: any[] = [];
+                                            const commentsOnly: any[] = [];
+
+                                            groupedItems.forEach(group => {
+                                                if (activeTab === 'Do zrobienia') {
+                                                    if (group.items[0].type === 'comment') {
+                                                        commentsOnly.push(group);
+                                                    } else {
+                                                        historyOutRange.push(group);
+                                                    }
                                                 } else {
-                                                    historyOutRange.push(group);
+                                                    const groupTime = group.items[0].timestamp;
+                                                    if (groupTime >= fromTime && groupTime <= toTime) {
+                                                        historyInRange.push(group);
+                                                    } else {
+                                                        historyOutRange.push(group);
+                                                    }
                                                 }
-                                            }
-                                        });
+                                            });
 
-                                        return (
-                                            <>
-                                                {activeTab === 'Do zrobienia' && commentsOnly.length > 0 && (
-                                                    <div className="space-y-1 mb-4">
-                                                        {commentsOnly.map((group, idx) => (
-                                                            <div key={`comm-${idx}`}>{renderTimelineGroup(group, idx)}</div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                            return (
+                                                <>
+                                                    {activeTab === 'Do zrobienia' && commentsOnly.length > 0 && (
+                                                        <div className="space-y-1 mb-4">
+                                                            {commentsOnly.map((group, idx) => (
+                                                                <div key={`comm-${idx}`}>{renderTimelineGroup(group, idx)}</div>
+                                                            ))}
+                                                        </div>
+                                                    )}
 
-                                                {historyOutRange.length > 0 && (() => {
-                                                    // Sortujemy by wyciagnac pierwsza i ostatnia date po ewentualnym rozłożeniu
-                                                    const sortedOutRange = [...historyOutRange].sort((a, b) => a.items[0].timestamp - b.items[0].timestamp);
-                                                    const firstItemTimestamp = sortedOutRange[0].items[0].timestamp;
-                                                    const lastGroup = sortedOutRange[sortedOutRange.length - 1];
-                                                    const lastItemTimestamp = lastGroup.items[lastGroup.items.length - 1].timestamp;
+                                                    {historyOutRange.length > 0 && (() => {
+                                                        // Sortujemy by wyciagnac pierwsza i ostatnia date po ewentualnym rozłożeniu
+                                                        const sortedOutRange = [...historyOutRange].sort((a, b) => a.items[0].timestamp - b.items[0].timestamp);
+                                                        const firstItemTimestamp = sortedOutRange[0].items[0].timestamp;
+                                                        const lastGroup = sortedOutRange[sortedOutRange.length - 1];
+                                                        const lastItemTimestamp = lastGroup.items[lastGroup.items.length - 1].timestamp;
 
-                                                    const firstDateStr = format(new Date(firstItemTimestamp), 'dd.MM.yyyy');
-                                                    const lastDateStr = format(new Date(lastItemTimestamp), 'dd.MM.yyyy');
-                                                    const rangeStr = firstDateStr === lastDateStr ? firstDateStr : `${firstDateStr} - ${lastDateStr}`;
+                                                        const firstDateStr = format(new Date(firstItemTimestamp), 'dd.MM.yyyy');
+                                                        const lastDateStr = format(new Date(lastItemTimestamp), 'dd.MM.yyyy');
+                                                        const rangeStr = firstDateStr === lastDateStr ? firstDateStr : `${firstDateStr} - ${lastDateStr}`;
 
-                                                    return (
-                                                        <details className="group mb-4 bg-gray-50 dark:bg-gray-800/30 rounded-xl border border-gray-100 dark:border-gray-800/50 overflow-hidden">
-                                                            <summary className="flex items-center justify-between cursor-pointer p-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors select-none outline-none">
-                                                                <span>{activeTab === 'Aktywności' ? 'Starsza historia' : 'Historia zmian zadania'} ({historyOutRange.length} wpisów{activeTab === 'Aktywności' ? ' poza przedziałem' : ''}) <span className="opacity-75 font-normal ml-1">({rangeStr})</span></span>
-                                                                <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
-                                                            </summary>
-                                                            <div className="p-3 pt-0 space-y-1">
-                                                                {sortedOutRange.map((group, idx) => (
-                                                                    <div key={`out-${idx}`}>{renderTimelineGroup(group, idx)}</div>
-                                                                ))}
-                                                            </div>
-                                                        </details>
-                                                    );
-                                                })()}
+                                                        return (
+                                                            <details className="group mb-4 bg-gray-50 dark:bg-gray-800/30 rounded-xl border border-gray-100 dark:border-gray-800/50 overflow-hidden">
+                                                                <summary className="flex items-center justify-between cursor-pointer p-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors select-none outline-none">
+                                                                    <span>{activeTab === 'Aktywności' ? 'Starsza historia' : 'Historia zmian zadania'} ({historyOutRange.length} wpisów{activeTab === 'Aktywności' ? ' poza przedziałem' : ''}) <span className="opacity-75 font-normal ml-1">({rangeStr})</span></span>
+                                                                    <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+                                                                </summary>
+                                                                <div className="p-3 pt-0 space-y-1">
+                                                                    {sortedOutRange.map((group, idx) => (
+                                                                        <div key={`out-${idx}`}>{renderTimelineGroup(group, idx)}</div>
+                                                                    ))}
+                                                                </div>
+                                                            </details>
+                                                        );
+                                                    })()}
 
-                                                {activeTab === 'Aktywności' && (
-                                                    <div className="space-y-1">
-                                                        {historyInRange.length > 0 ? historyInRange.map((group, idx) => (
-                                                            <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length)}</div>
-                                                        )) : (
-                                                            <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">Brak aktywności obok tego zadania w wybranym przedziale {format(dFrom, 'dd.MM')} - {format(dTo, 'dd.MM')}.</p>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-400 dark:text-gray-500 italic p-2">Nie wykryto wpisów w historii.</p>
-                            )}
-                        </div>
-                    </details>
-                ))}
+                                                    {activeTab === 'Aktywności' && (
+                                                        <div className="space-y-1">
+                                                            {historyInRange.length > 0 ? historyInRange.map((group, idx) => (
+                                                                <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length)}</div>
+                                                            )) : (
+                                                                <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">Brak aktywności obok tego zadania w wybranym przedziale {format(dFrom, 'dd.MM')} - {format(dTo, 'dd.MM')}.</p>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-400 dark:text-gray-500 italic p-2">Nie wykryto wpisów w historii.</p>
+                                )}
+                            </div>
+                        </details>
+                    );
+                })}
 
                 {isLoading && data.length === 0 && (
                     <div className="flex flex-col items-center justify-center p-12">

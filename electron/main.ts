@@ -34,6 +34,9 @@ db.exec(`
         id TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS excluded_issues (
+        id TEXT PRIMARY KEY
+    );
 `);
 
 let mainWindow: BrowserWindowType | null = null;
@@ -136,6 +139,34 @@ ipcMain.handle('write-db', async (_, data: { projects?: any[]; orders?: any[]; s
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu bazy SQLite:', error);
+        throw error;
+    }
+});
+
+// ==========================================
+// IPC EXCLUDED ISSUES HANDLERS
+// ==========================================
+
+ipcMain.handle('get-excluded-issues', async () => {
+    try {
+        const rows = db.prepare('SELECT id FROM excluded_issues').all() as { id: string }[];
+        return rows.map(r => r.id);
+    } catch (error) {
+        console.error('Błąd odczytu excluded_issues:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('set-issue-excluded', async (_, { id, excluded }: { id: string; excluded: boolean }) => {
+    try {
+        if (excluded) {
+            db.prepare('INSERT OR IGNORE INTO excluded_issues (id) VALUES (?)').run(id);
+        } else {
+            db.prepare('DELETE FROM excluded_issues WHERE id = ?').run(id);
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu excluded_issues:', error);
         throw error;
     }
 });
