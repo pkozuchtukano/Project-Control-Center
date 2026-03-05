@@ -37,6 +37,12 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS excluded_issues (
         id TEXT PRIMARY KEY
     );
+    CREATE TABLE IF NOT EXISTS youtrack_tabs (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        statuses TEXT NOT NULL DEFAULT '[]'
+    );
 `);
 
 let mainWindow: BrowserWindowType | null = null;
@@ -167,6 +173,44 @@ ipcMain.handle('set-issue-excluded', async (_, { id, excluded }: { id: string; e
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu excluded_issues:', error);
+        throw error;
+    }
+});
+
+// ==========================================
+// IPC YOUTRACK TABS HANDLERS
+// ==========================================
+
+ipcMain.handle('get-youtrack-tabs', async (_, projectId: string) => {
+    try {
+        const rows = db.prepare('SELECT * FROM youtrack_tabs WHERE projectId = ? ORDER BY rowid ASC').all(projectId) as { id: string; projectId: string; name: string; statuses: string }[];
+        return rows.map(r => ({ ...r, statuses: JSON.parse(r.statuses) }));
+    } catch (error) {
+        console.error('Błąd odczytu youtrack_tabs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-youtrack-tab', async (_, tab: { id: string; projectId: string; name: string; statuses: string[] }) => {
+    try {
+        db.prepare(`
+            INSERT INTO youtrack_tabs (id, projectId, name, statuses)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name = excluded.name, statuses = excluded.statuses
+        `).run(tab.id, tab.projectId, tab.name, JSON.stringify(tab.statuses));
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu youtrack_tabs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-youtrack-tab', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM youtrack_tabs WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania youtrack_tabs:', error);
         throw error;
     }
 });

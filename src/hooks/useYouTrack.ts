@@ -6,7 +6,7 @@ export const useYouTrack = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchHistory = useCallback(async (baseUrl: string, token: string, projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności') => {
+    const fetchHistory = useCallback(async (baseUrl: string, token: string, projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności', customStatuses?: string[]) => {
         if (!baseUrl || !token) {
             setError('Brak konfiguracji YouTrack. Przejdź do Ustawień Głównych, aby podać adres URL i Permanent Token.');
             return;
@@ -20,10 +20,9 @@ export const useYouTrack = () => {
         setError(null);
 
         try {
-            // Opcjonalnie: cache logic
-            const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}`;
+            const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}_${(customStatuses || []).join('_')}`;
 
-            const results = await fetchIssuesActivity(baseUrl, token, projectName, dateFrom, dateTo, tab);
+            const results = await fetchIssuesActivity(baseUrl, token, projectName, dateFrom, dateTo, tab, customStatuses);
             setData(results);
             localStorage.setItem(cacheKey, JSON.stringify(results));
         } catch (err: any) {
@@ -40,8 +39,8 @@ export const useYouTrack = () => {
         }
     }, []);
 
-    const loadFromCache = useCallback((projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności') => {
-        const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}`;
+    const loadFromCache = useCallback((projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności', customStatuses?: string[]) => {
+        const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}_${(customStatuses || []).join('_')}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
             try {

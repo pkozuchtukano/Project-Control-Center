@@ -100,18 +100,23 @@ export const fetchIssuesActivity = async (
     projectName: string,
     dateFrom: string,
     dateTo: string,
-    tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności'
+    tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności',
+    customStatuses?: string[]  // when provided, overrides tab logic with custom State filter
 ): Promise<IssueWithHistory[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
 
     const apiBase = baseUrl.replace(/\/$/, '') + '/api';
 
     // 1. Fetch Issues
-    // Gdy Aktywności -> z zakresu dat. Gdy Do zrobienia -> szukaj bez dat ale za to z odpowiednim statusem.
-    let query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
-    if (tab === 'Do zrobienia') {
-        // YouTrack search syntax: State: {To Do}
+    let query: string;
+    if (customStatuses && customStatuses.length > 0) {
+        // Custom tab: filter by provided statuses - no date filter
+        const stateFilter = customStatuses.map(s => `{${s}}`).join(', ');
+        query = `project: ${projectName} State: ${stateFilter}`;
+    } else if (tab === 'Do zrobienia') {
         query = `project: ${projectName} State: {To Do}`;
+    } else {
+        query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
     }
 
     const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {

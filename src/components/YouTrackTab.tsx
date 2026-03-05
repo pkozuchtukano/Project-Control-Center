@@ -48,8 +48,51 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
     };
 
-    // Tab state
-    const [activeTab, setActiveTab] = useState<'Aktywności' | 'Do zrobienia'>('Aktywności');
+    // Custom tabs
+    type YoutrackCustomTab = { id: string; projectId: string; name: string; statuses: string[] };
+    const [customTabs, setCustomTabs] = useState<YoutrackCustomTab[]>([]);
+    const [activeTab, setActiveTab] = useState<string>('Aktywności'); // 'Aktywności' or customTab.id
+    const [showAddTabModal, setShowAddTabModal] = useState(false);
+    const [newTabName, setNewTabName] = useState('');
+    const [newTabStatuses, setNewTabStatuses] = useState(''); // comma-separated
+
+    // Load custom tabs from DB on mount / project change
+    useEffect(() => {
+        const loadTabs = async () => {
+            try {
+                if (window.electron?.getYoutrackTabs) {
+                    const tabs = await window.electron.getYoutrackTabs(project.id);
+                    setCustomTabs(tabs);
+                }
+            } catch (e) { console.error('Failed to load custom tabs:', e); }
+        };
+        loadTabs();
+        setActiveTab('Aktywności'); // reset to default tab when project changes
+    }, [project.id]);
+
+    const saveNewTab = async () => {
+        if (!newTabName.trim() || !newTabStatuses.trim()) return;
+        const statuses = newTabStatuses.split(',').map(s => s.trim()).filter(Boolean);
+        const id = `tab_${Date.now()}`;
+        const tab: YoutrackCustomTab = { id, projectId: project.id, name: newTabName.trim(), statuses };
+        setCustomTabs(prev => [...prev, tab]);
+        setShowAddTabModal(false);
+        setNewTabName('');
+        setNewTabStatuses('');
+        try {
+            if (window.electron?.saveYoutrackTab) await window.electron.saveYoutrackTab(tab);
+        } catch (e) { console.error('Failed to save tab:', e); }
+        setActiveTab(id);
+        handleFetch(true, projectQuery, id, statuses);
+    };
+
+    const deleteCustomTab = async (tabId: string) => {
+        setCustomTabs(prev => prev.filter(t => t.id !== tabId));
+        if (activeTab === tabId) setActiveTab('Aktywności');
+        try {
+            if (window.electron?.deleteYoutrackTab) await window.electron.deleteYoutrackTab(tabId);
+        } catch (e) { console.error('Failed to delete tab:', e); }
+    };
 
     // Lightbox state
     const [lightboxImage, setLightboxImage] = useState<{ src: string, alt: string } | null>(null);
@@ -60,7 +103,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
     const { data, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
 
-    const handleFetch = (forceRefresh = false, currentQuery = projectQuery, currentTab = activeTab) => {
+    const handleFetch = (forceRefresh = false, currentQuery = projectQuery, currentTabId = activeTab, currentStatuses?: string[]) => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
         setHasFetched(true);
 
@@ -68,12 +111,16 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
             updateProject(project.id, { youtrackQuery: currentQuery });
         }
 
+        const isActivityTab = currentTabId === 'Aktywności';
+        const statuses = currentStatuses ?? (isActivityTab ? undefined : customTabs.find(t => t.id === currentTabId)?.statuses);
+        const tabParam: 'Aktywności' | 'Do zrobienia' = isActivityTab ? 'Aktywności' : 'Do zrobienia';
+
         if (!forceRefresh && useCache) {
-            const loaded = loadFromCache(currentQuery, dateFrom, dateTo, currentTab);
+            const loaded = loadFromCache(currentQuery, dateFrom, dateTo, tabParam);
             if (loaded) return;
         }
 
-        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, currentTab);
+        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, tabParam, statuses);
     };
 
     // Anonymization helpers
@@ -228,7 +275,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     }, [projectQuery, project.id]);
 
     useEffect(() => {
-        if (hasFetched || activeTab === 'Do zrobienia') {
+        if (hasFetched || activeTab !== 'Aktywności') {
             handleFetch(false, projectQuery, activeTab);
         }
     }, [activeTab]);
@@ -530,7 +577,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                 >
-                    Do zrobienia
+                    Planowane
                 </button>
             </div>
 
@@ -557,7 +604,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                 }).map(issue => {
                     const isExcluded = excludedIssues.has(issue.idReadable);
                     return (
-                        <details open key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'}`}>
+                        <details open={!isExcluded} key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'}`}>
                             <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors">
                                 <div className="flex-1">
                                     <div className="flex flex-wrap items-center gap-3 mb-1">
@@ -684,8 +731,8 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleExclusion(issue.idReadable); }}
                                     title={isExcluded ? 'Włącz analizę AI (zadanie będzie w eksporcie)' : 'Wyklucz z analizy AI (zadanie nie pojawi się w eksporcie JSON)'}
                                     className={`ml-3 mt-1 p-1.5 rounded-lg flex-shrink-0 transition-all ${isExcluded
-                                            ? 'bg-red-100 text-red-500 dark:bg-red-900/40 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60'
-                                            : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500 hover:bg-violet-100 hover:text-violet-500 dark:hover:bg-violet-900/30 dark:hover:text-violet-400'
+                                        ? 'bg-red-100 text-red-500 dark:bg-red-900/40 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60'
+                                        : 'bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500 hover:bg-violet-100 hover:text-violet-500 dark:hover:bg-violet-900/30 dark:hover:text-violet-400'
                                         }`}
                                 >
                                     <BrainCircuit size={15} />
