@@ -15,6 +15,9 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [useCache, setUseCache] = useState(true);
     const [hasFetched, setHasFetched] = useState(false);
 
+    // Tab state
+    const [activeTab, setActiveTab] = useState<'Aktywności' | 'Do zrobienia'>('Aktywności');
+
     // Lightbox state
     const [lightboxImage, setLightboxImage] = useState<{ src: string, alt: string } | null>(null);
     const [lightboxScale, setLightboxScale] = useState(1);
@@ -24,7 +27,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
     const { data, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
 
-    const handleFetch = (forceRefresh = false, currentQuery = projectQuery) => {
+    const handleFetch = (forceRefresh = false, currentQuery = projectQuery, currentTab = activeTab) => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
         setHasFetched(true);
 
@@ -33,11 +36,11 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
 
         if (!forceRefresh && useCache) {
-            const loaded = loadFromCache(currentQuery, dateFrom, dateTo);
+            const loaded = loadFromCache(currentQuery, dateFrom, dateTo, currentTab);
             if (loaded) return;
         }
 
-        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo);
+        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, currentTab);
     };
 
     useEffect(() => {
@@ -51,6 +54,12 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
             localStorage.setItem(`yt_query_${project.id}`, projectQuery);
         }
     }, [projectQuery, project.id]);
+
+    useEffect(() => {
+        if (hasFetched || activeTab === 'Do zrobienia') {
+            handleFetch(false, projectQuery, activeTab);
+        }
+    }, [activeTab]);
 
     // Lightbox handlers
     const openLightbox = (src: string, alt: string) => {
@@ -295,7 +304,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                         Używaj cache
                     </label>
                     <button
-                        onClick={() => handleFetch(true)}
+                        onClick={() => handleFetch(true, projectQuery, activeTab)}
                         disabled={isLoading}
                         className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -312,6 +321,28 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     <div className="font-medium">Wystąpił błąd: <span className="font-normal block mt-1">{error}</span></div>
                 </div>
             )}
+
+            {/* TABBAR */}
+            <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-gray-800 px-2 lg:px-4">
+                <button
+                    onClick={() => setActiveTab('Aktywności')}
+                    className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 ${activeTab === 'Aktywności'
+                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                >
+                    Aktywności
+                </button>
+                <button
+                    onClick={() => setActiveTab('Do zrobienia')}
+                    className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 ${activeTab === 'Do zrobienia'
+                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                >
+                    Do zrobienia
+                </button>
+            </div>
 
             {/* RESULTS LIST */}
             <div className="flex-1 overflow-y-auto pr-2 space-y-6 pb-20 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
@@ -498,21 +529,40 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
                                         const historyInRange: any[] = [];
                                         const historyOutRange: any[] = [];
+                                        const commentsOnly: any[] = [];
 
                                         groupedItems.forEach(group => {
-                                            const groupTime = group.items[0].timestamp;
-                                            if (groupTime >= fromTime && groupTime <= toTime) {
-                                                historyInRange.push(group);
+                                            if (activeTab === 'Do zrobienia') {
+                                                if (group.items[0].type === 'comment') {
+                                                    commentsOnly.push(group);
+                                                } else {
+                                                    historyOutRange.push(group);
+                                                }
                                             } else {
-                                                historyOutRange.push(group);
+                                                const groupTime = group.items[0].timestamp;
+                                                if (groupTime >= fromTime && groupTime <= toTime) {
+                                                    historyInRange.push(group);
+                                                } else {
+                                                    historyOutRange.push(group);
+                                                }
                                             }
                                         });
 
                                         return (
                                             <>
+                                                {activeTab === 'Do zrobienia' && commentsOnly.length > 0 && (
+                                                    <div className="space-y-1 mb-4">
+                                                        {commentsOnly.map((group, idx) => (
+                                                            <div key={`comm-${idx}`}>{renderTimelineGroup(group, idx)}</div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
                                                 {historyOutRange.length > 0 && (() => {
-                                                    const firstItemTimestamp = historyOutRange[0].items[0].timestamp;
-                                                    const lastGroup = historyOutRange[historyOutRange.length - 1];
+                                                    // Sortujemy by wyciagnac pierwsza i ostatnia date po ewentualnym rozłożeniu
+                                                    const sortedOutRange = [...historyOutRange].sort((a, b) => a.items[0].timestamp - b.items[0].timestamp);
+                                                    const firstItemTimestamp = sortedOutRange[0].items[0].timestamp;
+                                                    const lastGroup = sortedOutRange[sortedOutRange.length - 1];
                                                     const lastItemTimestamp = lastGroup.items[lastGroup.items.length - 1].timestamp;
 
                                                     const firstDateStr = format(new Date(firstItemTimestamp), 'dd.MM.yyyy');
@@ -522,11 +572,11 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                                     return (
                                                         <details className="group mb-4 bg-gray-50 dark:bg-gray-800/30 rounded-xl border border-gray-100 dark:border-gray-800/50 overflow-hidden">
                                                             <summary className="flex items-center justify-between cursor-pointer p-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors select-none outline-none">
-                                                                <span>Starsza historia ({historyOutRange.length} wpisów poza przedziałem) <span className="opacity-75 font-normal ml-1">({rangeStr})</span></span>
+                                                                <span>{activeTab === 'Aktywności' ? 'Starsza historia' : 'Historia zmian zadania'} ({historyOutRange.length} wpisów{activeTab === 'Aktywności' ? ' poza przedziałem' : ''}) <span className="opacity-75 font-normal ml-1">({rangeStr})</span></span>
                                                                 <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
                                                             </summary>
                                                             <div className="p-3 pt-0 space-y-1">
-                                                                {historyOutRange.map((group, idx) => (
+                                                                {sortedOutRange.map((group, idx) => (
                                                                     <div key={`out-${idx}`}>{renderTimelineGroup(group, idx)}</div>
                                                                 ))}
                                                             </div>
@@ -534,13 +584,15 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                                     );
                                                 })()}
 
-                                                <div className="space-y-1">
-                                                    {historyInRange.length > 0 ? historyInRange.map((group, idx) => (
-                                                        <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length)}</div>
-                                                    )) : (
-                                                        <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">Brak aktywności obok tego zadania w wybranym przedziale {format(dFrom, 'dd.MM')} - {format(dTo, 'dd.MM')}.</p>
-                                                    )}
-                                                </div>
+                                                {activeTab === 'Aktywności' && (
+                                                    <div className="space-y-1">
+                                                        {historyInRange.length > 0 ? historyInRange.map((group, idx) => (
+                                                            <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length)}</div>
+                                                        )) : (
+                                                            <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">Brak aktywności obok tego zadania w wybranym przedziale {format(dFrom, 'dd.MM')} - {format(dTo, 'dd.MM')}.</p>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </>
                                         );
                                     })()}

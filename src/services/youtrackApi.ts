@@ -97,16 +97,20 @@ export const fetchIssuesActivity = async (
     token: string,
     projectName: string,
     dateFrom: string,
-    dateTo: string
+    dateTo: string,
+    tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności'
 ): Promise<IssueWithHistory[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
 
     const apiBase = baseUrl.replace(/\/$/, '') + '/api';
 
-    // 1. Fetch Issues modified in the given date range
-    // Format query according to YouTrack search syntax: "project: {name} updated: {from} .. {to}"
-    // YouTrack expects dates usually in clear text or specific format, we can use YYYY-MM-DD
-    const query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
+    // 1. Fetch Issues
+    // Gdy Aktywności -> z zakresu dat. Gdy Do zrobienia -> szukaj bez dat ale za to z odpowiednim statusem.
+    let query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
+    if (tab === 'Do zrobienia') {
+        // YouTrack search syntax: State: {To Do}
+        query = `project: ${projectName} State: {To Do}`;
+    }
 
     const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
         query,

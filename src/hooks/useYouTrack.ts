@@ -6,7 +6,7 @@ export const useYouTrack = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchHistory = useCallback(async (baseUrl: string, token: string, projectName: string, dateFrom: string, dateTo: string) => {
+    const fetchHistory = useCallback(async (baseUrl: string, token: string, projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności') => {
         if (!baseUrl || !token) {
             setError('Brak konfiguracji YouTrack. Przejdź do Ustawień Głównych, aby podać adres URL i Permanent Token.');
             return;
@@ -21,10 +21,9 @@ export const useYouTrack = () => {
 
         try {
             // Opcjonalnie: cache logic
-            const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}`;
-            const cached = localStorage.getItem(cacheKey);
+            const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}`;
 
-            const results = await fetchIssuesActivity(baseUrl, token, projectName, dateFrom, dateTo);
+            const results = await fetchIssuesActivity(baseUrl, token, projectName, dateFrom, dateTo, tab);
             setData(results);
             localStorage.setItem(cacheKey, JSON.stringify(results));
         } catch (err: any) {
@@ -41,8 +40,8 @@ export const useYouTrack = () => {
         }
     }, []);
 
-    const loadFromCache = useCallback((projectName: string, dateFrom: string, dateTo: string) => {
-        const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}`;
+    const loadFromCache = useCallback((projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności') => {
+        const cacheKey = `yt_${projectName}_${dateFrom}_${dateTo}_${tab}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
             try {
