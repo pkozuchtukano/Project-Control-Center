@@ -499,8 +499,8 @@ const ProjectModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-[90vw] max-w-[90vw] flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">
             {projectToEdit ? 'Edytuj Projekt' : 'Nowy Projekt'}
@@ -629,22 +629,26 @@ const ProjectModal = ({
                         <X size={18} />
                       </button>
                     </div>
-                    <div className="flex items-center gap-1.5 pl-[52px] overflow-x-auto pb-1 no-scrollbar">
-                      {predefinedIcons.map(iconName => {
-                         const IconComponent = TaskTypeIconMap[iconName] || Code;
-                         const isSelected = tt.icon === iconName;
-                         return (
-                           <button
-                             key={iconName}
-                             type="button"
-                             onClick={() => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, icon: iconName } : t))}
-                             className={`p-2 rounded-lg transition-colors border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/40 dark:border-indigo-800/60 dark:text-indigo-400 shadow-sm' : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-white dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
-                             title={iconName}
-                           >
-                             <IconComponent size={18} />
-                           </button>
-                         )
-                      })}
+                    
+                    <div className="mt-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 pl-1">Wybierz ikonę</p>
+                      <div className="flex flex-wrap items-center gap-1.5 focus-within:ring-0">
+                        {predefinedIcons.map(iconName => {
+                           const IconComponent = TaskTypeIconMap[iconName] || Code;
+                           const isSelected = tt.icon === iconName;
+                           return (
+                             <button
+                               key={iconName}
+                               type="button"
+                               onClick={() => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, icon: iconName } : t))}
+                               className={`p-2.5 rounded-xl transition-all border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/40 dark:border-indigo-800/60 dark:text-indigo-400 shadow-sm scale-105' : 'border-transparent text-gray-400 hover:text-gray-700 hover:bg-white hover:shadow-sm hover:border-gray-200 dark:hover:bg-gray-700 dark:hover:text-gray-200 dark:hover:border-gray-600'}`}
+                               title={iconName}
+                             >
+                               <IconComponent size={20} />
+                             </button>
+                           )
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
