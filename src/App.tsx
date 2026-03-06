@@ -387,6 +387,7 @@ const ProjectModal = ({
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
     taskTypes: []
   });
+  const [taskTypesStr, setTaskTypesStr] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -406,6 +407,7 @@ const ProjectModal = ({
         vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
         taskTypes: projectToEdit.taskTypes || []
       });
+      setTaskTypesStr((projectToEdit.taskTypes || []).join(', '));
     } else {
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
@@ -413,6 +415,7 @@ const ProjectModal = ({
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
         taskTypes: []
       });
+      setTaskTypesStr('');
     }
   }, [projectToEdit, isOpen]);
 
@@ -456,10 +459,15 @@ const ProjectModal = ({
 
     setIsSubmitting(true);
     try {
+      const finalFormData = {
+        ...formData,
+        taskTypes: taskTypesStr.split(',').map(s => s.trim()).filter(Boolean)
+      };
+
       if (projectToEdit) {
-        await updateProject(projectToEdit.id, formData);
+        await updateProject(projectToEdit.id, finalFormData);
       } else {
-        await addProject(formData);
+        await addProject(finalFormData);
       }
       onClose();
     } catch (err: any) {
@@ -564,8 +572,8 @@ const ProjectModal = ({
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rodzaje zadań (po przecinku)</label>
                 <input 
                   name="taskTypes" 
-                  value={(formData.taskTypes || []).join(', ')} 
-                  onChange={(e) => setFormData(p => ({ ...p, taskTypes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
+                  value={taskTypesStr} 
+                  onChange={(e) => setTaskTypesStr(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                   placeholder="np. obsługa, programowanie, projektowanie, inne" 
                 />
