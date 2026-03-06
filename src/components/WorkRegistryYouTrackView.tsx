@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { type Project, useProjectContext } from '../App';
 import { format } from 'date-fns';
-import { Loader2, Search, Calendar, Clock, HardHat, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Search, Calendar, HardHat, FileSpreadsheet } from 'lucide-react';
 import { fetchProjectWorkLogs, type WorkLogItem } from '../services/youtrackApi';
 
 export const WorkRegistryYouTrackView = ({ project }: { project: Project }) => {
@@ -67,8 +67,8 @@ export const WorkRegistryYouTrackView = ({ project }: { project: Project }) => {
 
     const getMonthName = (monthYear: string) => {
         const [m, y] = monthYear.split('.');
-        const date = new Date(Number(y), Number(m) - 1, 1);
-        return format(date, 'MMMM yyyy'); // you can replace with polish locale if 'date-fns/locale/pl' was present
+        const months = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
+        return `${months[Number(m) - 1]} ${y}`;
     };
 
     return (
@@ -217,49 +217,69 @@ export const WorkRegistryYouTrackView = ({ project }: { project: Project }) => {
 
                                             {/* Day Logs List */}
                                             <div className="divide-y divide-gray-100 dark:divide-gray-800/50">
-                                                {dayLogs.map((log) => {
-                                                    const logTime = format(new Date(log.date), 'HH:mm');
-                                                    return (
-                                                        <div key={log.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-white dark:hover:bg-gray-800 transition-colors">
-                                                            {/* Col 1: Time & Duration */}
-                                                            <div className="w-full sm:w-32 shrink-0 flex items-center sm:block">
-                                                                <div className="text-xs font-medium text-gray-400 flex items-center gap-1 mb-1">
-                                                                    <Clock size={12} /> {logTime}
-                                                                </div>
-                                                                <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded inline-block">
-                                                                    {log.durationPresentation}
-                                                                </div>
-                                                            </div>
+                                                {(() => {
+                                                    // Group by issue inside the day
+                                                    const groupedByIssue = dayLogs.reduce((acc, log) => {
+                                                        if (!acc[log.issueReadableId]) {
+                                                            acc[log.issueReadableId] = {
+                                                                summary: log.issueSummary,
+                                                                logs: []
+                                                            };
+                                                        }
+                                                        acc[log.issueReadableId].logs.push(log);
+                                                        return acc;
+                                                    }, {} as Record<string, { summary: string, logs: WorkLogItem[] }>);
 
-                                                            {/* Col 2: Author */}
-                                                            <div className="w-full sm:w-40 shrink-0 flex items-center gap-1.5 align-top pt-0.5">
-                                                                <div className="w-5 h-5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-[10px] text-white font-bold shrink-0">
-                                                                    {log.authorName.charAt(0).toUpperCase()}
-                                                                </div>
-                                                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate" title={log.authorName}>
-                                                                    {log.authorName}
-                                                                </span>
-                                                            </div>
-
-                                                            {/* Col 3: Task & Description */}
-                                                            <div className="flex-1 min-w-0 pt-0.5">
-                                                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                                    <a href={`${settings?.youtrackBaseUrl}/issue/${log.issueReadableId}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
-                                                                        {log.issueReadableId}
+                                                    return Object.keys(groupedByIssue).map(issueId => {
+                                                        const issueData = groupedByIssue[issueId];
+                                                        return (
+                                                            <div key={issueId} className="px-4 py-4 flex flex-col gap-2 hover:bg-white dark:hover:bg-gray-800 transition-colors">
+                                                                {/* Task Header */}
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <a href={`${settings?.youtrackBaseUrl}/issue/${issueId}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                                                        {issueId}
                                                                     </a>
                                                                     <span className="text-sm font-medium text-gray-800 dark:text-gray-200 leading-tight">
-                                                                        {log.issueSummary}
+                                                                        {issueData.summary}
                                                                     </span>
                                                                 </div>
-                                                                {log.text && (
-                                                                    <div className="text-sm text-gray-600 dark:text-gray-400 italic bg-gray-50/50 dark:bg-gray-900/50 p-2 rounded border border-gray-100 dark:border-gray-800">
-                                                                        "{log.text}"
-                                                                    </div>
-                                                                )}
+
+                                                                {/* Logs list for this task */}
+                                                                <div className="space-y-3 pl-4 border-l-2 border-gray-100 dark:border-gray-700 ml-1 mt-1">
+                                                                    {issueData.logs.map((log) => (
+                                                                        <div key={log.id} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                                            {/* Author */}
+                                                                            <div className="w-full sm:w-48 shrink-0 flex items-center gap-1.5 align-top pt-0.5">
+                                                                                <div className="w-5 h-5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-[10px] text-white font-bold shrink-0">
+                                                                                    {log.authorName.charAt(0).toUpperCase()}
+                                                                                </div>
+                                                                                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate" title={log.authorName}>
+                                                                                    {log.authorName}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Logged Time */}
+                                                                            <div className="w-24 shrink-0">
+                                                                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded inline-block">
+                                                                                    {log.durationPresentation}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {/* Comment */}
+                                                                            <div className="flex-1 min-w-0">
+                                                                                {log.text && (
+                                                                                    <span className="text-sm text-gray-600 dark:text-gray-400 italic">
+                                                                                        "{log.text}"
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                                        );
+                                                    });
+                                                })()}
                                             </div>
                                         </div>
                                     );
