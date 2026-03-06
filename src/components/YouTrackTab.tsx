@@ -535,12 +535,15 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
             }
             if (item.type === 'description-change') {
                 return (
-                    <div key={item.id} className="text-sm text-gray-800 dark:text-gray-200 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-0">
-                        <span className="font-medium text-gray-500 mr-2">{group.timeStr}</span>
-                        <span className="font-semibold text-blue-800 dark:text-blue-400">{group.authorName}:</span> zaktualizowano treść zadania. Zmieniono:
-                        <div className="mt-1 text-xs text-gray-500 bg-gray-50 dark:bg-gray-900 p-2 rounded">
-                            <span className="line-through text-red-500/80 mr-2">{renderTextWithImages(item.removed || 'Brak', [])}</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">=&gt; {renderTextWithImages(item.added || 'Brak', [])}</span>
+                    <div key={item.id} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2 text-sm text-gray-800 dark:text-gray-200 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-0">
+                        <span className="font-medium text-gray-500 shrink-0 w-32">{group.timeStr}</span>
+                        <span className="font-semibold text-blue-800 dark:text-blue-400 shrink-0 sm:w-40 truncate">{group.authorName}:</span>
+                        <div className="flex-1 min-w-0">
+                            zaktualizowano treść zadania. Zmieniono:
+                            <div className="mt-1 text-xs text-gray-500 bg-gray-50 dark:bg-gray-900 p-2 rounded">
+                                <span className="line-through text-red-500/80 mr-2">{renderTextWithImages(item.removed || 'Brak', [])}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">=&gt; {renderTextWithImages(item.added || 'Brak', [])}</span>
+                            </div>
                         </div>
                     </div>
                 );
@@ -570,19 +573,19 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }).filter(Boolean);
 
         return (
-            <div key={group.key + group.items.length} className="text-sm text-gray-800 dark:text-gray-200 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-0 leading-relaxed">
-                <span className="font-medium text-gray-500 mr-2">{group.timeStr}</span>
-                {actionTexts.length > 0 && <span className="font-semibold text-blue-800 dark:text-blue-400">{group.authorName}:</span>}
+            <div key={group.key + group.items.length} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2 text-sm text-gray-800 dark:text-gray-200 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-0 leading-relaxed">
+                <span className="font-medium text-gray-500 shrink-0 w-32">{group.timeStr}</span>
+                {actionTexts.length > 0 && <span className="font-semibold text-blue-800 dark:text-blue-400 shrink-0 sm:w-40 truncate" title={group.authorName}>{group.authorName}:</span>}
                 {actionTexts.length > 0 ? (
-                    <span className="ml-1">
+                    <div className="flex-1 min-w-0">
                         {actionTexts.map((action: any, i: number) => (
                             <span key={i}>
                                 {action}
                                 {i < actionTexts.length - 1 ? ', ' : ''}
                             </span>
                         ))}
-                    </span>
-                ) : ''}
+                    </div>
+                ) : null}
             </div>
         );
     };
