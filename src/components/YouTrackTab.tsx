@@ -57,6 +57,9 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [newTabIncludeFilters, setNewTabIncludeFilters] = useState(false);
     const [editingTabId, setEditingTabId] = useState<string | null>(null);
     const [draggedTabIdx, setDraggedTabIdx] = useState<number | null>(null);
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+
+    const { data, issueTaskTypes, setIssueTaskType, isLoading, error, fetchHistory, loadFromCache, clearData } = useYouTrack();
 
     // Load custom tabs from DB on mount / project change
     useEffect(() => {
@@ -80,7 +83,10 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         };
         loadTabs();
         setActiveTab('Aktywności'); // reset to default tab when project changes
-    }, [project.id]);
+        clearData();
+        setHasFetched(false);
+        setProjectQuery(project.youtrackQuery || project.code || '');
+    }, [project.id, project.youtrackQuery, project.code, clearData]);
 
     const saveNewTab = async () => {
         if (!newTabName.trim() || !newTabStatuses.trim()) return;
@@ -156,9 +162,6 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-
-    const { data, issueTaskTypes, setIssueTaskType, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
 
     const handleFetch = (forceRefresh = false, currentQuery = projectQuery, currentTabId = activeTab, currentStatuses?: string[]) => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
