@@ -101,7 +101,8 @@ export const fetchIssuesActivity = async (
     dateFrom: string,
     dateTo: string,
     tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności',
-    customStatuses?: string[]  // when provided, overrides tab logic with custom State filter
+    customStatuses?: string[],  // when provided, overrides tab logic with custom State filter
+    tabName?: string // used to detect "Zakończone"
 ): Promise<IssueWithHistory[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
 
@@ -109,10 +110,17 @@ export const fetchIssuesActivity = async (
 
     // 1. Fetch Issues
     let query: string;
+    const isZakonczone = tabName?.toLowerCase() === 'zakończone';
+
     if (customStatuses && customStatuses.length > 0) {
-        // Custom tab: filter by provided statuses - no date filter
+        // Custom tab: filter by provided statuses
         const stateFilter = customStatuses.map(s => `{${s}}`).join(', ');
         query = `project: ${projectName} State: ${stateFilter}`;
+
+        // If name is "Zakończone", also apply date filter
+        if (isZakonczone) {
+            query += ` updated: ${dateFrom} .. ${dateTo}`;
+        }
     } else if (tab === 'Do zrobienia') {
         query = `project: ${projectName} State: {To Do}`;
     } else {

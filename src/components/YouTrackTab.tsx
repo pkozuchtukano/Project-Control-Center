@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useYouTrack } from '../hooks/useYouTrack';
 import { useProjectContext, type Project } from '../App';
 import { format } from 'date-fns';
-import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit } from 'lucide-react';
+import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit, Plus, Trash2, Pencil } from 'lucide-react';
 import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
@@ -55,6 +55,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [showAddTabModal, setShowAddTabModal] = useState(false);
     const [newTabName, setNewTabName] = useState('');
     const [newTabStatuses, setNewTabStatuses] = useState(''); // comma-separated
+    const [editingTabId, setEditingTabId] = useState<string | null>(null);
 
     // Load custom tabs from DB on mount / project change
     useEffect(() => {
@@ -73,17 +74,35 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const saveNewTab = async () => {
         if (!newTabName.trim() || !newTabStatuses.trim()) return;
         const statuses = newTabStatuses.split(',').map(s => s.trim()).filter(Boolean);
-        const id = `tab_${Date.now()}`;
+        const id = editingTabId || `tab_${Date.now()}`;
         const tab: YoutrackCustomTab = { id, projectId: project.id, name: newTabName.trim(), statuses };
-        setCustomTabs(prev => [...prev, tab]);
+
+        if (editingTabId) {
+            setCustomTabs(prev => prev.map(t => t.id === editingTabId ? tab : t));
+        } else {
+            setCustomTabs(prev => [...prev, tab]);
+        }
+
         setShowAddTabModal(false);
+        setEditingTabId(null);
         setNewTabName('');
         setNewTabStatuses('');
+
         try {
             if (window.electron?.saveYoutrackTab) await window.electron.saveYoutrackTab(tab);
         } catch (e) { console.error('Failed to save tab:', e); }
-        setActiveTab(id);
-        handleFetch(true, projectQuery, id, statuses);
+
+        if (!editingTabId || activeTab === editingTabId) {
+            setActiveTab(id);
+            handleFetch(true, projectQuery, id, statuses);
+        }
+    };
+
+    const handleEditTab = (tab: YoutrackCustomTab) => {
+        setEditingTabId(tab.id);
+        setNewTabName(tab.name);
+        setNewTabStatuses(tab.statuses.join(', '));
+        setShowAddTabModal(true);
     };
 
     const deleteCustomTab = async (tabId: string) => {
@@ -112,15 +131,25 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
 
         const isActivityTab = currentTabId === 'Aktywności';
-        const statuses = currentStatuses ?? (isActivityTab ? undefined : customTabs.find(t => t.id === currentTabId)?.statuses);
+        const isZakonczonePlain = currentTabId === 'Zakończone' || currentTabId === 'fixed_zakonczone';
+
+        let tabObj = isActivityTab ? null : customTabs.find(t => t.id === currentTabId);
+
+        // If it's the fixed Zakończone tab but not found by ID, try finding by name
+        if (!tabObj && isZakonczonePlain) {
+            tabObj = customTabs.find(t => t.name.toLowerCase() === 'zakończone');
+        }
+
+        const statuses = currentStatuses ?? tabObj?.statuses;
+        const tabName = tabObj?.name || (isZakonczonePlain ? 'Zakończone' : undefined);
         const tabParam: 'Aktywności' | 'Do zrobienia' = isActivityTab ? 'Aktywności' : 'Do zrobienia';
 
         if (!forceRefresh && useCache) {
-            const loaded = loadFromCache(currentQuery, dateFrom, dateTo, tabParam);
+            const loaded = loadFromCache(currentQuery, dateFrom, dateTo, tabParam, statuses, tabName);
             if (loaded) return;
         }
 
-        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, tabParam, statuses);
+        fetchHistory(settings.youtrackBaseUrl, settings.youtrackToken, currentQuery, dateFrom, dateTo, tabParam, statuses, tabName);
     };
 
     // Anonymization helpers
@@ -208,22 +237,36 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
         setIsExporting(true);
         try {
-            const [activityIssues, todoIssues] = await Promise.all([
-                fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Aktywności'),
-                fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Do zrobienia'),
-            ]);
+            // Fetch default 'Aktywności' (date-based)
+            const activityIssues = await fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Aktywności');
 
-            // Filter out excluded issues from both tabs
+            // Fetch all custom tabs (status-based). Ensure permanent "Zakończone" is included.
+            const allTabsToFetch = [...customTabs];
+            if (!allTabsToFetch.find(t => t.name.toLowerCase() === 'zakończone')) {
+                allTabsToFetch.push({ id: 'fixed_zakonczone', projectId: project.id, name: 'Zakończone', statuses: [] });
+            }
+
+            const customTabsData = await Promise.all(allTabsToFetch.map(async tab => {
+                const issues = await fetchIssuesActivity(settings.youtrackBaseUrl, settings.youtrackToken, projectQuery, dateFrom, dateTo, 'Do zrobienia', tab.statuses, tab.name);
+                return { tab, issues };
+            }));
+
+            // Filter out excluded issues from all
             const filteredActivity = activityIssues.filter(i => !excludedIssues.has(i.idReadable));
-            const filteredTodo = todoIssues.filter(i => !excludedIssues.has(i.idReadable));
+            const filteredCustom = customTabsData.map(ct => ({
+                ...ct,
+                issues: ct.issues.filter(i => !excludedIssues.has(i.idReadable))
+            }));
 
-            // Merge: deduplicate by id, todoIssues may overlap with activityIssues
-            const allById = new Map<string, (typeof activityIssues)[0]>();
+            // Merge for global summary: deduplicate by id
+            const allById = new Map<string, any>();
             filteredActivity.forEach(i => allById.set(i.id, i));
-            filteredTodo.forEach(i => { if (!allById.has(i.id)) allById.set(i.id, i); });
+            filteredCustom.forEach(ct => ct.issues.forEach(i => {
+                if (!allById.has(i.id)) allById.set(i.id, i);
+            }));
             const allIssues = Array.from(allById.values());
 
-            const exportPayload = {
+            const exportPayload: any = {
                 exportInfo: {
                     generatedAt: new Date().toISOString(),
                     generatedAtLocal: new Date().toLocaleString('pl-PL'),
@@ -231,21 +274,28 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     dateFrom,
                     dateTo,
                     totalIssues: allIssues.length,
-                    description: `Pełny eksport danych YouTrack z projektu "${projectQuery}" za okres ${dateFrom} - ${dateTo}. Zawiera aktywności i zadania do zrobienia. Przygotowany do analizy AI.`
+                    description: `Pełny eksport danych YouTrack z projektu "${projectQuery}" za okres ${dateFrom} - ${dateTo}. Zawiera aktywności oraz ${customTabs.length} dedykowanych zakładek. Przygotowany do analizy AI.`
                 },
                 summary: makeSummary(allIssues),
                 aktywnosci: {
                     description: `Zadania zaktualizowane w przedziale ${dateFrom} - ${dateTo}`,
                     ...makeSummary(filteredActivity),
                     issues: serializeIssues(filteredActivity),
-                },
-                doZrobienia: {
-                    description: `Zadania ze statusem "Do zrobienia" (bez filtra dat)`,
-                    ...makeSummary(filteredTodo),
-                    issues: serializeIssues(filteredTodo),
-                },
-                allIssues: serializeIssues(allIssues),
+                }
             };
+
+            // Add custom tabs to payload
+            filteredCustom.forEach(ct => {
+                const safeName = ct.tab.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                exportPayload[safeName] = {
+                    name: ct.tab.name,
+                    statuses: ct.tab.statuses,
+                    ...makeSummary(ct.issues),
+                    issues: serializeIssues(ct.issues),
+                };
+            });
+
+            exportPayload.allIssues = serializeIssues(allIssues);
 
             const json = JSON.stringify(exportPayload, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
@@ -560,24 +610,87 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
             )}
 
             {/* TABBAR */}
-            <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-gray-800 px-2 lg:px-4">
+            <div className="flex items-center gap-1 mb-6 border-b border-gray-200 dark:border-gray-800 px-2 lg:px-4 overflow-x-auto no-scrollbar">
                 <button
                     onClick={() => setActiveTab('Aktywności')}
-                    className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 ${activeTab === 'Aktywności'
+                    className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 whitespace-nowrap ${activeTab === 'Aktywności'
                         ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                 >
                     Aktywności
                 </button>
+
+                {(() => {
+                    const zakonczoneTab = customTabs.find(t => t.name.toLowerCase() === 'zakończone');
+                    const isActive = activeTab === 'Zakończone' || (zakonczoneTab && activeTab === zakonczoneTab.id);
+
+                    return (
+                        <div className="relative group/tab">
+                            <button
+                                onClick={() => setActiveTab(zakonczoneTab?.id || 'Zakończone')}
+                                className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 whitespace-nowrap pr-8 ${isActive
+                                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                                    }`}
+                            >
+                                Zakończone
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditTab(zakonczoneTab || { id: 'fixed_zakonczone', projectId: project.id, name: 'Zakończone', statuses: [] });
+                                }}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/tab:opacity-100 transition-opacity"
+                                title="Edytuj statusy"
+                            >
+                                <Pencil size={14} />
+                            </button>
+                        </div>
+                    );
+                })()}
+
+                {customTabs.filter(t => t.name.toLowerCase() !== 'zakończone').map(tab => (
+                    <div key={tab.id} className="relative group/tab">
+                        <button
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 whitespace-nowrap pr-12 ${activeTab === tab.id
+                                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                                }`}
+                        >
+                            {tab.name}
+                        </button>
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover/tab:opacity-100 transition-opacity">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); handleEditTab(tab); }}
+                                className="p-1 text-gray-400 hover:text-indigo-500"
+                                title="Edytuj"
+                            >
+                                <Pencil size={14} />
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); deleteCustomTab(tab.id); }}
+                                className="p-1 text-gray-400 hover:text-red-500"
+                                title="Usuń"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </div>
+                    </div>
+                ))}
+
                 <button
-                    onClick={() => setActiveTab('Do zrobienia')}
-                    className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors duration-200 ${activeTab === 'Do zrobienia'
-                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                        }`}
+                    onClick={() => {
+                        setEditingTabId(null);
+                        setNewTabName('');
+                        setNewTabStatuses('');
+                        setShowAddTabModal(true);
+                    }}
+                    className="p-2 ml-2 text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    title="Dodaj nową zakładkę"
                 >
-                    Planowane
+                    <Plus size={20} />
                 </button>
             </div>
 
@@ -811,7 +924,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
                                             return (
                                                 <>
-                                                    {activeTab === 'Do zrobienia' && commentsOnly.length > 0 && (
+                                                    {activeTab !== 'Aktywności' && commentsOnly.length > 0 && (
                                                         <div className="space-y-1 mb-4">
                                                             {commentsOnly.map((group, idx) => (
                                                                 <div key={`comm-${idx}`}>{renderTimelineGroup(group, idx)}</div>
@@ -928,6 +1041,66 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                 </div>
             )}
 
-        </div >
+            {/* ADD / EDIT TAB MODAL */}
+            {showAddTabModal && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-800 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                {editingTabId ? <Pencil size={24} className="text-indigo-500" /> : <Plus size={24} className="text-indigo-500" />}
+                                {editingTabId ? 'Edytuj zakładkę' : 'Dodaj nową zakładkę'}
+                            </h3>
+                            <button onClick={() => { setShowAddTabModal(false); setEditingTabId(null); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Nazwa zakładki</label>
+                                <input
+                                    type="text"
+                                    value={newTabName}
+                                    onChange={e => setNewTabName(e.target.value)}
+                                    disabled={!!editingTabId && newTabName.toLowerCase() === 'zakończone'}
+                                    placeholder="np. Na teście"
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm disabled:opacity-60"
+                                />
+                                {newTabName.toLowerCase() === 'zakończone' && (
+                                    <p className="text-[10px] text-indigo-500 mt-1 italic font-medium">Ta zakładka automatycznie uwzględnia filtr daty.</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Statusy z YouTrack (oddzielone przecinkiem)</label>
+                                <textarea
+                                    value={newTabStatuses}
+                                    onChange={e => setNewTabStatuses(e.target.value)}
+                                    placeholder="np. Test, Ready to Test, Verified"
+                                    rows={3}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm resize-none"
+                                />
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2 italic leading-tight">
+                                    Statusy muszą dokładnie odpowiadać nazwom z YouTrack. System pobierze zadania posiadające którykolwiek z podanych statusów.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+                            <button
+                                onClick={() => { setShowAddTabModal(false); setEditingTabId(null); }}
+                                className="px-5 py-2 text-sm font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={saveNewTab}
+                                disabled={!newTabName.trim() || !newTabStatuses.trim()}
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
+                            >
+                                {editingTabId ? 'Zapisz zmiany' : 'Dodaj zakładkę'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
