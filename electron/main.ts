@@ -54,6 +54,7 @@ async function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
+        show: false, // Don't show immediately to prevent flickering
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -62,6 +63,9 @@ async function createWindow() {
         },
         autoHideMenuBar: true,
     });
+
+    mainWindow.maximize();
+    mainWindow.show();
 
     if (isDev) {
         mainWindow.loadURL('http://localhost:5173');
