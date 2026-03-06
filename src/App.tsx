@@ -27,7 +27,10 @@ import {
   Clock, AlertTriangle,
   Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  Code, PenTool, Database, Monitor, Headphones, Terminal
+  Code, PenTool, Database, Monitor, Headphones, Terminal,
+  Wrench, Bug, Palette, Server, Cpu, Globe, Key, Lock, Network, Shield, Smartphone, 
+  Wifi, Search, Map, Calendar, Image as ImageIcon, Video, FileSearch, HelpCircle, 
+  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book
 } from 'lucide-react';
 
 // ==========================================
@@ -43,7 +46,10 @@ export type TaskType = {
 };
 
 export const TaskTypeIconMap: Record<string, React.ElementType> = {
-  Code, Terminal, PenTool, Database, Monitor, Headphones, Briefcase, Layers
+  Code, Terminal, PenTool, Database, Monitor, Headphones, Briefcase, Layers,
+  Wrench, Bug, Palette, Server, Cpu, Globe, Key, Lock, Network, Shield, Smartphone, 
+  Wifi, Search, Map, Calendar, ImageIcon, Video, FileSearch, HelpCircle, 
+  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book
 };
 
 export type Project = {
@@ -400,7 +406,7 @@ const ProjectModal = ({
     taskTypes: []
   });
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
-  const predefinedIcons = ['Code', 'Terminal', 'PenTool', 'Database', 'Monitor', 'Headphones', 'Briefcase', 'Layers'];
+  const predefinedIcons = Object.keys(TaskTypeIconMap);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -494,17 +500,18 @@ const ProjectModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">
             {projectToEdit ? 'Edytuj Projekt' : 'Nowy Projekt'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-6 overflow-y-auto flex-1">
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-center gap-2">
               <AlertTriangle size={16} />
@@ -647,8 +654,9 @@ const ProjectModal = ({
               )}
             </div>
           </div>
+          </div>
 
-          <div className="mt-8 flex justify-end gap-3">
+          <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-end gap-3 shrink-0">
             <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
               Anuluj
             </button>
