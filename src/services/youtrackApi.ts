@@ -389,41 +389,53 @@ export const fetchProjectWorkLogs = async (
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
     const apiBase = baseUrl.replace(/\/$/, '') + '/api';
 
+    // Pobierz najpierw zadania dla których zanotowano czas w danym okresie
     const query = `${projectQuery} work date: ${dateFrom} .. ${dateTo}`;
 
     const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
         query,
-        fields: 'id,idReadable,summary,issueWorkItems(id,date,duration(minutes,presentation),author(name,login),text,type(name))',
-        $top: 200 // Maksymalnie ile zadan obslugujemy
+        fields: 'id,idReadable,summary',
+        $top: 200 // Maksymalnie ile zadan obslugujemy w jednym strzale
     });
 
     const workLogs: WorkLogItem[] = [];
     const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
     const toTime = new Date(`${dateTo}T23:59:59`).getTime();
 
-    issues.forEach(issue => {
-        if (!issue.issueWorkItems || !Array.isArray(issue.issueWorkItems)) return;
-
-        issue.issueWorkItems.forEach((wi: any) => {
-            const logDate = wi.date;
-            // Filtrowanie wpisów do zadanego przedziału (YouTrack zwraca wszystkie work itemy dla zadania, z ktorych tylko niektore wpadly pod `work date:`)
-            if (logDate >= fromTime && logDate <= toTime) {
-                workLogs.push({
-                    id: wi.id,
-                    issueId: issue.id,
-                    issueReadableId: issue.idReadable,
-                    issueSummary: issue.summary,
-                    date: wi.date,
-                    durationMinutes: wi.duration?.minutes || 0,
-                    durationPresentation: wi.duration?.presentation || '',
-                    authorName: wi.author?.name || 'System',
-                    authorLogin: wi.author?.login || 'system',
-                    text: wi.text || '',
-                    workType: wi.type?.name || ''
+    // Dla każdego zadania dociągamy jego zewidencjonowane wpisy czasu pracy
+    const timePromises = issues.map(async (issue) => {
+        try {
+            const workItems = await makeRequest(`${apiBase}/issues/${issue.id}/timeTracking/workItems`, token, {
+                fields: 'id,date,duration(minutes,presentation),author(name,login),text,type(name)'
+            });
+            
+            if (Array.isArray(workItems)) {
+                workItems.forEach((wi: any) => {
+                    const logDate = wi.date;
+                    // Filtrowanie wpisów do zadanego przedziału wejściowego (ponieważ pobraliśmy absolutnie wszystkie time logs pobranego zadania)
+                    if (logDate >= fromTime && logDate <= toTime) {
+                        workLogs.push({
+                            id: wi.id,
+                            issueId: issue.id,
+                            issueReadableId: issue.idReadable,
+                            issueSummary: issue.summary,
+                            date: wi.date,
+                            durationMinutes: wi.duration?.minutes || 0,
+                            durationPresentation: wi.duration?.presentation || '',
+                            authorName: wi.author?.name || 'System',
+                            authorLogin: wi.author?.login || 'system',
+                            text: wi.text || '',
+                            workType: wi.type?.name || ''
+                        });
+                    }
                 });
             }
-        });
+        } catch (err) {
+            console.error(`Błąd dociągania logów czasu dla zadania ${issue.idReadable}:`, err);
+        }
     });
+
+    await Promise.all(timePromises);
 
     // Sort chronologically descending
     return workLogs.sort((a, b) => b.date - a.date);
