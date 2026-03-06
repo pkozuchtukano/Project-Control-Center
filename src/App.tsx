@@ -26,13 +26,25 @@ import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
   Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
-  Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon
+  Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
+  Code, PenTool, Database, Monitor, Headphones, Terminal
 } from 'lucide-react';
 
 // ==========================================
 // CONFIG & CONSTANTS
 // ==========================================
 import { YouTrackTab } from './components/YouTrackTab';
+
+export type TaskType = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+};
+
+export const TaskTypeIconMap: Record<string, React.ElementType> = {
+  Code, Terminal, PenTool, Database, Monitor, Headphones, Briefcase, Layers
+};
 
 export type Project = {
   id: string;
@@ -48,7 +60,7 @@ export type Project = {
   rateBrutto: number;
   vatRate: number;
   youtrackQuery?: string;
-  taskTypes?: string[];
+  taskTypes?: TaskType[];
 };
 
 export type OrderItem = {
@@ -387,7 +399,8 @@ const ProjectModal = ({
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
     taskTypes: []
   });
-  const [taskTypesStr, setTaskTypesStr] = useState('');
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const predefinedIcons = ['Code', 'Terminal', 'PenTool', 'Database', 'Monitor', 'Headphones', 'Briefcase', 'Layers'];
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -407,7 +420,7 @@ const ProjectModal = ({
         vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
         taskTypes: projectToEdit.taskTypes || []
       });
-      setTaskTypesStr((projectToEdit.taskTypes || []).join(', '));
+      setTaskTypes(projectToEdit.taskTypes || []);
     } else {
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
@@ -415,7 +428,7 @@ const ProjectModal = ({
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
         taskTypes: []
       });
-      setTaskTypesStr('');
+      setTaskTypes([]);
     }
   }, [projectToEdit, isOpen]);
 
@@ -461,7 +474,7 @@ const ProjectModal = ({
     try {
       const finalFormData = {
         ...formData,
-        taskTypes: taskTypesStr.split(',').map(s => s.trim()).filter(Boolean)
+        taskTypes: taskTypes.filter(t => t.name.trim() !== '')
       };
 
       if (projectToEdit) {
@@ -568,15 +581,51 @@ const ProjectModal = ({
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rodzaje zadań (po przecinku)</label>
-                <input 
-                  name="taskTypes" 
-                  value={taskTypesStr} 
-                  onChange={(e) => setTaskTypesStr(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                  placeholder="np. obsługa, programowanie, projektowanie, inne" 
-                />
+              <div className="flex items-center justify-between mb-1 mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">Rodzaje zadań zdefiniowane dla projektu</label>
+                <button type="button" onClick={() => setTaskTypes(prev => [...prev, { id: Date.now().toString(), name: '', color: '#3b82f6', icon: 'Code' }])} className="text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 hover:text-indigo-700 transition bg-indigo-50 dark:bg-indigo-900/40 px-3 py-1.5 rounded-md">
+                  <Plus size={14} /> Dodaj rodzaj
+                </button>
+              </div>
+              <div className="space-y-3">
+                {taskTypes.map((tt) => {
+                  const SelectedIcon = TaskTypeIconMap[tt.icon] || Code;
+                  return (
+                    <div key={tt.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700">
+                      <input 
+                        value={tt.name}
+                        onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, name: e.target.value } : t))}
+                        placeholder="Nazwa zadania..."
+                        className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <div className="flex items-center justify-center w-8 h-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
+                          <SelectedIcon size={16} className="text-gray-600 dark:text-gray-300" style={{ color: tt.color }} />
+                        </div>
+                        <select 
+                          value={tt.icon}
+                          onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, icon: e.target.value } : t))}
+                          className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-32"
+                        >
+                          {predefinedIcons.map(icon => <option key={icon} value={icon}>{icon}</option>)}
+                        </select>
+                        <input 
+                          type="color"
+                          value={tt.color}
+                          onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, color: e.target.value } : t))}
+                          className="w-8 h-8 rounded border-none cursor-pointer bg-transparent p-0"
+                          title="Wybierz kolor"
+                        />
+                        <button type="button" onClick={() => setTaskTypes(prev => prev.filter(t => t.id !== tt.id))} className="text-gray-400 hover:text-red-500 p-1.5 transition">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {taskTypes.length === 0 && (
+                  <p className="text-sm text-gray-500 italic p-4 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">Brak zdefiniowanych rodzajów zadań do tego projektu.</p>
+                )}
               </div>
             </div>
           </div>
