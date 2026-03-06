@@ -48,6 +48,7 @@ export type Project = {
   rateBrutto: number;
   vatRate: number;
   youtrackQuery?: string;
+  taskTypes?: string[];
 };
 
 export type OrderItem = {
@@ -383,7 +384,8 @@ const ProjectModal = ({
   const [formData, setFormData] = useState<Omit<Project, 'id'>>({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
-    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23
+    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
+    taskTypes: []
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -401,13 +403,15 @@ const ProjectModal = ({
         maxHours: projectToEdit.maxHours,
         rateNetto: projectToEdit.rateNetto,
         rateBrutto: projectToEdit.rateBrutto,
-        vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23
+        vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
+        taskTypes: projectToEdit.taskTypes || []
       });
     } else {
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
-        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23
+        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
+        taskTypes: []
       });
     }
   }, [projectToEdit, isOpen]);
@@ -555,6 +559,16 @@ const ProjectModal = ({
                   <input type="number" min="0" step="1" name="vatRate" value={formData.vatRate} onChange={handleChange}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rodzaje zadań (po przecinku)</label>
+                <input 
+                  name="taskTypes" 
+                  value={(formData.taskTypes || []).join(', ')} 
+                  onChange={(e) => setFormData(p => ({ ...p, taskTypes: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                  placeholder="np. obsługa, programowanie, projektowanie, inne" 
+                />
               </div>
             </div>
           </div>
