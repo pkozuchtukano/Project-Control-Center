@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 
 // ==========================================
+import { YouTrackTab } from './components/YouTrackTab';
 import { WorkRegistryTab } from './components/WorkRegistryTab';
 
 export type TaskType = {
@@ -777,6 +778,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           >
             Status
           </button>
+          <button
+            onClick={() => setActiveTab('youtrack')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'youtrack' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            YouTrack
+          </button>
         </div>
 
         {activeTab === 'dashboard' && (
@@ -946,6 +953,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Status Projektu</h3>
             <p className="text-gray-500 dark:text-gray-400 max-w-sm">Rozbudowany moduł śledzenia postępów i alertów jest w przygotowaniu.</p>
           </div>
+        )}
+
+        {activeTab === 'youtrack' && (
+          <YouTrackTab project={selectedProject} />
         )}
 
       </div>

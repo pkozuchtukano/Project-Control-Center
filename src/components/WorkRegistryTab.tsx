@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { type Project } from '../App';
 import { BarChart3, Trello } from 'lucide-react';
-import { YouTrackTab } from './YouTrackTab';
 
 type WorkTab = 'stats' | 'youtrack';
 
-export const WorkRegistryTab = ({ project }: { project: Project }) => {
+export const WorkRegistryTab = ({  }: { project: Project }) => {
     const [activeTab, setActiveTab] = useState<WorkTab>('stats');
 
     return (
@@ -51,7 +50,15 @@ export const WorkRegistryTab = ({ project }: { project: Project }) => {
                     </div>
                 )}
                 {activeTab === 'youtrack' && (
-                    <YouTrackTab project={project} />
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center">
+                        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-4">
+                            <Trello size={28} className="text-blue-400 dark:text-blue-500" />
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Dane pobrane z YouTrack</h3>
+                        <p className="text-gray-500 dark:text-gray-400 max-w-sm">
+                            Specjalistyczny widok ewidencji oparty o logi robocze z YouTrack jest w przygotowaniu.
+                        </p>
+                    </div>
                 )}
             </div>
         </div>
