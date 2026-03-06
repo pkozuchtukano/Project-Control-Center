@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('electron', {
     getExcludedIssues: () => ipcRenderer.invoke('get-excluded-issues'),
     setIssueExcluded: (id: string, excluded: boolean) => ipcRenderer.invoke('set-issue-excluded', { id, excluded }),
     getYoutrackTabs: (projectId: string) => ipcRenderer.invoke('get-youtrack-tabs', projectId),
-    saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[] }) => ipcRenderer.invoke('save-youtrack-tab', tab),
+    saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }) => ipcRenderer.invoke('save-youtrack-tab', tab),
     deleteYoutrackTab: (id: string) => ipcRenderer.invoke('delete-youtrack-tab', id),
+    reorderYoutrackTabs: (tabs: { id: string; orderIndex: number }[]) => ipcRenderer.invoke('reorder-youtrack-tabs', tabs),
 });
 

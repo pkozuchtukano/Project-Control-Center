@@ -11,9 +11,10 @@ declare global {
       fetchYouTrack: (options: any) => Promise<any>;
       getExcludedIssues: () => Promise<string[]>;
       setIssueExcluded: (id: string, excluded: boolean) => Promise<{ success: boolean }>;
-      getYoutrackTabs: (projectId: string) => Promise<{ id: string; projectId: string; name: string; statuses: string[] }[]>;
-      saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[] }) => Promise<{ success: boolean }>;
+      getYoutrackTabs: (projectId: string) => Promise<{ id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }[]>;
+      saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }) => Promise<{ success: boolean }>;
       deleteYoutrackTab: (id: string) => Promise<{ success: boolean }>;
+      reorderYoutrackTabs: (tabs: { id: string; orderIndex: number }[]) => Promise<{ success: boolean }>;
     }
   }
 }

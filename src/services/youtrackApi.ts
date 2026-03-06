@@ -102,7 +102,8 @@ export const fetchIssuesActivity = async (
     dateTo: string,
     tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności',
     customStatuses?: string[],  // when provided, overrides tab logic with custom State filter
-    tabName?: string // used to detect "Zakończone"
+    tabName?: string, // used to detect "Zakończone"
+    includeFilters?: boolean // dodano parametr sterujący filtrem daty
 ): Promise<IssueWithHistory[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
 
@@ -117,8 +118,8 @@ export const fetchIssuesActivity = async (
         const stateFilter = customStatuses.map(s => `{${s}}`).join(', ');
         query = `project: ${projectName} State: ${stateFilter}`;
 
-        // If name is "Zakończone", also apply date filter
-        if (isZakonczone) {
+        // If includeFilters is true OR (for backward compatibility) it's "Zakończone" and includeFilters is undefined
+        if (includeFilters === true || (isZakonczone && includeFilters !== false)) {
             query += ` updated: ${dateFrom} .. ${dateTo}`;
         }
     } else if (tab === 'Do zrobienia') {
@@ -140,7 +141,7 @@ export const fetchIssuesActivity = async (
             // Activities endpoint
             const rawActivities = await makeRequest(`${apiBase}/issues/${issue.id}/activities`, token, {
                 categories: 'CommentsCategory,IssueCreatedCategory,ProjectCategory,IssueResolvedCategory,CustomFieldCategory,SummaryCategory,DescriptionCategory,WorkItemCategory,AttachmentCategory,TagsCategory',
-                fields: 'id,timestamp,author(name,login,email),category(id),added(name,text,presentation,duration(minutes,presentation),date,type(name)),removed(name,text,presentation,duration(minutes,presentation),date,type(name)),field(customField(name),name),targetMember,text'
+                fields: 'id,timestamp,author(name,login,email),category(id),added(name,text,presentation,duration(minutes,presentation),date,type(name),author(name,login,email)),removed(name,text,presentation,duration(minutes,presentation),date,type(name),author(name,login,email)),field(customField(name),name),targetMember,text'
             }) || [];
             const timeline: ActivityItem[] = [];
 
@@ -241,8 +242,9 @@ export const fetchIssuesActivity = async (
                     // Dodany work item
                     const workItem = activity.added?.[0];
                     if (workItem && workItem.duration && workItem.duration.minutes) {
+                        const actualAuthor = workItem.author || author;
                         const dateStr = workItem.date ? new Date(workItem.date).toISOString().split('T')[0] : new Date(activity.timestamp).toISOString().split('T')[0];
-                        const tempId = `work-${author.login}-${dateStr}`;
+                        const tempId = `work-${actualAuthor.login || actualAuthor.name}-${dateStr}`;
                         const comment = workItem.text || '';
                         const workItemTypeName = workItem.type?.name || '';
 
@@ -252,16 +254,17 @@ export const fetchIssuesActivity = async (
                                 workAggregator[tempId].workComments = workAggregator[tempId].workComments || [];
                                 workAggregator[tempId].workComments!.push(comment);
                             }
-                            // Aktualizujemy timestamp na najnowszy
+                            // Jeśli rejestrujemy tego samego dnia kilka wpisów, zachowajmy najnowszy timestamp modyfikacji dla celów sortowania 
+                            // jeśli to ta sama data fizycznego zasobu
                             if (activity.timestamp > workAggregator[tempId].timestamp) {
-                                workAggregator[tempId].timestamp = activity.timestamp;
+                                workAggregator[tempId].timestamp = workItem.date ? new Date(workItem.date).getTime() : activity.timestamp;
                             }
                         } else {
                             workAggregator[tempId] = {
                                 type: 'work-item',
                                 id: tempId,
-                                timestamp: activity.timestamp,
-                                author,
+                                timestamp: workItem.date ? new Date(workItem.date).getTime() : activity.timestamp,
+                                author: actualAuthor,
                                 minutes: workItem.duration.minutes,
                                 dateStr,
                                 workComments: comment ? [comment] : [],

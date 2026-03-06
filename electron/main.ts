@@ -183,21 +183,33 @@ ipcMain.handle('set-issue-excluded', async (_, { id, excluded }: { id: string; e
 
 ipcMain.handle('get-youtrack-tabs', async (_, projectId: string) => {
     try {
-        const rows = db.prepare('SELECT * FROM youtrack_tabs WHERE projectId = ? ORDER BY rowid ASC').all(projectId) as { id: string; projectId: string; name: string; statuses: string }[];
-        return rows.map(r => ({ ...r, statuses: JSON.parse(r.statuses) }));
+        try {
+            db.exec('ALTER TABLE youtrack_tabs ADD COLUMN includeFilters INTEGER DEFAULT 0');
+        } catch (e) {}
+        try {
+            db.exec('ALTER TABLE youtrack_tabs ADD COLUMN orderIndex INTEGER DEFAULT 0');
+        } catch (e) {}
+        const rows = db.prepare('SELECT * FROM youtrack_tabs WHERE projectId = ? ORDER BY orderIndex ASC, rowid ASC').all(projectId) as { id: string; projectId: string; name: string; statuses: string; includeFilters?: number; orderIndex?: number }[];
+        return rows.map(r => ({ ...r, statuses: JSON.parse(r.statuses), includeFilters: r.includeFilters === 1 }));
     } catch (error) {
         console.error('Błąd odczytu youtrack_tabs:', error);
         throw error;
     }
 });
 
-ipcMain.handle('save-youtrack-tab', async (_, tab: { id: string; projectId: string; name: string; statuses: string[] }) => {
+ipcMain.handle('save-youtrack-tab', async (_, tab: { id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }) => {
     try {
+        try {
+            db.exec('ALTER TABLE youtrack_tabs ADD COLUMN includeFilters INTEGER DEFAULT 0');
+        } catch (e) {}
+        try {
+            db.exec('ALTER TABLE youtrack_tabs ADD COLUMN orderIndex INTEGER DEFAULT 0');
+        } catch (e) {}
         db.prepare(`
-            INSERT INTO youtrack_tabs (id, projectId, name, statuses)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET name = excluded.name, statuses = excluded.statuses
-        `).run(tab.id, tab.projectId, tab.name, JSON.stringify(tab.statuses));
+            INSERT INTO youtrack_tabs (id, projectId, name, statuses, includeFilters, orderIndex)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name = excluded.name, statuses = excluded.statuses, includeFilters = excluded.includeFilters, orderIndex = COALESCE(excluded.orderIndex, youtrack_tabs.orderIndex)
+        `).run(tab.id, tab.projectId, tab.name, JSON.stringify(tab.statuses), tab.includeFilters ? 1 : 0, tab.orderIndex ?? 0);
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu youtrack_tabs:', error);
@@ -211,6 +223,22 @@ ipcMain.handle('delete-youtrack-tab', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('Błąd usuwania youtrack_tabs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('reorder-youtrack-tabs', async (_, tabs: { id: string; orderIndex: number }[]) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare('UPDATE youtrack_tabs SET orderIndex = ? WHERE id = ?');
+            for (const tab of tabs) {
+                stmt.run(tab.orderIndex, tab.id);
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd aktualizacji kolejności youtrack_tabs:', error);
         throw error;
     }
 });
