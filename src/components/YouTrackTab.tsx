@@ -399,8 +399,8 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         if (!text) return null;
 
         // Dopasowuje Markdown: ![alt](url) LUB tag HTML: <img ... src="url" ...>
-        // UWAGA: dodano obsługę `src='url'` i `src="url"` oraz upewniono się, że wyciągamy sam link
-        const regex = /(?:!\[([^\]]*)\]\(([^)]+)\))|(?:<img\b[^>]*src=(?:"|')([^"']+)(?:"|')[^>]*>(?:<\/img>)?)/gi;
+        // UWAGA: dodano obsługę `src='url'` i `src="url"` oraz upewniono się, że wyciągamy sam link. Dodano wyłapywanie i ignorowanie atrybutów YouTrackowych jak {width=70%} po URL-u w markdownie.
+        const regex = /(?:!\[([^\]]*)\]\(([^)]+)\)(?:\{[^}]*\})?)|(?:<img\b[^>]*src=(?:"|')([^"']+)(?:"|')[^>]*>(?:<\/img>)?)/gi;
         const parts = [];
         let lastIndex = 0;
         let match;
