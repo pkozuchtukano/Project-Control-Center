@@ -735,9 +735,10 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     return aTime - bTime;
                 }).map(issue => {
                     const isExcluded = excludedIssues.has(issue.idReadable);
+                    const isDropdownOpen = openDropdownId === issue.idReadable;
                     return (
-                        <details open={!isExcluded} key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border overflow-hidden outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'}`}>
-                            <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors">
+                        <details open={!isExcluded} key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'} relative ${isDropdownOpen ? 'z-40' : 'z-10'}`}>
+                            <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors rounded-2xl group-open:rounded-b-none group-open:rounded-t-2xl">
                                 <div className="flex-1">
                                     <div className="flex flex-wrap items-center gap-3 mb-1">
                                         <a
@@ -947,7 +948,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                 )}
                             </div>
 
-                            <div className="p-4 bg-gray-50/30 dark:bg-gray-900/20">
+                            <div className="p-4 bg-gray-50/30 dark:bg-gray-900/20 rounded-b-2xl">
                                 {issue.timeline.length > 0 ? (
                                     <div className="space-y-1">
                                         {(() => {
