@@ -587,38 +587,48 @@ const ProjectModal = ({
                   <Plus size={14} /> Dodaj rodzaj
                 </button>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {taskTypes.map((tt) => {
                   const SelectedIcon = TaskTypeIconMap[tt.icon] || Code;
                   return (
-                    <div key={tt.id} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700">
-                      <input 
-                        value={tt.name}
-                        onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, name: e.target.value } : t))}
-                        placeholder="Nazwa zadania..."
-                        className="flex-1 min-w-0 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <div className="flex items-center gap-2 self-start sm:self-auto">
-                        <div className="flex items-center justify-center w-8 h-8 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md">
-                          <SelectedIcon size={16} className="text-gray-600 dark:text-gray-300" style={{ color: tt.color }} />
+                    <div key={tt.id} className="flex flex-col gap-3 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                      <div className="flex gap-3 items-center">
+                        <div className="flex items-center justify-center w-10 h-10 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shrink-0 shadow-sm" style={{ color: tt.color }}>
+                          <SelectedIcon size={20} />
                         </div>
-                        <select 
-                          value={tt.icon}
-                          onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, icon: e.target.value } : t))}
-                          className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-32"
-                        >
-                          {predefinedIcons.map(icon => <option key={icon} value={icon}>{icon}</option>)}
-                        </select>
+                        <input 
+                          value={tt.name}
+                          onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, name: e.target.value } : t))}
+                          placeholder="Wpisz nazwę rodzaju zadania..."
+                          className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        />
                         <input 
                           type="color"
                           value={tt.color}
                           onChange={(e) => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, color: e.target.value } : t))}
-                          className="w-8 h-8 rounded border-none cursor-pointer bg-transparent p-0"
+                          className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer bg-white dark:bg-gray-700 p-1 shrink-0"
                           title="Wybierz kolor"
                         />
-                        <button type="button" onClick={() => setTaskTypes(prev => prev.filter(t => t.id !== tt.id))} className="text-gray-400 hover:text-red-500 p-1.5 transition">
-                          <X size={16} />
+                        <button type="button" onClick={() => setTaskTypes(prev => prev.filter(t => t.id !== tt.id))} className="text-gray-400 hover:text-red-500 p-2 transition-colors bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shrink-0" title="Usuń rodzaj">
+                          <X size={18} />
                         </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 pl-[52px] overflow-x-auto pb-1 no-scrollbar">
+                        {predefinedIcons.map(iconName => {
+                           const IconComponent = TaskTypeIconMap[iconName] || Code;
+                           const isSelected = tt.icon === iconName;
+                           return (
+                             <button
+                               key={iconName}
+                               type="button"
+                               onClick={() => setTaskTypes(prev => prev.map(t => t.id === tt.id ? { ...t, icon: iconName } : t))}
+                               className={`p-2 rounded-lg transition-colors border ${isSelected ? 'bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/40 dark:border-indigo-800/60 dark:text-indigo-400 shadow-sm' : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-white dark:hover:bg-gray-700 dark:hover:text-gray-300'}`}
+                               title={iconName}
+                             >
+                               <IconComponent size={18} />
+                             </button>
+                           )
+                        })}
                       </div>
                     </div>
                   );
