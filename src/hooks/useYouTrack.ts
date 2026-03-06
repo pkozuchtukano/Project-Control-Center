@@ -3,8 +3,30 @@ import { fetchIssuesActivity, type IssueWithHistory } from '../services/youtrack
 
 export const useYouTrack = () => {
     const [data, setData] = useState<IssueWithHistory[]>([]);
+    const [issueTaskTypes, setIssueTaskTypes] = useState<Record<string, string>>({});
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const syncTaskTypes = async (issues: IssueWithHistory[]) => {
+        if (!window.electron || issues.length === 0) return;
+        try {
+            const types = await window.electron.getIssueTaskTypes(issues.map(i => i.idReadable));
+            setIssueTaskTypes(types);
+        } catch (e) {
+            console.error('Błąd pobierania rodzajów zadań:', e);
+        }
+    };
+
+    const setIssueTaskType = async (issueId: string, taskTypeId: string) => {
+        setIssueTaskTypes(prev => ({ ...prev, [issueId]: taskTypeId }));
+        if (window.electron) {
+            try {
+                await window.electron.setIssueTaskType(issueId, taskTypeId);
+            } catch (e) {
+                console.error('Błąd zapisu rodzaju zadania:', e);
+            }
+        }
+    };
 
     const fetchHistory = useCallback(async (baseUrl: string, token: string, projectName: string, dateFrom: string, dateTo: string, tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności', customStatuses?: string[], tabName?: string, includeFilters?: boolean) => {
         if (!baseUrl || !token) {
@@ -24,6 +46,7 @@ export const useYouTrack = () => {
 
             const results = await fetchIssuesActivity(baseUrl, token, projectName, dateFrom, dateTo, tab, customStatuses, tabName, includeFilters);
             setData(results);
+            syncTaskTypes(results);
             localStorage.setItem(cacheKey, JSON.stringify(results));
         } catch (err: any) {
             console.error(err);
@@ -44,7 +67,9 @@ export const useYouTrack = () => {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
             try {
-                setData(JSON.parse(cached));
+                const parsed = JSON.parse(cached);
+                setData(parsed);
+                syncTaskTypes(parsed);
                 return true;
             } catch (e) {
                 return false;
@@ -60,10 +85,12 @@ export const useYouTrack = () => {
 
     return {
         data,
+        issueTaskTypes,
         isLoading,
         error,
         fetchHistory,
         loadFromCache,
-        clearData
+        clearData,
+        setIssueTaskType
     };
 };

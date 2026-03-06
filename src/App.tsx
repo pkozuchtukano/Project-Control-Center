@@ -15,6 +15,8 @@ declare global {
       saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }) => Promise<{ success: boolean }>;
       deleteYoutrackTab: (id: string) => Promise<{ success: boolean }>;
       reorderYoutrackTabs: (tabs: { id: string; orderIndex: number }[]) => Promise<{ success: boolean }>;
+      getIssueTaskTypes: (issueIds: string[]) => Promise<Record<string, string>>;
+      setIssueTaskType: (issueId: string, taskTypeId: string) => Promise<{ success: boolean }>;
     }
   }
 }

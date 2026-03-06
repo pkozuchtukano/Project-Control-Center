@@ -11,5 +11,7 @@ contextBridge.exposeInMainWorld('electron', {
     saveYoutrackTab: (tab: { id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }) => ipcRenderer.invoke('save-youtrack-tab', tab),
     deleteYoutrackTab: (id: string) => ipcRenderer.invoke('delete-youtrack-tab', id),
     reorderYoutrackTabs: (tabs: { id: string; orderIndex: number }[]) => ipcRenderer.invoke('reorder-youtrack-tabs', tabs),
+    getIssueTaskTypes: (issueIds: string[]) => ipcRenderer.invoke('get-issue-task-types', issueIds),
+    setIssueTaskType: (issueId: string, taskTypeId: string) => ipcRenderer.invoke('set-issue-task-type', issueId, taskTypeId),
 });
 

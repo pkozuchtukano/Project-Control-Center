@@ -43,6 +43,10 @@ db.exec(`
         name TEXT NOT NULL,
         statuses TEXT NOT NULL DEFAULT '[]'
     );
+    CREATE TABLE IF NOT EXISTS youtrack_issue_task_types (
+        issueId TEXT PRIMARY KEY,
+        taskTypeId TEXT NOT NULL
+    );
 `);
 
 let mainWindow: BrowserWindowType | null = null;
@@ -243,6 +247,38 @@ ipcMain.handle('reorder-youtrack-tabs', async (_, tabs: { id: string; orderIndex
         return { success: true };
     } catch (error) {
         console.error('Błąd aktualizacji kolejności youtrack_tabs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-issue-task-types', async (event, issueIds: string[]) => {
+    try {
+        if (!issueIds || issueIds.length === 0) return {};
+        
+        const placeholders = issueIds.map(() => '?').join(',');
+        const rows = db.prepare(`SELECT issueId, taskTypeId FROM youtrack_issue_task_types WHERE issueId IN (${placeholders})`).all(...issueIds);
+        
+        const map: Record<string, string> = {};
+        for (const row of rows as { issueId: string, taskTypeId: string }[]) {
+            map[row.issueId] = row.taskTypeId;
+        }
+        return map;
+    } catch (error) {
+        console.error('Błąd pobierania rodzajów zadań ze zgłoszeń:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('set-issue-task-type', async (event, issueId: string, taskTypeId: string) => {
+    try {
+        db.prepare(`
+            INSERT INTO youtrack_issue_task_types (issueId, taskTypeId) 
+            VALUES (?, ?) 
+            ON CONFLICT(issueId) DO UPDATE SET taskTypeId = excluded.taskTypeId
+        `).run(issueId, taskTypeId);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu rodzaju zadania dla zgłoszenia:', error);
         throw error;
     }
 });

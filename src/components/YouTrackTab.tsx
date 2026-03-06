@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useYouTrack } from '../hooks/useYouTrack';
-import { useProjectContext, type Project } from '../App';
+import { useProjectContext, type Project, TaskTypeIconMap } from '../App';
 import { format } from 'date-fns';
-import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit, Plus, Trash2, Pencil } from 'lucide-react';
+import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit, Plus, Trash2, Pencil, Code } from 'lucide-react';
 import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
@@ -156,8 +156,9 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
-    const { data, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
+    const { data, issueTaskTypes, setIssueTaskType, isLoading, error, fetchHistory, loadFromCache } = useYouTrack();
 
     const handleFetch = (forceRefresh = false, currentQuery = projectQuery, currentTabId = activeTab, currentStatuses?: string[]) => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
@@ -790,9 +791,74 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                             );
                                         })()}
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 mt-1">
                                         <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
-                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">{issue.summary}</h3>
+                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight flex-1">{issue.summary}</h3>
+                                        
+                                        {/* Wybór rodzaju zadania */}
+                                        {project.taskTypes && project.taskTypes.length > 0 && (() => {
+                                            const currentTypeId = issueTaskTypes[issue.idReadable] || project.taskTypes[0].id;
+                                            const currentType = project.taskTypes.find(t => t.id === currentTypeId);
+                                            const CurrentIcon = currentType ? (TaskTypeIconMap[currentType.icon] || Code) : Code;
+                                            
+                                            // Handle saving the default type lazily if the user hasn't explicitly set it
+                                            const handleSelectType = (e: React.MouseEvent, typeId: string) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setIssueTaskType(issue.idReadable, typeId);
+                                                setOpenDropdownId(null);
+                                            };
+
+                                            return (
+                                                <div className="relative ml-auto shrink-0 flex items-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            setOpenDropdownId(prev => prev === issue.idReadable ? null : issue.idReadable);
+                                                        }}
+                                                        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
+                                                        style={currentType ? { color: currentType.color, borderColor: currentType.color } : undefined}
+                                                        title="Rodzaj zadania"
+                                                    >
+                                                        <CurrentIcon size={14} />
+                                                        <span>{currentType ? currentType.name : 'Typ'}</span>
+                                                        <ChevronDown size={12} className="opacity-50" />
+                                                    </button>
+
+                                                    {openDropdownId === issue.idReadable && (
+                                                        <>
+                                                            {/* Backdrop do zamknięcia kliknięciem na zewnątrz (prosty trick zamiast nasłuchiwaczy) */}
+                                                            <div 
+                                                                className="fixed inset-0 z-10" 
+                                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenDropdownId(null); }} 
+                                                            />
+                                                            <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700 py-1 z-20 animate-in fade-in slide-in-from-top-2 focus:outline-none overflow-hidden">
+                                                                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700 mb-1">
+                                                                    Zmień rodzaj
+                                                                </div>
+                                                                {project.taskTypes.map(tt => {
+                                                                    const Icon = TaskTypeIconMap[tt.icon] || Code;
+                                                                    const isSelected = tt.id === currentTypeId;
+                                                                    return (
+                                                                        <button
+                                                                            key={tt.id}
+                                                                            onClick={(e) => handleSelectType(e, tt.id)}
+                                                                            className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition hover:bg-gray-50 dark:hover:bg-gray-700 ${isSelected ? 'bg-indigo-50/50 dark:bg-indigo-900/20 font-medium' : 'text-gray-700 dark:text-gray-300'}`}
+                                                                        >
+                                                                            <Icon size={14} style={{ color: tt.color }} />
+                                                                            <span className="truncate">{tt.name}</span>
+                                                                            {isSelected && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
 
                                     {/* TTIME TRACKING & PROGRESS BAR */}
