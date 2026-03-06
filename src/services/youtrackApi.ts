@@ -55,6 +55,20 @@ export interface ActivityItem {
     workItemType?: string; // typ pracy (np. Development, Testing)
 }
 
+export interface WorkLogItem {
+    id: string;
+    issueId: string;
+    issueReadableId: string;
+    issueSummary: string;
+    date: number; // timestamp
+    durationMinutes: number;
+    durationPresentation: string;
+    authorName: string;
+    authorLogin: string;
+    text: string;
+    workType: string;
+}
+
 export interface IssueWithHistory extends YouTrackIssue {
     timeline: ActivityItem[];
 }
@@ -363,4 +377,54 @@ export const fetchIssuesActivity = async (
     });
 
     return Promise.all(historyPromises);
+};
+
+export const fetchProjectWorkLogs = async (
+    baseUrl: string,
+    token: string,
+    projectQuery: string,
+    dateFrom: string, // YYYY-MM-DD
+    dateTo: string    // YYYY-MM-DD
+): Promise<WorkLogItem[]> => {
+    if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
+    const apiBase = baseUrl.replace(/\/$/, '') + '/api';
+
+    const query = `${projectQuery} work date: ${dateFrom} .. ${dateTo}`;
+
+    const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
+        query,
+        fields: 'id,idReadable,summary,issueWorkItems(id,date,duration(minutes,presentation),author(name,login),text,type(name))',
+        $top: 200 // Maksymalnie ile zadan obslugujemy
+    });
+
+    const workLogs: WorkLogItem[] = [];
+    const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
+    const toTime = new Date(`${dateTo}T23:59:59`).getTime();
+
+    issues.forEach(issue => {
+        if (!issue.issueWorkItems || !Array.isArray(issue.issueWorkItems)) return;
+
+        issue.issueWorkItems.forEach((wi: any) => {
+            const logDate = wi.date;
+            // Filtrowanie wpisów do zadanego przedziału (YouTrack zwraca wszystkie work itemy dla zadania, z ktorych tylko niektore wpadly pod `work date:`)
+            if (logDate >= fromTime && logDate <= toTime) {
+                workLogs.push({
+                    id: wi.id,
+                    issueId: issue.id,
+                    issueReadableId: issue.idReadable,
+                    issueSummary: issue.summary,
+                    date: wi.date,
+                    durationMinutes: wi.duration?.minutes || 0,
+                    durationPresentation: wi.duration?.presentation || '',
+                    authorName: wi.author?.name || 'System',
+                    authorLogin: wi.author?.login || 'system',
+                    text: wi.text || '',
+                    workType: wi.type?.name || ''
+                });
+            }
+        });
+    });
+
+    // Sort chronologically descending
+    return workLogs.sort((a, b) => b.date - a.date);
 };
