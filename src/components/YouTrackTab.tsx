@@ -515,7 +515,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         }
     };
 
-    const renderTimelineGroup = (group: any, idx: number) => {
+    const renderTimelineGroup = (group: any, idx: number, issue: any) => {
         if (group.items.length === 1) {
             const item = group.items[0];
             if (item.type === 'comment') {
@@ -528,7 +528,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                             <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-md">Komentarz</span>
                         </div>
                         <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
-                            {renderTextWithImages(content, [])}
+                            {renderTextWithImages(content, issue?.attachments || [])}
                         </div>
                     </div>
                 );
@@ -1016,7 +1016,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                                     {activeTab !== 'Aktywności' && alwaysVisible.length > 0 && (
                                                         <div className="space-y-1 mb-4">
                                                             {alwaysVisible.map((group, idx) => (
-                                                                <div key={`vis-${idx}`}>{renderTimelineGroup(group, idx)}</div>
+                                                                <div key={`vis-${idx}`}>{renderTimelineGroup(group, idx, issue)}</div>
                                                             ))}
                                                         </div>
                                                     )}
@@ -1040,7 +1040,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                                                 </summary>
                                                                 <div className="p-3 pt-0 space-y-1">
                                                                     {sortedOutRange.map((group, idx) => (
-                                                                        <div key={`out-${idx}`}>{renderTimelineGroup(group, idx)}</div>
+                                                                        <div key={`out-${idx}`}>{renderTimelineGroup(group, idx, issue)}</div>
                                                                     ))}
                                                                 </div>
                                                             </details>
@@ -1050,7 +1050,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                                     {activeTab === 'Aktywności' && (
                                                         <div className="space-y-1">
                                                             {historyInRange.length > 0 ? historyInRange.map((group, idx) => (
-                                                                <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length)}</div>
+                                                                <div key={`in-${idx}`}>{renderTimelineGroup(group, idx + historyOutRange.length, issue)}</div>
                                                             )) : (
                                                                 <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">Brak aktywności obok tego zadania w wybranym przedziale {format(dFrom, 'dd.MM')} - {format(dTo, 'dd.MM')}.</p>
                                                             )}
