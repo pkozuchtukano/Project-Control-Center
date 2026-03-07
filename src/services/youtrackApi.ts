@@ -142,11 +142,24 @@ export const fetchIssuesActivity = async (
         query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
     }
 
-    const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
-        query,
-        fields: 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login),assignee(name,login),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))',
-        $top: 100
-    });
+    // Pobierz WSZYSTKIE zadania (paginacja - brak limitu)
+    const issues: any[] = [];
+    const ISSUES_PAGE = 100;
+    let issueSkip = 0;
+    const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login),assignee(name,login),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
+
+    while (true) {
+        const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
+            query,
+            fields: issueFields,
+            $top: ISSUES_PAGE,
+            $skip: issueSkip
+        });
+        if (!Array.isArray(page) || page.length === 0) break;
+        issues.push(...page);
+        if (page.length < ISSUES_PAGE) break;
+        issueSkip += ISSUES_PAGE;
+    }
 
     // 2. For each issue, fetch full activity (comments + field changes)
     // We use Promise.all to fetch them concurrently. We limit fields to keep response light.
@@ -389,47 +402,78 @@ export const fetchProjectWorkLogs = async (
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
     const apiBase = baseUrl.replace(/\/$/, '') + '/api';
 
-    // Pobierz najpierw zadania dla których zanotowano czas w danym okresie
-    const query = `${projectQuery} work date: ${dateFrom} .. ${dateTo}`;
+    // Poprawna forma filtru projektu – jeśli nie ma operatora ':' to dodaj prefix 'project:'
+    const safeProjectQuery = projectQuery.includes(':') 
+        ? projectQuery 
+        : `project: ${projectQuery}`;
 
-    const issues: any[] = await makeRequest(`${apiBase}/issues`, token, {
-        query,
-        fields: 'id,idReadable,summary',
-        $top: 200 // Maksymalnie ile zadan obslugujemy w jednym strzale
-    });
+    const query = `${safeProjectQuery} work date: ${dateFrom} .. ${dateTo}`;
+
+    // --- Krok 1: Pobierz WSZYSTKIE pasujące zadania (z paginacją) ---
+    const allIssues: any[] = [];
+    const PAGE_SIZE = 100;
+    let skip = 0;
+
+    while (true) {
+        const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
+            query,
+            fields: 'id,idReadable,summary',
+            $top: PAGE_SIZE,
+            $skip: skip
+        });
+
+        if (!Array.isArray(page) || page.length === 0) break;
+        allIssues.push(...page);
+        if (page.length < PAGE_SIZE) break; // ostatnia strona
+        skip += PAGE_SIZE;
+    }
 
     const workLogs: WorkLogItem[] = [];
     const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
     const toTime = new Date(`${dateTo}T23:59:59`).getTime();
 
-    // Dla każdego zadania dociągamy jego zewidencjonowane wpisy czasu pracy
-    const timePromises = issues.map(async (issue) => {
+    // --- Krok 2: Dla każdego zadania pobierz WSZYSTKIE logi czasu (z paginacją) ---
+    const timePromises = allIssues.map(async (issue) => {
         try {
-            const workItems = await makeRequest(`${apiBase}/issues/${issue.id}/timeTracking/workItems`, token, {
-                fields: 'id,date,duration(minutes,presentation),author(name,login),text,type(name)'
-            });
-            
-            if (Array.isArray(workItems)) {
-                workItems.forEach((wi: any) => {
-                    const logDate = wi.date;
-                    // Filtrowanie wpisów do zadanego przedziału wejściowego (ponieważ pobraliśmy absolutnie wszystkie time logs pobranego zadania)
-                    if (logDate >= fromTime && logDate <= toTime) {
-                        workLogs.push({
-                            id: wi.id,
-                            issueId: issue.id,
-                            issueReadableId: issue.idReadable,
-                            issueSummary: issue.summary,
-                            date: wi.date,
-                            durationMinutes: wi.duration?.minutes || 0,
-                            durationPresentation: wi.duration?.presentation || '',
-                            authorName: wi.author?.name || 'System',
-                            authorLogin: wi.author?.login || 'system',
-                            text: wi.text || '',
-                            workType: wi.type?.name || ''
-                        });
+            const allWorkItems: any[] = [];
+            let wiSkip = 0;
+
+            while (true) {
+                const page: any[] = await makeRequest(
+                    `${apiBase}/issues/${issue.id}/timeTracking/workItems`,
+                    token,
+                    {
+                        fields: 'id,date,duration(minutes,presentation),author(name,login),text,type(name)',
+                        $top: PAGE_SIZE,
+                        $skip: wiSkip
                     }
-                });
+                );
+
+                if (!Array.isArray(page) || page.length === 0) break;
+                allWorkItems.push(...page);
+                if (page.length < PAGE_SIZE) break;
+                wiSkip += PAGE_SIZE;
             }
+
+            allWorkItems.forEach((wi: any) => {
+                const logDate = wi.date;
+                // Filtrowanie po stronie klienta jako zabezpieczenie (API filtruje zadania, nie workItems)
+                if (logDate >= fromTime && logDate <= toTime) {
+                    workLogs.push({
+                        id: wi.id,
+                        issueId: issue.id,
+                        issueReadableId: issue.idReadable,
+                        issueSummary: issue.summary,
+                        date: wi.date,
+                        durationMinutes: wi.duration?.minutes || 0,
+                        durationPresentation: wi.duration?.presentation || '',
+                        authorName: wi.author?.name || 'System',
+                        authorLogin: wi.author?.login || 'system',
+                        text: wi.text || '',
+                        workType: wi.type?.name || ''
+                    });
+                }
+            });
         } catch (err) {
             console.error(`Błąd dociągania logów czasu dla zadania ${issue.idReadable}:`, err);
         }
@@ -437,6 +481,8 @@ export const fetchProjectWorkLogs = async (
 
     await Promise.all(timePromises);
 
-    // Sort chronologically descending
-    return workLogs.sort((a, b) => b.date - a.date);
+    // Sortuj od najnowszego do najstarszego
+    workLogs.sort((a, b) => b.date - a.date);
+
+    return workLogs;
 };

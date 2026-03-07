@@ -1,6 +1,6 @@
 import electron from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-const { app, BrowserWindow, ipcMain } = electron;
+const { app, BrowserWindow, ipcMain, shell } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -66,6 +66,12 @@ async function createWindow() {
             sandbox: false,
         },
         autoHideMenuBar: true,
+    });
+
+    // Przechwytuj kliknięcia w linki (jak target="_blank") i odsyłaj do "zewnętrznej" pełnoprawnej przeglądarki użytkownika
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        shell.openExternal(url);
+        return { action: 'deny' }; // zablokuj otwieranie sub-okienka Electronowego
     });
 
     mainWindow.maximize();
