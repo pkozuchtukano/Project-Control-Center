@@ -42,6 +42,7 @@ import {
 // ==========================================
 import { YouTrackTab } from './components/YouTrackTab';
 import { WorkRegistryMain } from './features/work-registry/components/WorkRegistryMain';
+import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry';
 
 export type TaskType = {
   id: string;
@@ -687,6 +688,7 @@ const ProjectModal = ({
 const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
+  const { workItems } = useWorkRegistry(selectedProject);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack'>('dashboard');
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
@@ -721,6 +723,29 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     { name: 'Zostaje', Godziny: remainingToMax, fill: '#c026d3' },
     { name: 'Max', Godziny: selectedProject.maxHours, fill: '#818cf8' }
   ];
+
+  // Calculate YouTrack hours by category
+  const youtrackHours: Record<string, number> = {
+    'Programistyczne': 0,
+    'Obsługa projektu': 0,
+    'Inne': 0
+  };
+  
+  workItems?.forEach(item => {
+    const cat = item.category || 'Inne';
+    if (youtrackHours[cat] !== undefined) {
+      youtrackHours[cat] += (item.minutes || 0) / 60;
+    } else {
+      youtrackHours[cat] = (item.minutes || 0) / 60;
+    }
+  });
+
+  const youtrackTotal = youtrackHours['Programistyczne'] + youtrackHours['Obsługa projektu'] + youtrackHours['Inne'];
+  const maxScale = Math.max(selectedProject.maxHours || 1, totalHoursUsed, youtrackTotal);
+
+  const progPct = youtrackTotal > 0 ? (youtrackHours['Programistyczne'] / youtrackTotal) * 100 : 0;
+  const obsPct = youtrackTotal > 0 ? (youtrackHours['Obsługa projektu'] / youtrackTotal) * 100 : 0;
+  const inPct = youtrackTotal > 0 ? (youtrackHours['Inne'] / youtrackTotal) * 100 : 0;
 
   return (
     <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900/50">
@@ -813,6 +838,49 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 <span>Start: {selectedProject.dateFrom}</span>
                 {daysRemaining >= 0 ? <span>Pozostało dni: <strong className="text-gray-900 dark:text-gray-200">{daysRemaining}</strong></span> : <span className="text-red-500 font-bold">Po terminie od {-daysRemaining} dni</span>}
                 <span>Koniec: {selectedProject.dateTo}</span>
+              </div>
+            </div>
+
+            {/* HOURS COMPARISON PROGRESS */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2 text-gray-900 dark:text-white mb-6">
+                <Activity size={20} className="text-indigo-500" />
+                <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
+              </div>
+              <div className="space-y-5">
+                <div>
+                  <div className="flex justify-between text-sm mb-1.5 font-medium">
+                    <span className="text-gray-600 dark:text-gray-400">Wykorzystane (Rozliczone + Zakontraktowane)</span>
+                    <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                  </div>
+                  <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                    <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalHoursUsed / maxScale) * 100)}%` }}></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-sm mb-1.5 font-medium">
+                    <span className="text-gray-600 dark:text-gray-400">Przepracowane w YouTrack</span>
+                    <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                  </div>
+                  <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                    <div className="bg-violet-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${youtrackHours['Programistyczne'].toFixed(1)}h (${progPct.toFixed(0)}%)`}>
+                      {progPct > 5 ? `${progPct.toFixed(0)}%` : ''}
+                    </div>
+                    <div className="bg-emerald-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${youtrackHours['Obsługa projektu'].toFixed(1)}h (${obsPct.toFixed(0)}%)`}>
+                      {obsPct > 5 ? `${obsPct.toFixed(0)}%` : ''}
+                    </div>
+                    <div className="bg-amber-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${youtrackHours['Inne'].toFixed(1)}h (${inPct.toFixed(0)}%)`}>
+                      {inPct > 5 ? `${inPct.toFixed(0)}%` : ''}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne {progPct > 0 && `(${progPct.toFixed(0)}%)`}</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu {obsPct > 0 && `(${obsPct.toFixed(0)}%)`}</div>
+                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne {inPct > 0 && `(${inPct.toFixed(0)}%)`}</div>
+                  </div>
+                </div>
               </div>
             </div>
 

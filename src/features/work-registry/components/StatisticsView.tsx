@@ -133,7 +133,7 @@ export const StatisticsView = ({ items }: Props) => {
                         }}
                         className="mt-5 text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
                     >
-                        Przywróć pełny zakres
+                        Pełny zakres
                     </button>
                 )}
             </div>
