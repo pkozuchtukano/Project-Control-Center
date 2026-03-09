@@ -798,9 +798,14 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                             );
                                         })()}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
-                                        <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight flex-1">{issue.summary}</h3>
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-1">
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
+                                            <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">
+                                                {issue.type && <span className="text-indigo-500 mr-2 font-bold opacity-80">[{issue.type}]</span>}
+                                                {issue.summary}
+                                            </h3>
+                                        </div>
                                         
                                         {/* Wybór rodzaju zadania */}
                                         {project.taskTypes && project.taskTypes.length > 0 && (() => {

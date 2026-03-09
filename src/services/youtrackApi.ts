@@ -34,6 +34,7 @@ export interface YouTrackIssue {
         minutes: number;
     } | null;
     state?: string | null;
+    type?: string;
     attachments?: {
         name: string;
         url: string;
@@ -314,6 +315,7 @@ export const fetchIssuesActivity = async (
             let estimation = null;
             let spentTime = null;
             let state: string | null = null;
+            let type: string | undefined = undefined;
             let assignee: { name: string; login: string } | null = null;
 
             if (issue.customFields) {
@@ -351,6 +353,10 @@ export const fetchIssuesActivity = async (
                         if (f.value) {
                             state = f.value.name || f.value.presentation || String(f.value);
                         }
+                    } else if (fname === 'type' || fname === 'typ') {
+                        if (f.value) {
+                            type = f.value.name || f.value.presentation || String(f.value);
+                        }
                     } else if (fname === 'assignee' || fname === 'przypisany' || fname === 'osoba odpowiedzialna') {
                         if (f.value) {
                             // SingleUserIssueCustomField: value is a user object
@@ -377,6 +383,7 @@ export const fetchIssuesActivity = async (
                 estimation,
                 spentTime,
                 state,
+                type,
                 attachments: issue.attachments || [],
                 tags: issue.tags || [],
                 links: issue.links || [],
