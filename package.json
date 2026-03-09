@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build && electron-builder",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "npm run rebuild"
   },
   "build": {
     "appId": "com.pkozuch.pcc",
@@ -32,6 +34,7 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@eslint/js": "^9.39.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.11.0",
