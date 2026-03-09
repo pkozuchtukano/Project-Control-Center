@@ -1,0 +1,186 @@
+﻿
+> pcc@1.0.0 build
+> tsc -b && vite build && electron-builder
+
+[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mÔťô[39m 3264 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                 [39m[1m[2m  0.47 kB[22m[1m[22m[2m Ôöé gzip:   0.30 kB[22m
+[2mdist/[22m[35massets/index-BzEEZSTG.css  [39m[1m[2m 57.11 kB[22m[1m[22m[2m Ôöé gzip:   9.72 kB[22m
+[2mdist/[22m[36massets/index-CIXJgjXH.js   [39m[1m[33m778.30 kB[39m[22m[2m Ôöé gzip: 230.52 kB[22m
+node.exe : [33m
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m:String) [], RemoteExceptio
+n
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://ro
+llupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[
+39m
+[32mÔťô built in 13.26s[39m
+[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mÔťô[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[22m[36mmain.js  [39m[1m[2m9.61 kB[22m[1m[22m[2m Ôöé gzip: 2.74 kB[22m
+[32mÔťô built in 51ms[39m
+[36mvite v7.3.1 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32mÔťô[39m 1 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[22m[36mpreload.js  [39m[1m[2m1.01 kB[22m[1m[22m[2m Ôöé gzip: 0.37 kB[22m
+[32mÔťô built in 20ms[39m
+  ÔÇó electron-builder  version=26.8.1 os=10.0.22631
+  ÔÇó loaded configuration  file=package.json ("build" field)
+  ÔÇó description is missed in the package.json  appPackageFile=M:\Project Control Center\Project-Control-Center\package.json
+  ÔÇó author is missed in the package.json  appPackageFile=M:\Project Control Center\Project-Control-Center\package.json
+  ÔÇó @electron/rebuild already used by electron-builder, please consider to remove excess dependency from devDependencies
+
+To ensure your native dependencies are always matched electron version, simply add script `"postinstall": "electron-builder install-app-deps" to your `package.json`
+  ÔÇó executing @electron/rebuild  electronVersion=40.7.0 arch=x64 buildFromSource=false workspaceRoot=M:\Project Control Center\Project-Control-Center projectDir=./ appDir=./
+  ÔÇó installing native dependencies  arch=x64
+  ÔÇó preparing       moduleName=better-sqlite3 arch=x64
+  ÔÇó finished        moduleName=better-sqlite3 arch=x64
+  ÔÇó completed installing native dependencies
+  ÔÇó packaging       platform=win32 arch=x64 electron=40.7.0 appOutDir=release\win-unpacked
+  ÔÇó searching for node modules  pm=npm searchDir=M:\Project Control Center\Project-Control-Center
+(node:60000) [DEP0190] DeprecationWarning: Passing args to a child process wi
+th shell option true can lead to security vulnerabilities, as the arguments a
+re not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  ÔÇó duplicate dependency references  dependencies=["@jridgewell/trace-mapping@0.3.31","lightningcss@1.31.1","call-bind-apply-helpers@1.0.2","es-object-atoms@1.1.1","hasown@2.0.2","hasown@2.0.2","once@1.4.0","once@1.4.0","pump@3.0.4","readable-stream@3.6.2","end-of-stream@1.4.5","@firebase/app@0.14.9","@firebase/util@1.14.0","@firebase/util@1.14.0","@firebase/analytics@0.10.20","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/installations@0.6.20","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app-check@0.11.1","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/util@1.14.0","@firebase/auth@1.12.1","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/database@1.1.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/firestore@4.12.0","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/util@1.14.0","@grpc/proto-loader@0.7.15","@types/node@24.11.0","@types/node@24.11.0","string-width@4.2.3","string-width@4.2.3","strip-ansi@6.0.1","strip-ansi@6.0.1","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/functions@0.13.2","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/installations@0.6.20","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/messaging@0.12.24","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/installations@0.6.20","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/performance@0.7.10","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/installations@0.6.20","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/logger@0.5.0","@firebase/remote-config@0.8.1","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/installations@0.6.20","@firebase/logger@0.5.0","@firebase/util@1.14.0","@firebase/app-compat@0.5.9","@firebase/component@0.7.1","@firebase/util@1.14.0","@firebase/storage@0.14.1","@firebase/util@1.14.0","@firebase/app@0.14.9","@firebase/component@0.7.1","@firebase/util@1.14.0","react-redux@9.2.0","react-dom@19.2.4","d3-array@3.2.4","d3-interpolate@3.0.1","d3-time@3.1.0","d3-time@3.1.0","d3-array@3.2.4"]
+  ÔÇó updating asar integrity executable resource  executablePath=release\win-unpacked\PCC.exe
+  ÔÇó default Electron icon is used  reason=application icon is not set
+  ÔÇó downloading     url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z size=5.6 MB parts=1
+  ÔÇó downloaded      url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z duration=1.29s
+  ÔĘ» cannot execute  cause=exit status 2
+                    out=
+    7-Zip (a) 21.07 (x64) : Copyright (c) 1999-2021 Igor Pavlov : 2021-12-26
+    
+    Scanning the drive for archives:
+    1 file, 5635384 bytes (5504 KiB)
+    
+    Extracting archive: C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043.7z
+    --
+    Path = C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043.7z
+    Type = 7z
+    Physical Size = 5635384
+    Headers Size = 1492
+    Method = LZMA2:24m LZMA:20 BCJ2
+    Solid = +
+    Blocks = 2
+    
+    
+    Sub items Errors: 2
+    
+    Archives with Errors: 1
+    
+    Sub items Errors: 2
+    
+                    errorOut=ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043\darwin\10.12\lib\libcrypto.dylib
+    ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043\darwin\10.12\lib\libssl.dylib
+    
+                    command='M:\Project Control Center\Project-Control-Center\node_modules\7zip-bin\win\x64\7za.exe' x -snld -bd 'C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043.7z' '-oC:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\489168043'
+                    workingDir=C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign
+  ÔÇó downloading     url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z size=5.6 MB parts=1
+  ÔÇó downloaded      url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z duration=929ms
+  ÔĘ» cannot execute  cause=exit status 2
+                    out=
+    7-Zip (a) 21.07 (x64) : Copyright (c) 1999-2021 Igor Pavlov : 2021-12-26
+    
+    Scanning the drive for archives:
+    1 file, 5635384 bytes (5504 KiB)
+    
+    Extracting archive: C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563.7z
+    --
+    Path = C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563.7z
+    Type = 7z
+    Physical Size = 5635384
+    Headers Size = 1492
+    Method = LZMA2:24m LZMA:20 BCJ2
+    Solid = +
+    Blocks = 2
+    
+    
+    Sub items Errors: 2
+    
+    Archives with Errors: 1
+    
+    Sub items Errors: 2
+    
+                    errorOut=ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563\darwin\10.12\lib\libcrypto.dylib
+    ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563\darwin\10.12\lib\libssl.dylib
+    
+                    command='M:\Project Control Center\Project-Control-Center\node_modules\7zip-bin\win\x64\7za.exe' x -snld -bd 'C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563.7z' '-oC:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\496058563'
+                    workingDir=C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign
+  ÔÇó downloading     url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z size=5.6 MB parts=1
+  ÔÇó downloaded      url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z duration=959ms
+  ÔĘ» cannot execute  cause=exit status 2
+                    out=
+    7-Zip (a) 21.07 (x64) : Copyright (c) 1999-2021 Igor Pavlov : 2021-12-26
+    
+    Scanning the drive for archives:
+    1 file, 5635384 bytes (5504 KiB)
+    
+    Extracting archive: C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539.7z
+    --
+    Path = C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539.7z
+    Type = 7z
+    Physical Size = 5635384
+    Headers Size = 1492
+    Method = LZMA2:24m LZMA:20 BCJ2
+    Solid = +
+    Blocks = 2
+    
+    
+    Sub items Errors: 2
+    
+    Archives with Errors: 1
+    
+    Sub items Errors: 2
+    
+                    errorOut=ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539\darwin\10.12\lib\libcrypto.dylib
+    ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539\darwin\10.12\lib\libssl.dylib
+    
+                    command='M:\Project Control Center\Project-Control-Center\node_modules\7zip-bin\win\x64\7za.exe' x -snld -bd 'C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539.7z' '-oC:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\383879539'
+                    workingDir=C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign
+  ÔÇó downloading     url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z size=5.6 MB parts=1
+  ÔÇó downloaded      url=https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z duration=1.193s
+  ÔĘ» cannot execute  cause=exit status 2
+                    out=
+    7-Zip (a) 21.07 (x64) : Copyright (c) 1999-2021 Igor Pavlov : 2021-12-26
+    
+    Scanning the drive for archives:
+    1 file, 5635384 bytes (5504 KiB)
+    
+    Extracting archive: C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515.7z
+    --
+    Path = C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515.7z
+    Type = 7z
+    Physical Size = 5635384
+    Headers Size = 1492
+    Method = LZMA2:24m LZMA:20 BCJ2
+    Solid = +
+    Blocks = 2
+    
+    
+    Sub items Errors: 2
+    
+    Archives with Errors: 1
+    
+    Sub items Errors: 2
+    
+                    errorOut=ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515\darwin\10.12\lib\libcrypto.dylib
+    ERROR: Cannot create symbolic link : Klient nie ma wymaganych uprawnień. : C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515\darwin\10.12\lib\libssl.dylib
+    
+                    command='M:\Project Control Center\Project-Control-Center\node_modules\7zip-bin\win\x64\7za.exe' x -snld -bd 'C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515.7z' '-oC:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign\609168515'
+                    workingDir=C:\Users\pkozuch\AppData\Local\electron-builder\Cache\winCodeSign

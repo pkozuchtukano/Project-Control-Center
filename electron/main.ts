@@ -47,6 +47,21 @@ db.exec(`
         issueId TEXT PRIMARY KEY,
         taskTypeId TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS work_items (
+        id TEXT PRIMARY KEY,
+        issueId TEXT,
+        author TEXT,
+        authorName TEXT,
+        date TEXT,
+        minutes INTEGER,
+        description TEXT,
+        lastModified TEXT,
+        projectId TEXT
+    );
+    CREATE TABLE IF NOT EXISTS issue_categories (
+        issueId TEXT PRIMARY KEY,
+        category TEXT NOT NULL
+    );
 `);
 
 let mainWindow: BrowserWindowType | null = null;
@@ -329,6 +344,76 @@ ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, param
         return await response.json();
     } catch (error: any) {
         console.error(`Błąd zapytania fetch-youtrack do ${url}:`, error);
+        throw error;
+    }
+});
+
+// ==========================================
+// IPC WORK ITEMS & CATEGORIES HANDLERS
+// ==========================================
+
+ipcMain.handle('get-work-items', async (_, projectId: string) => {
+    try {
+        const rows = db.prepare('SELECT * FROM work_items WHERE projectId = ?').all(projectId);
+        return rows;
+    } catch (error) {
+        console.error('Błąd pobierania work_items:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any[], projectId: string }) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare(`
+                INSERT INTO work_items (id, issueId, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET 
+                    issueId = excluded.issueId,
+                    author = excluded.author,
+                    authorName = excluded.authorName,
+                    date = excluded.date,
+                    minutes = excluded.minutes,
+                    description = excluded.description,
+                    lastModified = excluded.lastModified,
+                    projectId = excluded.projectId
+            `);
+            for (const item of items) {
+                stmt.run(item.id, item.issueId, item.author, item.authorName, item.date, item.minutes, item.description, item.lastModified, projectId);
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu work_items:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-issue-categories', async () => {
+    try {
+        const rows = db.prepare('SELECT * FROM issue_categories').all();
+        const map: Record<string, string> = {};
+        for (const row of rows as { issueId: string, category: string }[]) {
+            map[row.issueId] = row.category;
+        }
+        return map;
+    } catch (error) {
+        console.error('Błąd pobierania kategorii zgłoszeń:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('set-issue-category', async (_, { issueId, category }: { issueId: string, category: string }) => {
+    try {
+        db.prepare(`
+            INSERT INTO issue_categories (issueId, category)
+            VALUES (?, ?)
+            ON CONFLICT(issueId) DO UPDATE SET category = excluded.category
+        `).run(issueId, category);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu kategorii zgłoszenia:', error);
         throw error;
     }
 });
