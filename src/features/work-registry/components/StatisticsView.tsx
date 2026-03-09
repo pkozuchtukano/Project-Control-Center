@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    Legend, Cell, PieChart, Pie
+    Legend, Cell, PieChart, Pie, LineChart, Line
 } from 'recharts';
 import { type WorkItemRow } from '../types';
 import { format, parseISO } from 'date-fns';
@@ -11,12 +11,37 @@ interface Props {
     items: WorkItemRow[];
 }
 
+// Funkcja przypisująca spójne kolory dla autorów
+const getAuthorColor = (index: number) => {
+    const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6', '#14b8a6', '#f43f5e'];
+    return colors[index % colors.length];
+};
+
 export const StatisticsView = ({ items }: Props) => {
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+
+    useEffect(() => {
+        if (items.length > 0) {
+            const minDateIso = items.reduce((min, item) => (item.date < min ? item.date : min), items[0].date);
+            setDateFrom(minDateIso.split('T')[0]);
+            setDateTo(format(new Date(), 'yyyy-MM-dd'));
+        }
+    }, [items]);
+
+    const filteredItems = useMemo(() => {
+        return items.filter(item => {
+            if (dateFrom && item.date < dateFrom) return false;
+            // The date string typically has T00:00:00, adding T23:59:59 matches the end of the day.
+            if (dateTo && item.date > `${dateTo}T23:59:59`) return false;
+            return true;
+        });
+    }, [items, dateFrom, dateTo]);
 
     // Better monthly data with proper sorting
     const sortedMonthlyData = useMemo(() => {
         const monthMap: Record<string, any> = {};
-        items.forEach(item => {
+        filteredItems.forEach(item => {
             const date = parseISO(item.date);
             const key = format(date, 'yyyy-MM');
             if (!monthMap[key]) {
@@ -25,12 +50,12 @@ export const StatisticsView = ({ items }: Props) => {
             monthMap[key][item.category] += item.minutes / 60;
         });
         return Object.values(monthMap).sort((a: any, b: any) => a.key.localeCompare(b.key));
-    }, [items]);
+    }, [filteredItems]);
 
     // 2. Category Distribution
     const categoryData = useMemo(() => {
         const counts = { Programistyczne: 0, 'Obsługa projektu': 0, Inne: 0 };
-        items.forEach(item => {
+        filteredItems.forEach(item => {
             counts[item.category] += item.minutes / 60;
         });
         return [
@@ -38,18 +63,41 @@ export const StatisticsView = ({ items }: Props) => {
             { name: 'Obsługa projektu', value: counts['Obsługa projektu'], color: '#f59e0b' },
             { name: 'Inne', value: counts.Inne, color: '#6366f1' },
         ].filter(d => d.value > 0);
-    }, [items]);
+    }, [filteredItems]);
 
     // 3. Top Authors
     const authorData = useMemo(() => {
         const authors: Record<string, number> = {};
-        items.forEach(item => {
+        filteredItems.forEach(item => {
             authors[item.authorName] = (authors[item.authorName] || 0) + item.minutes / 60;
         });
         return Object.entries(authors)
             .map(([name, hours]) => ({ name, hours }))
             .sort((a, b) => b.hours - a.hours);
-    }, [items]);
+    }, [filteredItems]);
+
+    // 4. Zaangażowanie osób w czasie (miesięcznie)
+    const monthlyAuthorData = useMemo(() => {
+        const monthMap: Record<string, any> = {};
+        
+        // Zbieramy wszystkich unikalnych autorów w bieżącym filtrze,
+        // żeby móc wyzerować im godziny w miesiącach w których nie pracowali
+        const allAuthors = new Set<string>();
+        filteredItems.forEach(item => allAuthors.add(item.authorName));
+        
+        filteredItems.forEach(item => {
+            const date = parseISO(item.date);
+            const key = format(date, 'yyyy-MM');
+            
+            if (!monthMap[key]) {
+                monthMap[key] = { key, display: format(date, 'MMM yy', { locale: pl }) };
+                allAuthors.forEach(a => monthMap[key][a] = 0);
+            }
+            monthMap[key][item.authorName] += parseFloat((item.minutes / 60).toFixed(2));
+        });
+        
+        return Object.values(monthMap).sort((a: any, b: any) => a.key.localeCompare(b.key));
+    }, [filteredItems]);
 
     if (items.length === 0) {
         return (
@@ -60,9 +108,39 @@ export const StatisticsView = ({ items }: Props) => {
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Main Bar Chart */}
-            <div className="lg:col-span-2 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+        <div className="flex flex-col gap-6 h-full overflow-y-auto pr-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Filters Row */}
+            <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm shrink-0">
+                <div>
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Od daty</label>
+                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]" />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Do daty</label>
+                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]" />
+                </div>
+                {(dateFrom || dateTo) && (
+                    <button
+                        onClick={() => {
+                            if (items.length > 0) {
+                                const minDateIso = items.reduce((min, item) => (item.date < min ? item.date : min), items[0].date);
+                                setDateFrom(minDateIso.split('T')[0]);
+                                setDateTo(format(new Date(), 'yyyy-MM-dd'));
+                            } else {
+                                setDateFrom('');
+                                setDateTo('');
+                            }
+                        }}
+                        className="mt-5 text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                    >
+                        Przywróć pełny zakres
+                    </button>
+                )}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
+                {/* Main Bar Chart */}
+                <div className="lg:col-span-2 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider">Rozkład miesięczny (roboczogodziny)</h3>
                 <div className="h-[350px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -102,10 +180,25 @@ export const StatisticsView = ({ items }: Props) => {
                                 data={categoryData}
                                 cx="50%"
                                 cy="50%"
-                                innerRadius={60}
+                                innerRadius={40}
                                 outerRadius={80}
                                 paddingAngle={5}
                                 dataKey="value"
+                                label={({ cx, cy, midAngle = 0, innerRadius, outerRadius, percent = 0 }) => {
+                                    const RADIAN = Math.PI / 180;
+                                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                                    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                                    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                                    
+                                    if (percent < 0.05) return null; // Ukryj małe etykiety
+                                    
+                                    return (
+                                        <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="11" fontWeight="bold">
+                                            {`${(percent * 100).toFixed(0)}%`}
+                                        </text>
+                                    );
+                                }}
+                                labelLine={false}
                             >
                                 {categoryData.map((entry) => (
                                     <Cell key={entry.name} fill={entry.color} />
@@ -149,12 +242,49 @@ export const StatisticsView = ({ items }: Props) => {
                 </div>
             </div>
 
-            <div className="lg:col-span-2 bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
-                <h4 className="text-indigo-900 dark:text-indigo-300 font-semibold mb-2">Wnioski z analizy</h4>
-                <p className="text-sm text-indigo-700 dark:text-indigo-400 leading-relaxed">
-                    Widoczna powyżej dystrybucja godzin pokazuje realne zaangażowanie zespołu w prace rozwojowe względem kosztów obsługi.
-                    Stabilny udział grupy <strong>Programistyczne</strong> (powyżej 80%) świadczy o wysokiej efektywności produkcyjnej projektu.
-                </p>
+            <div className="lg:col-span-2 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider">Zaangażowanie w czasie (miesięcznie / rbh)</h3>
+                <div className="h-[350px] w-full">
+                    {monthlyAuthorData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={monthlyAuthorData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                <XAxis 
+                                    dataKey="display" 
+                                    axisLine={false} 
+                                    tickLine={false} 
+                                    tick={{ fontSize: 12, fill: '#6B7280' }} 
+                                />
+                                <YAxis 
+                                    axisLine={false} 
+                                    tickLine={false} 
+                                    tick={{ fontSize: 12, fill: '#6B7280' }} 
+                                />
+                                <Tooltip 
+                                    cursor={{ stroke: '#E5E7EB', strokeWidth: 2 }}
+                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                />
+                                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                                {authorData.map((author, idx) => (
+                                    <Line 
+                                        key={author.name} 
+                                        type="monotone" 
+                                        dataKey={author.name} 
+                                        stroke={getAuthorColor(idx)} 
+                                        strokeWidth={3}
+                                        dot={{ r: 4, strokeWidth: 2 }}
+                                        activeDot={{ r: 6 }}
+                                    />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                            Brak danych dla wybranego okresu
+                        </div>
+                    )}
+                </div>
+            </div>
             </div>
         </div>
     );

@@ -1,5 +1,7 @@
 import { format, addMonths, startOfMonth, endOfMonth, isAfter, parseISO } from 'date-fns';
+import { pl } from 'date-fns/locale';
 import { type WorkItem } from '../types';
+import { fetchProjectWorkLogs } from '../../../services/youtrackApi';
 
 declare const window: any;
 
@@ -15,21 +17,26 @@ export const syncWorkItems = async (
     projectId: string,
     youtrackQuery: string,
     dateFrom: string,
+    dateTo: string,
     baseUrl: string,
     token: string,
     onProgress: (p: SyncProgress) => void
 ) => {
     try {
-        // Fallback if dateFrom is missing or invalid
-        let parsedDate = parseISO(dateFrom);
-        if (isNaN(parsedDate.getTime())) {
+        let parsedFrom = parseISO(dateFrom);
+        if (isNaN(parsedFrom.getTime())) {
             console.warn('Invalid dateFrom provided to syncWorkItems, defaulting to start of current month:', dateFrom);
-            parsedDate = new Date();
+            parsedFrom = new Date();
         }
 
-        const start = startOfMonth(parsedDate);
-        const now = new Date();
-        const end = endOfMonth(now);
+        let parsedTo = parseISO(dateTo);
+        if (isNaN(parsedTo.getTime())) {
+            console.warn('Invalid dateTo provided to syncWorkItems, defaulting to current end of month:', dateTo);
+            parsedTo = new Date();
+        }
+
+        const start = startOfMonth(parsedFrom);
+        const end = endOfMonth(parsedTo);
 
         let currentIntervalStart = start;
         const chunks: { from: string; to: string; label: string }[] = [];
@@ -39,7 +46,7 @@ export const syncWorkItems = async (
             chunks.push({
                 from: format(currentIntervalStart, 'yyyy-MM-dd'),
                 to: format(chunkEnd, 'yyyy-MM-dd'),
-                label: format(currentIntervalStart, 'LLLL yyyy')
+                label: format(currentIntervalStart, 'LLLL yyyy', { locale: pl })
             });
             currentIntervalStart = addMonths(currentIntervalStart, 1);
         }
@@ -70,31 +77,25 @@ export const syncWorkItems = async (
                 status: 'syncing'
             });
 
-            // Improved YouTrack query: use youtrackQuery if available, otherwise just project ID
-            // We use the same logic as in YouTrackTab: youtrackQuery || project.code || project.id
-            const projectFilter = youtrackQuery ? `{${youtrackQuery}}` : `{${projectId}}`;
-            const query = encodeURIComponent(`work date: ${chunk.from} .. ${chunk.to} project: ${projectFilter}`);
-            const url = `${baseUrl}/api/workItems?fields=$type,author(id,name),created,creator(id,name),date,duration(id,minutes),id,issue(id,idReadable,summary),text,updated&query=${query}&$top=1000`;
+            const workLogs = await fetchProjectWorkLogs(
+                baseUrl,
+                token,
+                youtrackQuery || projectId,
+                chunk.from,
+                chunk.to
+            );
 
-            const response = await window.electron.fetchYouTrack({
-                url,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json'
-                }
-            });
-
-            const items: WorkItem[] = response.map((item: any) => ({
-                id: item.id,
-                issueId: item.issue.id,
-                issueReadableId: item.issue.idReadable,
-                issueSummary: item.issue.summary,
-                author: item.author?.id || item.author?.name || 'Unknown',
-                authorName: item.author?.name || 'Unknown',
-                date: new Date(item.date).toISOString(),
-                minutes: item.duration?.minutes || 0,
-                description: item.text || '',
-                lastModified: new Date(item.updated || item.created).toISOString()
+            const items: WorkItem[] = workLogs.map(log => ({
+                id: log.id,
+                issueId: log.issueId,
+                issueReadableId: log.issueReadableId,
+                issueSummary: log.issueSummary,
+                author: log.authorLogin || log.authorName || 'Unknown',
+                authorName: log.authorName || 'Unknown',
+                date: new Date(log.date).toISOString(),
+                minutes: log.durationMinutes || 0,
+                description: log.text || '',
+                lastModified: new Date(log.date).toISOString()
             }));
 
             if (items.length > 0) {

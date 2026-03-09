@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { format, startOfMonth } from 'date-fns';
 import {
     BarChart3, Trello, RefreshCw,
     AlertCircle, CheckCircle2, Loader2
 } from 'lucide-react';
-import { type Project } from '../../../App';
+import { type Project, useProjectContext } from '../../../App';
 import { useWorkRegistry } from '../hooks/useWorkRegistry';
 import { YouTrackTable } from './YouTrackTable';
 import { StatisticsView } from './StatisticsView';
@@ -15,9 +16,32 @@ interface Props {
 }
 
 export const WorkRegistryMain = ({ project, settings }: Props) => {
+    const { updateProject } = useProjectContext();
     const { workItems, isLoading, error, setCategory, setCategoriesBulk, refresh } = useWorkRegistry(project);
     const [activeTab, setActiveTab] = useState<'stats' | 'youtrack'>('stats');
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+    const [projectQuery, setProjectQuery] = useState(project.youtrackQuery || project.code || '');
+    const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-01'));
+    const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+    useEffect(() => {
+        setProjectQuery(project.youtrackQuery || project.code || '');
+    }, [project.id, project.youtrackQuery, project.code]);
+
+    const openSyncModal = () => {
+        let defaultFrom = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+        if (workItems && workItems.length > 0) {
+            const latestItem = workItems.reduce((latest, current) =>
+                current.date > latest.date ? current : latest
+            );
+            defaultFrom = latestItem.date.split('T')[0];
+        }
+
+        setDateFrom(defaultFrom);
+        setDateTo(format(new Date(), 'yyyy-MM-dd'));
+        setIsSyncModalOpen(true);
+    };
 
     const handleSync = async () => {
         if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) {
@@ -25,10 +49,15 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
             return;
         }
 
+        if (projectQuery !== project.youtrackQuery) {
+            await updateProject(project.id, { youtrackQuery: projectQuery });
+        }
+
         await syncWorkItems(
             project.id,
-            project.youtrackQuery || project.code || '',
-            project.dateFrom,
+            projectQuery,
+            dateFrom,
+            dateTo,
             settings.youtrackBaseUrl,
             settings.youtrackToken,
             (progress) => {
@@ -44,8 +73,9 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-500">
             {/* Header / Sub-navigation */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 mb-6 bg-white dark:bg-gray-800 p-3 px-6 rounded-2xl shadow-sm">
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-4 border-b border-gray-200 dark:border-gray-800 mb-6 bg-white dark:bg-gray-800 p-3 px-6 rounded-2xl shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
                     <button
                         onClick={() => setActiveTab('stats')}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all ${activeTab === 'stats'
@@ -89,7 +119,7 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                         </div>
                     ) : (
                         <button
-                            onClick={handleSync}
+                            onClick={openSyncModal}
                             disabled={isLoading}
                             className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl transition-all border border-indigo-100 dark:border-indigo-800"
                         >
@@ -97,6 +127,7 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                             Aktualizuj z YouTrack
                         </button>
                     )}
+                </div>
                 </div>
             </div>
 
@@ -126,6 +157,48 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                     />
                 )}
             </div>
+
+            {/* Sync Modal */}
+            {isSyncModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl w-full max-w-sm animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                            Synchronizacja YouTrack
+                        </h3>
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Kod YouTrack</label>
+                                <input type="text" value={projectQuery} onChange={e => setProjectQuery(e.target.value)} placeholder="Kod..." className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Data Od</label>
+                                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Data Do</label>
+                                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]" />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setIsSyncModalOpen(false)}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsSyncModalOpen(false);
+                                    handleSync();
+                                }}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors shadow-md shadow-indigo-200 dark:shadow-none"
+                            >
+                                Rozpocznij
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
