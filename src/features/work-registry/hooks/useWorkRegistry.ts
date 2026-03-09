@@ -40,6 +40,21 @@ export const useWorkRegistry = (project: Project | null) => {
         }
     };
 
+    const setCategoriesBulk = async (issueIds: string[], category: WorkCategory) => {
+        try {
+            await window.electron.setIssueCategoriesBulk({ issueIds, category });
+            setCategories(prev => {
+                const next = { ...prev };
+                issueIds.forEach(id => {
+                    next[id] = category;
+                });
+                return next;
+            });
+        } catch (err: any) {
+            console.error('Błąd masowego zapisu kategorii:', err);
+        }
+    };
+
     const workItemRows: WorkItemRow[] = workItems.map(item => ({
         ...item,
         category: (categories[item.issueId] as WorkCategory) || 'Programistyczne'
@@ -50,6 +65,7 @@ export const useWorkRegistry = (project: Project | null) => {
         isLoading,
         error,
         setCategory,
+        setCategoriesBulk,
         refresh: loadData
     };
 };

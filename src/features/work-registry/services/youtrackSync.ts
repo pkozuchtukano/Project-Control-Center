@@ -20,7 +20,14 @@ export const syncWorkItems = async (
     onProgress: (p: SyncProgress) => void
 ) => {
     try {
-        const start = startOfMonth(parseISO(dateFrom));
+        // Fallback if dateFrom is missing or invalid
+        let parsedDate = parseISO(dateFrom);
+        if (isNaN(parsedDate.getTime())) {
+            console.warn('Invalid dateFrom provided to syncWorkItems, defaulting to start of current month:', dateFrom);
+            parsedDate = new Date();
+        }
+
+        const start = startOfMonth(parsedDate);
         const now = new Date();
         const end = endOfMonth(now);
 
@@ -37,10 +44,20 @@ export const syncWorkItems = async (
             currentIntervalStart = addMonths(currentIntervalStart, 1);
         }
 
+        if (chunks.length === 0) {
+            onProgress({
+                totalChunks: 0,
+                currentChunk: 0,
+                currentMonth: '',
+                status: 'completed'
+            });
+            return;
+        }
+
         onProgress({
             totalChunks: chunks.length,
             currentChunk: 0,
-            currentMonth: chunks[0]?.label || '',
+            currentMonth: chunks[0].label,
             status: 'syncing'
         });
 
@@ -53,8 +70,10 @@ export const syncWorkItems = async (
                 status: 'syncing'
             });
 
-            // YouTrack query for work items in date range
-            const query = encodeURIComponent(`work date: ${chunk.from} .. ${chunk.to} project: {${youtrackQuery || projectId}}`);
+            // Improved YouTrack query: use youtrackQuery if available, otherwise just project ID
+            // We use the same logic as in YouTrackTab: youtrackQuery || project.code || project.id
+            const projectFilter = youtrackQuery ? `{${youtrackQuery}}` : `{${projectId}}`;
+            const query = encodeURIComponent(`work date: ${chunk.from} .. ${chunk.to} project: ${projectFilter}`);
             const url = `${baseUrl}/api/workItems?fields=$type,author(id,name),created,creator(id,name),date,duration(id,minutes),id,issue(id,idReadable,summary),text,updated&query=${query}&$top=1000`;
 
             const response = await window.electron.fetchYouTrack({

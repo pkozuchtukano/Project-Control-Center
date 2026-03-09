@@ -50,6 +50,8 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS work_items (
         id TEXT PRIMARY KEY,
         issueId TEXT,
+        issueReadableId TEXT,
+        issueSummary TEXT,
         author TEXT,
         authorName TEXT,
         date TEXT,
@@ -58,6 +60,13 @@ db.exec(`
         lastModified TEXT,
         projectId TEXT
     );
+`);
+
+// Migracja dla istniejących tabel
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
+
+db.exec(`
     CREATE TABLE IF NOT EXISTS issue_categories (
         issueId TEXT PRIMARY KEY,
         category TEXT NOT NULL
@@ -214,10 +223,10 @@ ipcMain.handle('get-youtrack-tabs', async (_, projectId: string) => {
     try {
         try {
             db.exec('ALTER TABLE youtrack_tabs ADD COLUMN includeFilters INTEGER DEFAULT 0');
-        } catch (e) {}
+        } catch (e) { }
         try {
             db.exec('ALTER TABLE youtrack_tabs ADD COLUMN orderIndex INTEGER DEFAULT 0');
-        } catch (e) {}
+        } catch (e) { }
         const rows = db.prepare('SELECT * FROM youtrack_tabs WHERE projectId = ? ORDER BY orderIndex ASC, rowid ASC').all(projectId) as { id: string; projectId: string; name: string; statuses: string; includeFilters?: number; orderIndex?: number }[];
         return rows.map(r => ({ ...r, statuses: JSON.parse(r.statuses), includeFilters: r.includeFilters === 1 }));
     } catch (error) {
@@ -230,10 +239,10 @@ ipcMain.handle('save-youtrack-tab', async (_, tab: { id: string; projectId: stri
     try {
         try {
             db.exec('ALTER TABLE youtrack_tabs ADD COLUMN includeFilters INTEGER DEFAULT 0');
-        } catch (e) {}
+        } catch (e) { }
         try {
             db.exec('ALTER TABLE youtrack_tabs ADD COLUMN orderIndex INTEGER DEFAULT 0');
-        } catch (e) {}
+        } catch (e) { }
         db.prepare(`
             INSERT INTO youtrack_tabs (id, projectId, name, statuses, includeFilters, orderIndex)
             VALUES (?, ?, ?, ?, ?, ?)
@@ -275,10 +284,10 @@ ipcMain.handle('reorder-youtrack-tabs', async (_, tabs: { id: string; orderIndex
 ipcMain.handle('get-issue-task-types', async (event, issueIds: string[]) => {
     try {
         if (!issueIds || issueIds.length === 0) return {};
-        
+
         const placeholders = issueIds.map(() => '?').join(',');
         const rows = db.prepare(`SELECT issueId, taskTypeId FROM youtrack_issue_task_types WHERE issueId IN (${placeholders})`).all(...issueIds);
-        
+
         const map: Record<string, string> = {};
         for (const row of rows as { issueId: string, taskTypeId: string }[]) {
             map[row.issueId] = row.taskTypeId;
@@ -366,10 +375,12 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
     try {
         const transaction = db.transaction(() => {
             const stmt = db.prepare(`
-                INSERT INTO work_items (id, issueId, author, authorName, date, minutes, description, lastModified, projectId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO work_items (id, issueId, issueReadableId, issueSummary, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET 
                     issueId = excluded.issueId,
+                    issueReadableId = excluded.issueReadableId,
+                    issueSummary = excluded.issueSummary,
                     author = excluded.author,
                     authorName = excluded.authorName,
                     date = excluded.date,
@@ -379,7 +390,19 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
                     projectId = excluded.projectId
             `);
             for (const item of items) {
-                stmt.run(item.id, item.issueId, item.author, item.authorName, item.date, item.minutes, item.description, item.lastModified, projectId);
+                stmt.run(
+                    item.id,
+                    item.issueId,
+                    item.issueReadableId,
+                    item.issueSummary,
+                    item.author,
+                    item.authorName,
+                    item.date,
+                    item.minutes,
+                    item.description,
+                    item.lastModified,
+                    projectId
+                );
             }
         });
         transaction();
@@ -414,6 +437,26 @@ ipcMain.handle('set-issue-category', async (_, { issueId, category }: { issueId:
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu kategorii zgłoszenia:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('set-issue-categories-bulk', async (_, { issueIds, category }: { issueIds: string[], category: string }) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare(`
+                INSERT INTO issue_categories (issueId, category)
+                VALUES (?, ?)
+                ON CONFLICT(issueId) DO UPDATE SET category = excluded.category
+            `);
+            for (const id of issueIds) {
+                stmt.run(id, category);
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd masowego zapisu kategorii:', error);
         throw error;
     }
 });

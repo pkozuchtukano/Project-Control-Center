@@ -15,7 +15,7 @@ interface Props {
 }
 
 export const WorkRegistryMain = ({ project, settings }: Props) => {
-    const { workItems, isLoading, error, setCategory, refresh } = useWorkRegistry(project);
+    const { workItems, isLoading, error, setCategory, setCategoriesBulk, refresh } = useWorkRegistry(project);
     const [activeTab, setActiveTab] = useState<'stats' | 'youtrack'>('stats');
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
@@ -27,7 +27,7 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
 
         await syncWorkItems(
             project.id,
-            project.youtrackQuery || '',
+            project.youtrackQuery || project.code || '',
             project.dateFrom,
             settings.youtrackBaseUrl,
             settings.youtrackToken,
@@ -118,7 +118,12 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                 ) : activeTab === 'stats' ? (
                     <StatisticsView items={workItems} />
                 ) : (
-                    <YouTrackTable items={workItems} onSetCategory={setCategory} />
+                    <YouTrackTable
+                        items={workItems}
+                        onSetCategory={setCategory}
+                        onSetCategoriesBulk={setCategoriesBulk}
+                        youtrackBaseUrl={settings?.youtrackBaseUrl}
+                    />
                 )}
             </div>
         </div>

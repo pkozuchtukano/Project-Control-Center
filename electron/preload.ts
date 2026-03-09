@@ -17,5 +17,6 @@ contextBridge.exposeInMainWorld('electron', {
     upsertWorkItems: (data: { items: any[], projectId: string }) => ipcRenderer.invoke('upsert-work-items', data),
     getIssueCategories: () => ipcRenderer.invoke('get-issue-categories'),
     setIssueCategory: (data: { issueId: string, category: string }) => ipcRenderer.invoke('set-issue-category', data),
+    setIssueCategoriesBulk: (data: { issueIds: string[], category: string }) => ipcRenderer.invoke('set-issue-categories-bulk', data),
 });
 
