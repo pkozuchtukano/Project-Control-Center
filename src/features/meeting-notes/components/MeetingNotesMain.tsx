@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Users, FileText, Send, CheckCircle2, Trash2, Loader2, FileDown, Sparkles, LogIn, LogOut, Key, ChevronUp, ChevronDown } from 'lucide-react';
+import { Users, FileText, Send, CheckCircle2, Trash2, Loader2, FileDown, Sparkles, LogIn, LogOut, Key, ChevronUp, ChevronDown, Mail, Copy } from 'lucide-react';
 import { type Project, type MeetingNoteData, type Stakeholder } from '../../../App';
 import { Editor } from './Editor';
 import { format } from 'date-fns';
@@ -23,6 +23,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [googleAuth, setGoogleAuth] = useState<{ isAuthenticated: boolean, hasCredentials: boolean }>({ isAuthenticated: false, hasCredentials: false });
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showAuthInput, setShowAuthInput] = useState(false);
   const [authCode, setAuthCode] = useState('');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -284,6 +285,23 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     if (confirm('Czy na pewno chcesz wyczyścić treść aktualnej notatki?')) {
       setData(prev => ({ ...prev, content: '' }));
     }
+  };
+
+  const handleCopyEmailField = async (text: string, id: string) => {
+    const processed = replaceVariables(text);
+    await navigator.clipboard.writeText(processed);
+    setCopiedField(id);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const updateEmailTemplate = (updates: any) => {
+    setData(prev => ({
+      ...prev,
+      emailTemplate: {
+        ...(prev.emailTemplate || { to: '', cc: '', subject: '', body: '', variables: {} }),
+        ...updates
+      }
+    }));
   };
 
   if (isLoading) {
@@ -575,6 +593,95 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
             ) : (
               <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Brak skonfigurowanego linku. Dodaj go w edycji projektu.</p>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* EMAIL TEMPLATE UI */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 mt-6 lg:mt-0">
+        <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
+          <Mail className="text-indigo-500" size={18} />
+          <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Szablon wiadomości E-mail</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[
+              { id: 'to', label: 'DO:', val: data.emailTemplate?.to || '' },
+              { id: 'cc', label: 'DW:', val: data.emailTemplate?.cc || '' },
+            ].map(field => (
+              <div key={field.id} className="flex flex-col gap-1">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                  <div className="flex items-center gap-2">
+                    {copiedField === field.id && (
+                      <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                    )}
+                    <button
+                      onClick={() => handleCopyEmailField(field.val, field.id)}
+                      className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                      title="Kopiuj z podstawieniem zmiennych"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={field.val}
+                  onChange={e => updateEmailTemplate({ [field.id]: e.target.value })}
+                  className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow w-full dark:text-white"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between items-center px-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
+              <div className="flex items-center gap-2">
+                {copiedField === 'subject' && (
+                  <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                )}
+                <button
+                  onClick={() => handleCopyEmailField(data.emailTemplate?.subject || '', 'subject')}
+                  className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                  title="Kopiuj z podstawieniem zmiennych"
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+            </div>
+            <input
+              type="text"
+              value={data.emailTemplate?.subject || ''}
+              onChange={e => updateEmailTemplate({ subject: e.target.value })}
+              className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow font-medium w-full dark:text-white"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between items-center px-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Treść wiadomości:</label>
+              <div className="flex items-center gap-2">
+                {copiedField === 'body' && (
+                  <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano treść!</span>
+                )}
+                <button
+                  onClick={() => handleCopyEmailField(data.emailTemplate?.body || '', 'body')}
+                  className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
+                  title="Kopiuj treść z danymi"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={data.emailTemplate?.body || ''}
+              onChange={e => updateEmailTemplate({ body: e.target.value })}
+              rows={6}
+              className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-2 text-sm outline-none font-sans leading-relaxed resize-none transition-shadow w-full dark:text-white"
+            />
           </div>
         </div>
       </div>

@@ -164,6 +164,7 @@ export type MeetingNoteData = {
   stakeholders: Stakeholder[];
   content: string; // Rich text / JSON
   variables?: Record<string, string>;
+  emailTemplate?: EmailTemplate;
   lastModified: string;
 };
 
