@@ -20,5 +20,8 @@ contextBridge.exposeInMainWorld('electron', {
     setIssueCategoriesBulk: (data: { issueIds: string[], category: string }) => ipcRenderer.invoke('set-issue-categories-bulk', data),
     importWorkItems: (data: { items: any[], projectId: string }) => ipcRenderer.invoke('import-work-items', data),
     importOrders: (data: { orders: any[], projectId: string }) => ipcRenderer.invoke('import-orders', data),
+    getEstimation: (projectId: string) => ipcRenderer.invoke('get-estimation', projectId),
+    saveEstimation: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-estimation', data),
+    writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
 });
 

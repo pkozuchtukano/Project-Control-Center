@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
-import { format, differenceInDays, isAfter, parseISO } from 'date-fns';
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { format, differenceInDays, parseISO, isAfter } from 'date-fns';
 
 declare global {
   interface Window {
@@ -20,6 +20,9 @@ declare global {
       getIssueCategories: () => Promise<Record<string, string>>;
       setIssueCategory: (data: { issueId: string, category: string }) => Promise<{ success: boolean }>;
       importOrders: (data: { orders: any[], projectId: string }) => Promise<{ success: boolean }>;
+      getEstimation: (projectId: string) => Promise<any>;
+      saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
+      writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
     }
   }
 }
@@ -44,6 +47,7 @@ import { WorkRegistryMain } from './features/work-registry/components/WorkRegist
 import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry';
 import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-registry/services/excelService';
 import { FileUp, FileDown } from 'lucide-react';
+import { EstimationMain } from './features/estimation/components/EstimationMain';
 
 export type TaskType = {
   id: string;
@@ -99,9 +103,30 @@ export type Order = {
   scheduleTo: string;
   handoverDate?: string;
   acceptanceDate?: string;
-  systemModule: string;
+  systemModule?: string;
   notes?: string;
   createdAt: string;
+};
+
+export type EstimationItem = {
+  id: string;
+  name: string;
+  baseHours: number;
+  multiplier: number;
+  finalHours: number;
+  isOverridden: boolean;
+  rate?: number;
+};
+
+export type Estimation = {
+  projectId: string;
+  items: EstimationItem[];
+  scheduleMode: 'simple' | 'milestones';
+  scheduleData: {
+    simple: { start: string; end: string };
+    milestones: { id: string; name: string; date: string }[];
+  };
+  lastModified: string;
 };
 
 export type Settings = {
@@ -713,7 +738,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation'>('dashboard');
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
 
@@ -836,6 +861,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'youtrack' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             YouTrack
+          </button>
+          <button
+            onClick={() => setActiveTab('estimation')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'estimation' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Wycena
           </button>
         </div>
 
@@ -1024,7 +1055,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
         {activeTab === 'orders' && (
-          <OrdersRegistryView projectId={selectedProject.id} />
+          <OrdersRegistryView />
         )}
 
         {activeTab === 'work' && (
@@ -1055,20 +1086,23 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           <YouTrackTab project={selectedProject} />
         )}
 
+        {activeTab === 'estimation' && (
+          <EstimationMain project={selectedProject} />
+        )}
+
       </div>
     </div >
   );
 };
 
-const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
-  const { projects } = useProjectContext();
-  const project = projects.find(p => p.id === projectId);
-  const { orders, isLoading, addOrder, updateOrder, deleteOrder } = useOrders(projectId);
+const OrdersRegistryView = () => {
+  const { selectedProject } = useProjectContext();
+  const { orders, isLoading, addOrder, updateOrder, deleteOrder, importOrders } = useOrders(selectedProject?.id);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-  if (!project) return null;
+  if (!selectedProject) return null;
 
   const handleOpenModal = () => {
     setEditingOrder(null);
@@ -1090,9 +1124,9 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
   };
 
   const handleExport = () => {
-    if (!project || orders.length === 0) return;
-    const fileName = `Zlecenia_${project.code}_${format(new Date(), 'yyyy-MM-dd')}`;
-    exportOrdersToExcel(orders, project, fileName);
+    if (!selectedProject || orders.length === 0) return;
+    const fileName = `Zlecenia_${selectedProject.code}_${format(new Date(), 'yyyy-MM-dd')}`;
+    exportOrdersToExcel(orders, selectedProject, fileName);
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1131,7 +1165,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <Briefcase className="text-indigo-500" /> Rejestr Zleceń
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {project.code}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {selectedProject.code}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1186,7 +1220,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {orders.map(order => {
                   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-                  const total = totalHours * project.rateNetto;
+                  const total = totalHours * selectedProject.rateNetto;
                   return (
                     <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">{order.orderNumber}</td>
@@ -1211,7 +1245,7 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                       <td className="px-6 py-4 text-right text-gray-500 whitespace-nowrap">{totalHours}h</td>
                       <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                         <div className="text-indigo-600 dark:text-indigo-400 font-medium">
-                          {(totalHours * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          {(totalHours * selectedProject.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </div>
                         <div className="text-[13px] text-gray-400 dark:text-gray-500 mt-0.5">
                           ({total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
@@ -1237,10 +1271,10 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
                   </td>
                   <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                     <div className="text-indigo-600 dark:text-indigo-400 text-base">
-                      {(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      {(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * selectedProject.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                     </div>
                     <div className="text-sm text-gray-400 font-normal uppercase tracking-wider mt-0.5">
-                      ({(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * project.rateNetto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                      ({(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * selectedProject.rateNetto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
                     </div>
                   </td>
                   <td></td>
@@ -1251,8 +1285,8 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
         )}
       </div>
 
-      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={project} orderToEdit={editingOrder} onSave={handleSave} />
-      <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={project} orders={orders} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} />
+      <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={selectedProject} orders={orders} />
     </div>
   );
 };

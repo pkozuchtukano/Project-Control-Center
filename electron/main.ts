@@ -60,6 +60,10 @@ db.exec(`
         lastModified TEXT,
         projectId TEXT
     );
+    CREATE TABLE IF NOT EXISTS estimations (
+        projectId TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
 `);
 
 // Migracja dla istniejących tabel
@@ -507,6 +511,41 @@ ipcMain.handle('set-issue-categories-bulk', async (_, { issueIds, category }: { 
         return { success: true };
     } catch (error) {
         console.error('Błąd masowego zapisu kategorii:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-estimation', async (_, projectId: string) => {
+    try {
+        const row = db.prepare('SELECT data FROM estimations WHERE projectId = ?').get(projectId) as { data: string } | undefined;
+        return row ? JSON.parse(row.data) : null;
+    } catch (error) {
+        console.error('Błąd pobierania wyceny:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-estimation', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO estimations (projectId, data)
+            VALUES (?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET data = excluded.data
+        `).run(projectId, JSON.stringify(data));
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu wyceny:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('write-clipboard-html', async (_, html: string) => {
+    try {
+        const { clipboard } = electron;
+        clipboard.writeHTML(html);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu do schowka HTML:', error);
         throw error;
     }
 });
