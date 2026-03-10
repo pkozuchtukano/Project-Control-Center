@@ -1,7 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import {
-  differenceInDays, isAfter, parseISO
-} from 'date-fns';
+import React, { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
+import { format, differenceInDays, isAfter, parseISO } from 'date-fns';
 
 declare global {
   interface Window {
@@ -21,6 +19,7 @@ declare global {
       upsertWorkItems: (data: { items: any[], projectId: string }) => Promise<{ success: boolean }>;
       getIssueCategories: () => Promise<Record<string, string>>;
       setIssueCategory: (data: { issueId: string, category: string }) => Promise<{ success: boolean }>;
+      importOrders: (data: { orders: any[], projectId: string }) => Promise<{ success: boolean }>;
     }
   }
 }
@@ -43,6 +42,8 @@ import {
 import { YouTrackTab } from './components/YouTrackTab';
 import { WorkRegistryMain } from './features/work-registry/components/WorkRegistryMain';
 import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry';
+import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-registry/services/excelService';
+import { FileUp, FileDown } from 'lucide-react';
 
 export type TaskType = {
   id: string;
@@ -127,6 +128,7 @@ type ProjectContextType = {
   deleteOrder: (id: string) => Promise<void>;
   settings: Settings | null;
   updateSettings: (s: Settings) => Promise<void>;
+  importOrders: (orders: Order[]) => Promise<void>;
 };
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -243,11 +245,33 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     await syncDb(projects, orders, newSettings);
   };
 
+  const importOrders = async (ordersToImport: Order[]) => {
+    try {
+      if (window.electron) {
+        await window.electron.importOrders({ orders: ordersToImport, projectId: selectedProject?.id || '' });
+        // Reload
+        const data = await window.electron.readDb();
+        setOrders(data.orders || []);
+      } else {
+        const updated = [...orders];
+        ordersToImport.forEach(o => {
+           if (!updated.find(existing => existing.id === o.id)) {
+             updated.push(o);
+           }
+        });
+        await syncDb(projects, updated);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError("Błąd importu zleceń: " + err.message);
+    }
+  };
+
   return (
     <ProjectContext.Provider value={{
       projects, orders, settings, selectedProject, setSelectedProject,
       isLoading, error, addProject, updateProject, deleteProject,
-      addOrder, updateOrder, deleteOrder, updateSettings
+      addOrder, updateOrder, deleteOrder, updateSettings, importOrders
     }}>
       {children}
     </ProjectContext.Provider>
@@ -261,9 +285,9 @@ export const useProjectContext = () => {
 };
 
 export const useOrders = (projectId: string | undefined) => {
-  const { orders: allOrders, isLoading, error, addOrder, updateOrder, deleteOrder } = useProjectContext();
+  const { orders: allOrders, isLoading, error, addOrder, updateOrder, deleteOrder, importOrders } = useProjectContext();
   const orders = projectId ? allOrders.filter(o => o.projectId === projectId) : [];
-  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder };
+  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder, importOrders };
 };
 
 // Custom Hook for Analytics Calculations
@@ -1065,6 +1089,33 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
     setIsModalOpen(false);
   };
 
+  const handleExport = () => {
+    if (!project || orders.length === 0) return;
+    const fileName = `Zlecenia_${project.code}_${format(new Date(), 'yyyy-MM-dd')}`;
+    exportOrdersToExcel(orders, project, fileName);
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const items = await importOrdersFromExcel(file);
+      if (items.length === 0) {
+        alert('Nie znaleziono poprawnych zleceń w pliku.');
+        return;
+      }
+      if (confirm(`Czy zaimportować ${items.length} zleceń? Istniejące ID nie zostaną nadpisane.`)) {
+        await importOrders(items);
+        alert('Import zakończony pomyślnie.');
+      }
+    } catch (err: any) {
+      alert('Błąd podczas importu: ' + err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -1083,8 +1134,26 @@ const OrdersRegistryView = ({ projectId }: { projectId: string }) => {
           <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {project.code}</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleExport}
+            disabled={orders.length === 0}
+            className="px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm disabled:opacity-50"
+            title="Eksportuj do Excel"
+          >
+            <FileDown size={18} />
+            <span className="hidden sm:inline">Eksportuj</span>
+          </button>
+
+          <label className="px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm cursor-pointer">
+            <FileUp size={18} />
+            <span className="hidden sm:inline">Importuj</span>
+            <input type="file" accept=".xlsx, .xls" onChange={handleImport} className="hidden" />
+          </label>
+
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+
           <button onClick={() => setIsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
-            <FileText size={16} /> Raport Końcowy (CBCP)
+            <FileText size={16} /> Raport CBCP
           </button>
           <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
             <Plus size={16} /> Nowe Zlecenie

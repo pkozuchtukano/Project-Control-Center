@@ -173,7 +173,9 @@ const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, youtra
                         }}
                     >
                         {CATEGORIES.map(c => (
-                            <option key={c} value={c}>{c}</option>
+                            <option key={c} value={c} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                {c}
+                            </option>
                         ))}
                     </select>
                 </div>
@@ -372,8 +374,12 @@ export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtr
                         value={categoryFilter}
                         onChange={e => setCategoryFilter(e.target.value as any)}
                     >
-                        <option value="all">Wszystkie grupy</option>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="all" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Wszystkie grupy</option>
+                        {CATEGORIES.map(c => (
+                            <option key={c} value={c} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                                {c}
+                            </option>
+                        ))}
                     </select>
                 </div>
 

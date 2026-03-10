@@ -55,6 +55,17 @@ export const useWorkRegistry = (project: Project | null) => {
         }
     };
 
+    const importItems = async (items: any[]) => {
+        if (!project) return;
+        try {
+            await window.electron.importWorkItems({ items, projectId: project.id });
+            await loadData();
+        } catch (err: any) {
+            console.error('Błąd importu:', err);
+            setError(err.message || 'Błąd importu danych');
+        }
+    };
+
     const workItemRows: WorkItemRow[] = workItems.map(item => ({
         ...item,
         category: (categories[item.issueId] as WorkCategory) || 'Programistyczne'
@@ -66,6 +77,7 @@ export const useWorkRegistry = (project: Project | null) => {
         error,
         setCategory,
         setCategoriesBulk,
+        importItems,
         refresh: loadData
     };
 };

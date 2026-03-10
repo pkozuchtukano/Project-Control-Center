@@ -413,6 +413,56 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
     }
 });
 
+ipcMain.handle('import-work-items', async (_, { items, projectId }: { items: any[], projectId: string }) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare(`
+                INSERT OR IGNORE INTO work_items (id, issueId, issueReadableId, issueSummary, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            for (const item of items) {
+                stmt.run(
+                    item.id,
+                    item.issueId,
+                    item.issueReadableId,
+                    item.issueSummary,
+                    item.author,
+                    item.authorName,
+                    item.date,
+                    item.minutes,
+                    item.description,
+                    item.lastModified,
+                    projectId
+                );
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd importu work_items:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('import-orders', async (_, { orders, projectId }: { orders: any[], projectId: string }) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare(`
+                INSERT OR IGNORE INTO orders (id, data)
+                VALUES (?, ?)
+            `);
+            for (const order of orders) {
+                stmt.run(order.id, JSON.stringify({ ...order, projectId }));
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd importu zleceń:', error);
+        throw error;
+    }
+});
+
 ipcMain.handle('get-issue-categories', async () => {
     try {
         const rows = db.prepare('SELECT * FROM issue_categories').all();

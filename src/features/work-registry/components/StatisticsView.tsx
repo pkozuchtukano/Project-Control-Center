@@ -17,6 +17,47 @@ const getAuthorColor = (index: number) => {
     return colors[index % colors.length];
 };
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        // Calculate total BEFORE filtering zero values
+        const total = payload.reduce((sum: number, entry: any) => sum + Number(entry.value), 0);
+
+        // Filter out zero values and sort by value descending
+        const filteredPayload = [...payload]
+            .filter((item: any) => item.value > 0)
+            .sort((a: any, b: any) => b.value - a.value);
+
+        if (filteredPayload.length === 0 && total === 0) return null;
+
+        return (
+            <div className="bg-white dark:bg-gray-900 p-3 rounded-xl border border-gray-200 dark:border-gray-800 shadow-lg min-w-[180px]">
+                <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-100 dark:border-gray-800">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                        Suma: {total.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                    </p>
+                </div>
+                <div className="space-y-1.5">
+                    {filteredPayload.map((entry: any, index: number) => (
+                        <div key={`item-${index}`} className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    {entry.name}
+                                </span>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                {Number(entry.value).toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
+
 export const StatisticsView = ({ items }: Props) => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
@@ -158,8 +199,8 @@ export const StatisticsView = ({ items }: Props) => {
                                 tick={{ fontSize: 12, fill: '#6B7280' }}
                             />
                             <Tooltip
-                                cursor={{ fill: 'transparent' }}
-                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                content={<CustomTooltip />}
+                                cursor={{ fill: 'rgba(229, 231, 235, 0.2)' }}
                             />
                             <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                             <Bar dataKey="Programistyczne" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={40} />
@@ -204,7 +245,7 @@ export const StatisticsView = ({ items }: Props) => {
                                     <Cell key={entry.name} fill={entry.color} />
                                 ))}
                             </Pie>
-                            <Tooltip />
+                            <Tooltip content={<CustomTooltip />} />
                         </PieChart>
                     </ResponsiveContainer>
                 </div>
@@ -218,6 +259,16 @@ export const StatisticsView = ({ items }: Props) => {
                             <span className="font-bold dark:text-white">{c.value.toFixed(1)}h</span>
                         </div>
                     ))}
+                    {categoryData.length > 0 && (
+                        <div className="flex items-center justify-between text-sm pt-2 mt-2 border-t border-gray-100 dark:border-gray-800">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Suma Razem</span>
+                            </div>
+                            <span className="font-black text-indigo-600 dark:text-indigo-400">
+                                {categoryData.reduce((sum, c) => sum + c.value, 0).toFixed(1)}h
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -261,8 +312,8 @@ export const StatisticsView = ({ items }: Props) => {
                                     tick={{ fontSize: 12, fill: '#6B7280' }} 
                                 />
                                 <Tooltip 
-                                    cursor={{ stroke: '#E5E7EB', strokeWidth: 2 }}
-                                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    content={<CustomTooltip />}
+                                    cursor={{ stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '5 5' }}
                                 />
                                 <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                                 {authorData.map((author, idx) => (
