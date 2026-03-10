@@ -416,29 +416,61 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
               <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Lista obecności</h3>
             </div>
             
-            <div className="space-y-2">
+            <div className="space-y-4">
               {data.stakeholders.length === 0 ? (
                 <p className="text-xs text-center text-gray-400 py-6 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl leading-relaxed">
                   Brak przypisanych osób.<br/>Dodaj je w ustawieniach projektu.
                 </p>
               ) : (
-                data.stakeholders.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => togglePresence(s.id)}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
-                      s.isPresent
-                        ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
-                        : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
-                    }`}
-                  >
-                    <div className="flex flex-col items-start text-left">
-                      <span className="text-sm font-bold truncate max-w-[140px]">{s.name}</span>
-                      <span className="text-[10px] font-medium opacity-70 uppercase tracking-tight">{s.role}</span>
-                    </div>
-                    {s.isPresent ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20" />}
-                  </button>
-                ))
+                <>
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-1">Zamawiający</h4>
+                    {data.stakeholders.filter(s => s.company === 'customer').length === 0 && (
+                       <p className="text-xs text-gray-400 italic px-1">Brak osób</p>
+                    )}
+                    {data.stakeholders.filter(s => s.company === 'customer').map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => togglePresence(s.id)}
+                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
+                          s.isPresent
+                            ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
+                            : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
+                        }`}
+                      >
+                        <div className="flex flex-col items-start text-left">
+                          <span className="text-sm font-bold truncate max-w-[140px]">{s.name}</span>
+                          <span className="text-[10px] font-medium opacity-70 uppercase tracking-tight">{s.role}</span>
+                        </div>
+                        {s.isPresent ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20" />}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-1">Wykonawca</h4>
+                    {data.stakeholders.filter(s => s.company === 'contractor').length === 0 && (
+                       <p className="text-xs text-gray-400 italic px-1">Brak osób</p>
+                    )}
+                    {data.stakeholders.filter(s => s.company === 'contractor').map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => togglePresence(s.id)}
+                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
+                          s.isPresent
+                            ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
+                            : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
+                        }`}
+                      >
+                        <div className="flex flex-col items-start text-left">
+                          <span className="text-sm font-bold truncate max-w-[140px]">{s.name}</span>
+                          <span className="text-[10px] font-medium opacity-70 uppercase tracking-tight">{s.role}</span>
+                        </div>
+                        {s.isPresent ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
