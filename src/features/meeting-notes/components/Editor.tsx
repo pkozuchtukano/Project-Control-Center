@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -65,6 +66,12 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
   if (!editor) {
     return null;
   }
+
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content);
+    }
+  }, [content, editor]);
 
   return (
     <div className="flex flex-col w-full border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900/50 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
