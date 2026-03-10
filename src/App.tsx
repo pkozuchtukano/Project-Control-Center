@@ -45,7 +45,8 @@ import {
   Code, PenTool, Database, Monitor, Headphones, Terminal,
   Wrench, Bug, Palette, Server, Cpu, Globe, Key, Lock, Network, Shield, Smartphone,
   Wifi, Search, Map, Calendar, Image as ImageIcon, Video, FileSearch, HelpCircle,
-  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book
+  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book,
+  CheckCircle, AlertCircle
 } from 'lucide-react';
 
 // ==========================================
@@ -1827,6 +1828,142 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
   );
 };
 
+const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clientSecret: string }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authCode, setAuthCode] = useState('');
+  const [showCodeInput, setShowCodeInput] = useState(false);
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  const hasCredentials = !!(clientId && clientSecret);
+
+  useEffect(() => {
+    if (!hasCredentials) { setIsLoading(false); return; }
+    (window as any).electron?.getGoogleAuthStatus?.()
+      .then((status: any) => setIsAuthenticated(status?.isAuthenticated || false))
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setIsLoading(false));
+  }, [hasCredentials]);
+
+  const handleAuthorize = async () => {
+    setAuthError('');
+    try {
+      const url = await (window as any).electron?.getGoogleAuthUrl?.();
+      if (url) {
+        await (window as any).electron?.openExternal?.(url);
+        setShowCodeInput(true);
+      }
+    } catch {
+      setAuthError('Nie udało się uzyskać URL autoryzacji. Sprawdź Client ID i Secret.');
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!authCode.trim()) return;
+    setIsAuthorizing(true);
+    setAuthError('');
+    try {
+      await (window as any).electron?.authorizeGoogle?.(authCode.trim());
+      setIsAuthenticated(true);
+      setShowCodeInput(false);
+      setAuthCode('');
+    } catch {
+      setAuthError('Nieprawidłowy kod autoryzacji. Spróbuj ponownie.');
+    } finally {
+      setIsAuthorizing(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await (window as any).electron?.logoutGoogle?.();
+    setIsAuthenticated(false);
+    setShowCodeInput(false);
+    setAuthCode('');
+    setAuthError('');
+  };
+
+  if (!hasCredentials) {
+    return (
+      <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+        Wypełnij Client ID i Client Secret powyżej, aby połączyć z Google.
+      </p>
+    );
+  }
+
+  if (isLoading) {
+    return <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 size={14} className="animate-spin" /> Sprawdzanie statusu...</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {isAuthenticated ? (
+        <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+            <CheckCircle size={16} />
+            Połączono z Google ✓
+          </div>
+          <button type="button" onClick={handleLogout} className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition">
+            Wyloguj
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
+              <AlertCircle size={16} />
+              Nie połączono z Google
+            </div>
+            {!showCodeInput && (
+              <button type="button" onClick={handleAuthorize}
+                className="text-xs font-medium px-3 py-1.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition text-gray-700 dark:text-gray-200">
+                Autoryzuj z Google
+              </button>
+            )}
+          </div>
+
+          {showCodeInput && (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                Skopiuj kod z przeglądarki i wklej tutaj:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={authCode}
+                  onChange={e => setAuthCode(e.target.value)}
+                  placeholder="4/0AX..."
+                  className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"
+                  onKeyDown={e => e.key === 'Enter' && handleSubmitCode()}
+                />
+                <button type="button" onClick={handleSubmitCode} disabled={isAuthorizing || !authCode.trim()}
+                  className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-1.5 shrink-0">
+                  {isAuthorizing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                  Zatwierdź
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={handleAuthorize} className="text-xs text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition">
+                  Otwórz przeglądarkę ponownie
+                </button>
+                <button type="button" onClick={() => setShowCodeInput(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+                  Anuluj
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {authError && (
+        <p className="text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
+          <AlertCircle size={12} /> {authError}
+        </p>
+      )}
+    </div>
+  );
+};
+
 const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { settings, updateSettings } = useProjectContext();
   const [formData, setFormData] = useState<Settings>({ 
@@ -1905,6 +2042,7 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                     placeholder="Wklej Client Secret" />
                 </div>
+                <GoogleAuthSection clientId={formData.googleClientId || ''} clientSecret={formData.googleClientSecret || ''} />
               </div>
             </div>
           </div>

@@ -641,3 +641,8 @@ ipcMain.handle('authorize-google', async (_, code: string) => {
 ipcMain.handle('logout-google', async () => {
     return await gDocsService.logout();
 });
+
+ipcMain.handle('open-external', async (_, url: string) => {
+    await shell.openExternal(url);
+    return { success: true };
+});

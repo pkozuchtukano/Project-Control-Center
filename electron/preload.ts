@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('electron', {
     getGoogleAuthUrl: () => ipcRenderer.invoke('get-google-auth-url'),
     authorizeGoogle: (code: string) => ipcRenderer.invoke('authorize-google', code),
     logoutGoogle: () => ipcRenderer.invoke('logout-google'),
+    openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
     writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
 });
 
