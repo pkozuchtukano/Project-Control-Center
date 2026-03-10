@@ -152,8 +152,9 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     const newVars = { ...(data.variables || {}) };
     detectedVariables.forEach(v => {
       if (newVars[v] === undefined || newVars[v] === '') {
-        if (v.toLowerCase().includes('data')) {
-          newVars[v] = format(new Date(), 'dd.MM.yyyy');
+        const parsedDate = parseDateVariable(v);
+        if (parsedDate) {
+          newVars[v] = parsedDate;
           changed = true;
         }
       }
@@ -429,9 +430,13 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
                 <Sparkles size={16} className="text-amber-500" />
                 <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">Uzupełnij zmienne z szablonu</h3>
               </div>
+              <p className="text-[10px] text-amber-700/80 mb-4 px-1 leading-relaxed">
+                Składnia dat wspiera np. <strong>{`{{data}}`}</strong> dla dziś, a także: <strong>{`{{data+3d}}`}</strong> (+3 dni), <strong>{`{{data-1w}}`}</strong> (-1 tydzień), <strong>{`{{data+2m}}`}</strong> (+2 miesiące).
+              </p>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {detectedVariables.map(v => {
-                  const isDate = v.toLowerCase().includes('data');
+                  const isDate = parseDateVariable(v) !== null;
                   const value = data.variables?.[v] || '';
                   
                   return (
