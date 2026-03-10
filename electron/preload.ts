@@ -22,6 +22,13 @@ contextBridge.exposeInMainWorld('electron', {
     importOrders: (data: { orders: any[], projectId: string }) => ipcRenderer.invoke('import-orders', data),
     getEstimation: (projectId: string) => ipcRenderer.invoke('get-estimation', projectId),
     saveEstimation: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-estimation', data),
+    getMeetingNotes: (projectId: string) => ipcRenderer.invoke('get-meeting-notes', projectId),
+    saveMeetingNotes: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-meeting-notes', data),
+    appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => ipcRenderer.invoke('append-google-doc', data),
+    getGoogleAuthStatus: () => ipcRenderer.invoke('get-google-auth-status'),
+    getGoogleAuthUrl: () => ipcRenderer.invoke('get-google-auth-url'),
+    authorizeGoogle: (code: string) => ipcRenderer.invoke('authorize-google', code),
+    logoutGoogle: () => ipcRenderer.invoke('logout-google'),
     writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
 });
 

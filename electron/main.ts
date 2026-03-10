@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import { GoogleDocsService } from './googleDocsService.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -64,7 +65,14 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS meeting_notes (
+        projectId TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
 `);
+
+// Initialization of Google Docs Service
+const gDocsService = new GoogleDocsService(path.dirname(dbPath));
 
 // Migracja dla istniejących tabel
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch (e) { }
@@ -548,4 +556,88 @@ ipcMain.handle('write-clipboard-html', async (_, html: string) => {
         console.error('Błąd zapisu do schowka HTML:', error);
         throw error;
     }
+});
+
+// ==========================================
+// IPC MEETING NOTES HANDLERS
+// ==========================================
+
+async function ensureGoogleCredentials() {
+    console.log('Main: ensureGoogleCredentials starting...');
+    const settingsRow = db.prepare(`SELECT data FROM settings WHERE id = 'default'`).get() as { data: string } | undefined;
+    if (settingsRow) {
+        console.log('Main: Found settings row');
+        const settings = JSON.parse(settingsRow.data);
+        console.log('Main: Settings keys:', Object.keys(settings));
+        if (settings.googleClientId && settings.googleClientSecret) {
+            console.log('Main: Google credentials found in settings, calling gDocsService.setCredentials');
+            await gDocsService.setCredentials(settings.googleClientId, settings.googleClientSecret);
+            return true;
+        } else {
+            console.log('Main: Google credentials missing in settings keys');
+        }
+    } else {
+        console.log('Main: Settings row not found');
+    }
+    return false;
+}
+
+ipcMain.handle('get-meeting-notes', async (_, projectId: string) => {
+    try {
+        const row = db.prepare('SELECT data FROM meeting_notes WHERE projectId = ?').get(projectId) as { data: string } | undefined;
+        return row ? JSON.parse(row.data) : null;
+    } catch (error) {
+        console.error('Błąd pobierania notatek:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-meeting-notes', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO meeting_notes (projectId, data)
+            VALUES (?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET data = excluded.data
+        `).run(projectId, JSON.stringify(data));
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu notatek:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('append-google-doc', async (_, { docLink, content, title, participants }: { docLink: string, content: string, title: string, participants: string[] }) => {
+    try {
+        await ensureGoogleCredentials();
+        return await gDocsService.appendNote(docLink, title, participants, content);
+    } catch (error) {
+        console.error('Błąd synchronizacji z Google Docs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-google-auth-status', async () => {
+    try {
+        await ensureGoogleCredentials();
+        return await gDocsService.getAuthStatus();
+    } catch (error) {
+        console.error('Błąd statusu Google:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-google-auth-url', async () => {
+    const hasCreds = await ensureGoogleCredentials();
+    if (!hasCreds) {
+        throw new Error('Brak skonfigurowanych danych Client ID / Secret w ustawieniach głównych.');
+    }
+    return gDocsService.getAuthUrl();
+});
+
+ipcMain.handle('authorize-google', async (_, code: string) => {
+    return await gDocsService.authorize(code);
+});
+
+ipcMain.handle('logout-google', async () => {
+    return await gDocsService.logout();
 });

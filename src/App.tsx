@@ -22,7 +22,14 @@ declare global {
       importOrders: (data: { orders: any[], projectId: string }) => Promise<{ success: boolean }>;
       getEstimation: (projectId: string) => Promise<any>;
       saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
+      getMeetingNotes: (projectId: string) => Promise<any>;
+      saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
+      appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
+      getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
+      getGoogleAuthUrl: () => Promise<string>;
+      authorizeGoogle: (code: string) => Promise<any>;
+      logoutGoogle: () => Promise<void>;
     }
   }
 }
@@ -48,6 +55,15 @@ import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry'
 import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-registry/services/excelService';
 import { FileUp, FileDown } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
+import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
+
+export type Stakeholder = {
+  id: string;
+  name: string;
+  role: string;
+  company: 'customer' | 'contractor';
+  isPresent: boolean;
+};
 
 export type TaskType = {
   id: string;
@@ -78,6 +94,8 @@ export type Project = {
   vatRate: number;
   youtrackQuery?: string;
   taskTypes?: TaskType[];
+  googleDocLink?: string;
+  stakeholders?: Stakeholder[];
 };
 
 export type OrderItem = {
@@ -138,9 +156,21 @@ export type Estimation = {
   lastModified: string;
 };
 
+export type MeetingNoteData = {
+  projectId: string;
+  titleTemplate: string;
+  lastMeetingTitle: string;
+  stakeholders: Stakeholder[];
+  content: string; // Rich text / JSON
+  variables?: Record<string, string>;
+  lastModified: string;
+};
+
 export type Settings = {
   youtrackBaseUrl: string;
   youtrackToken: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
 };
 
 // ==========================================
@@ -177,6 +207,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
   const syncDb = async (newProjects: Project[], newOrders: Order[], newSettings?: Settings) => {
     const sToSave = newSettings !== undefined ? newSettings : settings;
+    console.log('App: syncDb called. sToSave keys:', sToSave ? Object.keys(sToSave) : 'null');
     try {
       if (!window.electron) {
         console.warn("Aplikacja uruchomiona poza Electronem. Zapis do localStorage.");
@@ -467,9 +498,12 @@ const ProjectModal = ({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
-    taskTypes: []
+    taskTypes: [],
+    googleDocLink: '',
+    stakeholders: []
   });
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
   const predefinedIcons = Object.keys(TaskTypeIconMap);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -488,17 +522,23 @@ const ProjectModal = ({
         rateNetto: projectToEdit.rateNetto,
         rateBrutto: projectToEdit.rateBrutto,
         vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
-        taskTypes: projectToEdit.taskTypes || []
+        taskTypes: projectToEdit.taskTypes || [],
+        googleDocLink: projectToEdit.googleDocLink || '',
+        stakeholders: projectToEdit.stakeholders || []
       });
       setTaskTypes(projectToEdit.taskTypes || []);
+      setStakeholders(projectToEdit.stakeholders || []);
     } else {
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
-        taskTypes: []
+        taskTypes: [],
+        googleDocLink: '',
+        stakeholders: []
       });
       setTaskTypes([]);
+      setStakeholders([]);
     }
   }, [projectToEdit, isOpen]);
 
@@ -544,7 +584,8 @@ const ProjectModal = ({
     try {
       const finalFormData = {
         ...formData,
-        taskTypes: taskTypes.filter(t => t.name.trim() !== '')
+        taskTypes: taskTypes.filter(t => t.name.trim() !== ''),
+        stakeholders: stakeholders.filter(s => s.name.trim() !== '')
       };
 
       if (projectToEdit) {
@@ -654,12 +695,81 @@ const ProjectModal = ({
                       <input type="number" min="0" step="1" name="vatRate" value={formData.vatRate} onChange={handleChange}
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link dokumentu Google dla Notatek</label>
+                      <input name="googleDocLink" value={formData.googleDocLink} onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
+                        placeholder="https://docs.google.com/document/d/..." />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Sekcja 2: Rodzaje zadań */}
+            {/* Sekcja 2: Interesariusze (Stakeholders) */}
+            <div className="mb-8 p-6 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-800/50">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <Briefcase size={18} />
+                  </div>
+                  <h3 className="text-md font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Interesariusze</h3>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setStakeholders(prev => [...prev, { id: Date.now().toString(), name: '', role: '', company: 'customer', isPresent: true }])} 
+                  className="text-xs text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 hover:text-indigo-700 transition px-3 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-indigo-100 dark:border-indigo-900"
+                >
+                  <Plus size={14} /> Dodaj Osobę
+                </button>
+              </div>
+              <div className="space-y-3">
+                {stakeholders.map((s) => (
+                  <div key={s.id} className="flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="grid grid-cols-12 gap-3 flex-1 bg-white dark:bg-gray-800/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm">
+                      <div className="col-span-5">
+                        <input
+                          value={s.name}
+                          onChange={(e) => setStakeholders(prev => prev.map(item => item.id === s.id ? { ...item, name: e.target.value } : item))}
+                          placeholder="Imię i Nazwisko"
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700/50 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <input
+                          value={s.role}
+                          onChange={(e) => setStakeholders(prev => prev.map(item => item.id === s.id ? { ...item, role: e.target.value } : item))}
+                          placeholder="Rola w projekcie"
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700/50 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        />
+                      </div>
+                      <div className="col-span-3">
+                        <select
+                          value={s.company}
+                          onChange={(e) => setStakeholders(prev => prev.map(item => item.id === s.id ? { ...item, company: e.target.value as any } : item))}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700/50 px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        >
+                          <option value="customer">Klient</option>
+                          <option value="contractor">Wykonawca</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setStakeholders(prev => prev.filter(item => item.id !== s.id))} 
+                      className="text-gray-400 hover:text-red-500 p-2.5 transition-colors bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl mt-0.5 shadow-sm"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                {stakeholders.length === 0 && (
+                  <p className="text-xs text-center text-gray-500 py-4 bg-white/50 dark:bg-gray-800/30 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">Brak zdefiniowanych osób przypisanych do projektu.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Sekcja 3: Rodzaje zadań */}
             <div>
               <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
                 <h3 className="text-md font-bold text-gray-900 dark:text-white">Rodzaje zadań zdefiniowane dla projektu</h3>
@@ -747,7 +857,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes'>('dashboard');
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
 
@@ -876,6 +986,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'estimation' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             Wycena
+          </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'notes' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Notatki
           </button>
         </div>
 
@@ -1097,6 +1213,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'estimation' && (
           <EstimationMain project={selectedProject} />
+        )}
+
+        {activeTab === 'notes' && (
+          <MeetingNotesMain project={selectedProject} />
         )}
 
       </div>
@@ -1709,14 +1829,21 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
 
 const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { settings, updateSettings } = useProjectContext();
-  const [formData, setFormData] = useState<Settings>({ youtrackBaseUrl: '', youtrackToken: '' });
+  const [formData, setFormData] = useState<Settings>({ 
+    youtrackBaseUrl: '', 
+    youtrackToken: '',
+    googleClientId: '',
+    googleClientSecret: ''
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (settings) {
       setFormData({
         youtrackBaseUrl: settings.youtrackBaseUrl || '',
-        youtrackToken: settings.youtrackToken || ''
+        youtrackToken: settings.youtrackToken || '',
+        googleClientId: settings.googleClientId || '',
+        googleClientSecret: settings.googleClientSecret || ''
       });
     }
   }, [settings, isOpen]);
@@ -1724,6 +1851,7 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    console.log('SettingsModal: Submitting formData. Keys:', Object.keys(formData));
     try {
       await updateSettings(formData);
       onClose();
@@ -1760,6 +1888,24 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
               <input type="password" required name="youtrackToken" value={formData.youtrackToken} onChange={e => setFormData({ ...formData, youtrackToken: e.target.value })}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                 placeholder="Wprowadź token API" />
+            </div>
+
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Cloud (Docs API)</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client ID</label>
+                  <input name="googleClientId" value={formData.googleClientId} onChange={e => setFormData({ ...formData, googleClientId: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                    placeholder="Wklej Client ID" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client Secret</label>
+                  <input type="password" name="googleClientSecret" value={formData.googleClientSecret} onChange={e => setFormData({ ...formData, googleClientSecret: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                    placeholder="Wklej Client Secret" />
+                </div>
+              </div>
             </div>
           </div>
 
