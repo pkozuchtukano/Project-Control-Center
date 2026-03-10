@@ -112,7 +112,6 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
   const contractorStakeholders = noteData.stakeholders.filter(s => s.isPresent && s.company === 'contractor');
 
   // Table rows for participants
-  const maxRows = Math.max(customerStakeholders.length, contractorStakeholders.length);
   const participantRows: TableRow[] = [];
 
   const cellMargins = { top: 120, bottom: 120, left: 120, right: 120 };
@@ -141,29 +140,31 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
     ],
   }));
 
-  // Data rows
-  for (let i = 0; i < maxRows; i++) {
-    participantRows.push(new TableRow({
-      children: [
-        new TableCell({
-          children: [new Paragraph({ 
-            children: [new TextRun({ text: customerStakeholders[i]?.name || '', size: 28, font: "Calibri" })],
-            spacing: { before: 60, after: 60 }
-          })],
-          margins: cellMargins,
-          verticalAlign: VerticalAlign.CENTER
-        }),
-        new TableCell({
-          children: [new Paragraph({ 
-            children: [new TextRun({ text: contractorStakeholders[i]?.name || '', size: 28, font: "Calibri" })],
-            spacing: { before: 60, after: 60 }
-          })],
-          margins: cellMargins,
-          verticalAlign: VerticalAlign.CENTER
-        }),
-      ],
-    }));
-  }
+  // Data row (single row with multiple paragraphs)
+  participantRows.push(new TableRow({
+    children: [
+      new TableCell({
+        children: customerStakeholders.length > 0
+          ? customerStakeholders.map(s => new Paragraph({ 
+              children: [new TextRun({ text: s.name, size: 28, font: "Calibri" })],
+              spacing: { before: 60, after: 60 }
+            }))
+          : [new Paragraph({ text: '' })],
+        margins: cellMargins,
+        verticalAlign: VerticalAlign.TOP
+      }),
+      new TableCell({
+        children: contractorStakeholders.length > 0
+          ? contractorStakeholders.map(s => new Paragraph({ 
+              children: [new TextRun({ text: s.name, size: 28, font: "Calibri" })],
+              spacing: { before: 60, after: 60 }
+            }))
+          : [new Paragraph({ text: '' })],
+        margins: cellMargins,
+        verticalAlign: VerticalAlign.TOP
+      }),
+    ],
+  }));
 
   const doc = new Document({
     sections: [{
