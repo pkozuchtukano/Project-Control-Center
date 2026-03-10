@@ -101,12 +101,22 @@ const parseHtmlToDocx = (html: string): Paragraph[] => {
   return paragraphs;
 };
 
-export const exportNoteToWord = async (project: Project, noteData: { titleTemplate: string, stakeholders: Stakeholder[], content: string }) => {
+export const exportNoteToWord = async (project: Project, noteData: { titleTemplate: string, stakeholders: Stakeholder[], content: string, variables?: Record<string, string> }) => {
   const now = new Date();
-  const dateStr = format(now, 'yyyyMMdd');
-  const timeStr = format(now, 'HHmm');
+  let dateStr = format(now, 'yyyyMMdd');
+  let timeStr = format(now, 'HHmm');
   const displayDateStr = format(now, 'd.MM.yyyy');
   const displayTimeStr = format(now, 'HH:mm');
+
+  if (noteData.variables?.data) {
+    const parts = noteData.variables.data.split('.');
+    if (parts.length === 3) dateStr = `${parts[2]}${parts[1]}${parts[0]}`;
+    else dateStr = noteData.variables.data.replace(/\D/g, '');
+  }
+
+  if (noteData.variables?.godzina) {
+    timeStr = noteData.variables.godzina.replace(/\D/g, '');
+  }
 
   const customerStakeholders = noteData.stakeholders.filter(s => s.isPresent && s.company === 'customer');
   const contractorStakeholders = noteData.stakeholders.filter(s => s.isPresent && s.company === 'contractor');
