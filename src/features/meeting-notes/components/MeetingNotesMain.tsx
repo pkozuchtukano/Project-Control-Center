@@ -324,7 +324,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
             />
           </div>
 
-          <Editor content={data.content} onChange={handleEditorChange} />
+          <Editor content={data.content} onChange={handleEditorChange} stakeholders={project.stakeholders} />
 
           {/* GOOGLE AUTH INPUT */}
           {showAuthInput && (

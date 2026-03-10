@@ -4,6 +4,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
+import Mention from '@tiptap/extension-mention';
+import { getSuggestionParams } from './suggestion';
 import { 
   Bold, Italic, Underline as UnderlineIcon, 
   List, ListOrdered, 
@@ -15,6 +17,7 @@ interface EditorProps {
   content: string;
   onChange: (content: string) => void;
   placeholder?: string;
+  stakeholders?: { id: string, name: string }[];
 }
 
 const MenuButton = ({ 
@@ -45,7 +48,7 @@ const MenuButton = ({
   </button>
 );
 
-export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatki...' }: EditorProps) => {
+export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatki...', stakeholders = [] }: EditorProps) => {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -55,6 +58,12 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
       }),
       Placeholder.configure({
         placeholder,
+      }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'mention text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800'
+        },
+        suggestion: getSuggestionParams(stakeholders),
       }),
     ],
     content,
