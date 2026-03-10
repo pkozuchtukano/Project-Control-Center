@@ -64,6 +64,16 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
           class: 'mention text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800'
         },
         suggestion: getSuggestionParams(stakeholders),
+        renderText({ node }) {
+          return `${node.attrs.label ?? node.attrs.id}`;
+        },
+        renderHTML({ options, node }) {
+          return [
+            'span',
+            options.HTMLAttributes || { class: 'mention text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800' },
+            `${node.attrs.label ?? node.attrs.id}`,
+          ];
+        },
       }),
     ],
     content,
