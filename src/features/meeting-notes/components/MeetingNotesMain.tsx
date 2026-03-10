@@ -4,6 +4,7 @@ import { type Project, type MeetingNoteData, type Stakeholder } from '../../../A
 import { Editor } from './Editor';
 import { format } from 'date-fns';
 import { exportNoteToWord } from '../services/wordExportService';
+import { parseDateVariable } from '../../../utils/dateParsing';
 
 interface MeetingNotesMainProps {
   project: Project;
