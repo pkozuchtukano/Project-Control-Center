@@ -61,7 +61,7 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
       }),
       Mention.configure({
         HTMLAttributes: {
-          class: 'mention text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800'
+          class: 'mention'
         },
         suggestion: getSuggestionParams(stakeholders),
         renderText({ node }) {
@@ -70,7 +70,7 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
         renderHTML({ options, node }) {
           return [
             'span',
-            options.HTMLAttributes || { class: 'mention text-indigo-600 bg-indigo-50 dark:bg-indigo-900/40 dark:text-indigo-400 font-medium px-1.5 py-0.5 rounded-md border border-indigo-100 dark:border-indigo-800' },
+            options.HTMLAttributes || { class: 'mention' },
             `${node.attrs.label ?? node.attrs.id}`,
           ];
         },
