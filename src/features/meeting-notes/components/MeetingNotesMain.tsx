@@ -117,14 +117,15 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
 
   // Template Logic
   const detectedVariables = useMemo(() => {
-    const text = `${data.titleTemplate} ${data.content}`;
+    const e = data.emailTemplate || { to: '', cc: '', subject: '', body: '' };
+    const text = `${data.titleTemplate} ${data.content} ${e.to} ${e.cc} ${e.subject} ${e.body}`;
     const matches = Array.from(text.matchAll(/\{\{([^}]+)\}\}/g));
     const vars = new Set<string>();
     for (const match of matches) {
       vars.add(match[1]);
     }
     return Array.from(vars);
-  }, [data.titleTemplate, data.content]);
+  }, [data.titleTemplate, data.content, data.emailTemplate]);
 
   const updateVariable = (name: string, value: string) => {
     setData(prev => ({
