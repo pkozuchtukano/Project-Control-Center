@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Users, FileText, Send, CheckCircle2, Trash2, Loader2, FileDown, Sparkles, LogIn, LogOut, Key } from 'lucide-react';
+import { Users, FileText, Send, CheckCircle2, Trash2, Loader2, FileDown, Sparkles, LogIn, LogOut, Key, ChevronUp, ChevronDown } from 'lucide-react';
 import { type Project, type MeetingNoteData, type Stakeholder } from '../../../App';
 import { Editor } from './Editor';
 import { format } from 'date-fns';
@@ -101,10 +101,16 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
   };
 
   const mergeStakeholders = (projectS: Stakeholder[], savedS: Stakeholder[]) => {
-    return projectS.map(ps => {
-      const saved = savedS.find(ss => ss.id === ps.id);
-      return { ...ps, isPresent: saved ? saved.isPresent : true };
-    });
+    const merged = savedS
+      .filter(ss => projectS.some(ps => ps.id === ss.id))
+      .map(ss => {
+        const ps = projectS.find(p => p.id === ss.id)!;
+        return { ...ps, isPresent: ss.isPresent };
+      });
+    const newS = projectS
+      .filter(ps => !savedS.some(ss => ss.id === ps.id))
+      .map(ps => ({ ...ps, isPresent: true }));
+    return [...merged, ...newS];
   };
 
   // Template Logic
@@ -187,6 +193,42 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
       ...prev,
       stakeholders: prev.stakeholders.map(s => s.id === id ? { ...s, isPresent: !s.isPresent } : s)
     }));
+  };
+
+  const moveStakeholder = (e: React.MouseEvent, id: string, direction: 'up' | 'down') => {
+    e.stopPropagation();
+    setData(prev => {
+      const arr = [...prev.stakeholders];
+      const index = arr.findIndex(s => s.id === id);
+      if (index === -1) return prev;
+      
+      const company = arr[index].company;
+      let targetIndex = -1;
+      
+      if (direction === 'up') {
+        for (let i = index - 1; i >= 0; i--) {
+          if (arr[i].company === company) {
+            targetIndex = i;
+            break;
+          }
+        }
+      } else {
+        for (let i = index + 1; i < arr.length; i++) {
+          if (arr[i].company === company) {
+            targetIndex = i;
+            break;
+          }
+        }
+      }
+
+      if (targetIndex !== -1) {
+        const temp = arr[index];
+        arr[index] = arr[targetIndex];
+        arr[targetIndex] = temp;
+      }
+      
+      return { ...prev, stakeholders: arr };
+    });
   };
 
   const handleEditorChange = (content: string) => {
@@ -429,21 +471,30 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
                        <p className="text-xs text-gray-400 italic px-1">Brak osób</p>
                     )}
                     {data.stakeholders.filter(s => s.company === 'customer').map(s => (
-                      <button
+                      <div
                         key={s.id}
-                        onClick={() => togglePresence(s.id)}
-                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
+                        className={`w-full flex items-center justify-between p-2 rounded-xl transition-all border ${
                           s.isPresent
                             ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
                             : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
                         }`}
                       >
-                        <div className="flex flex-col items-start text-left">
+                        <button className="flex-1 flex flex-col items-start text-left px-1 outline-none" onClick={() => togglePresence(s.id)}>
                           <span className="text-sm font-bold truncate max-w-[140px]">{s.name}</span>
                           <span className="text-[10px] font-medium opacity-70 uppercase tracking-tight">{s.role}</span>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {s.isPresent ? <CheckCircle2 size={18} className="cursor-pointer" onClick={() => togglePresence(s.id)} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20 cursor-pointer" onClick={() => togglePresence(s.id)} />}
+                          <div className="flex flex-col border-l border-current/10 pl-2">
+                            <button onClick={(e) => moveStakeholder(e, s.id, 'up')} className="hover:text-indigo-600 transition p-0.5" title="Przesuń w górę">
+                              <ChevronUp size={14} />
+                            </button>
+                            <button onClick={(e) => moveStakeholder(e, s.id, 'down')} className="hover:text-indigo-600 transition p-0.5" title="Przesuń w dół">
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
                         </div>
-                        {s.isPresent ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20" />}
-                      </button>
+                      </div>
                     ))}
                   </div>
 
@@ -453,21 +504,30 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
                        <p className="text-xs text-gray-400 italic px-1">Brak osób</p>
                     )}
                     {data.stakeholders.filter(s => s.company === 'contractor').map(s => (
-                      <button
+                      <div
                         key={s.id}
-                        onClick={() => togglePresence(s.id)}
-                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
+                        className={`w-full flex items-center justify-between p-2 rounded-xl transition-all border ${
                           s.isPresent
                             ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
                             : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
                         }`}
                       >
-                        <div className="flex flex-col items-start text-left">
+                        <button className="flex-1 flex flex-col items-start text-left px-1 outline-none" onClick={() => togglePresence(s.id)}>
                           <span className="text-sm font-bold truncate max-w-[140px]">{s.name}</span>
                           <span className="text-[10px] font-medium opacity-70 uppercase tracking-tight">{s.role}</span>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {s.isPresent ? <CheckCircle2 size={18} className="cursor-pointer" onClick={() => togglePresence(s.id)} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20 cursor-pointer" onClick={() => togglePresence(s.id)} />}
+                          <div className="flex flex-col border-l border-current/10 pl-2">
+                            <button onClick={(e) => moveStakeholder(e, s.id, 'up')} className="hover:text-indigo-600 transition p-0.5" title="Przesuń w górę">
+                              <ChevronUp size={14} />
+                            </button>
+                            <button onClick={(e) => moveStakeholder(e, s.id, 'down')} className="hover:text-indigo-600 transition p-0.5" title="Przesuń w dół">
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
                         </div>
-                        {s.isPresent ? <CheckCircle2 size={18} /> : <div className="w-[18px] h-[18px] border-2 border-current rounded-full opacity-20" />}
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </>
