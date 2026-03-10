@@ -118,6 +118,14 @@ export type EstimationItem = {
   rate?: number;
 };
 
+export type EmailTemplate = {
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  variables: Record<string, string>;
+};
+
 export type Estimation = {
   projectId: string;
   items: EstimationItem[];
@@ -126,6 +134,7 @@ export type Estimation = {
     simple: { start: string; end: string };
     milestones: { id: string; name: string; date: string }[];
   };
+  emailTemplate?: EmailTemplate;
   lastModified: string;
 };
 

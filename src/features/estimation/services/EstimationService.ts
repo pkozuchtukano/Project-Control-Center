@@ -31,6 +31,13 @@ export const createDefaultEstimation = (projectId: string): Estimation => ({
       date: ''
     }))
   },
+  emailTemplate: {
+    to: '',
+    cc: '',
+    subject: 'Wycena projektu: {{nr}}',
+    body: 'Szanowni Państwo,\n\nw załączeniu przesyłam wycenę dla projektu {{nr}}.\n\nZ poważaniem,\n{{podpis}}',
+    variables: {}
+  },
   lastModified: new Date().toISOString()
 });
 

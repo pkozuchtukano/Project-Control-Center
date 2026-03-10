@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { Project, Estimation } from '../../../App';
-import { Loader2, Calculator, Save, Copy, RotateCcw } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Calculator, Save, Copy, RotateCcw, Mail } from 'lucide-react';
 import { EstimationTable } from './EstimationTable';
 import { ScheduleManager } from './ScheduleManager';
+import { EmailTemplateSection } from './EmailTemplateSection';
 import { createDefaultEstimation, formatEstimationToHTML, formatScheduleToHTML } from '../services/EstimationService';
+import { exportEstimationToExcel } from '../services/estimationExcelService';
 
 interface EstimationMainProps {
   project: Project | null;
@@ -15,6 +17,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [isBrutto, setIsBrutto] = useState(true);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [copiedType, setCopiedType] = useState<'table' | 'schedule' | null>(null);
   const skipNextSave = React.useRef(true);
 
   useEffect(() => {
@@ -80,14 +83,21 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
     if (!estimation || !project) return;
     const html = formatEstimationToHTML(estimation, project.rateNetto, isBrutto);
     await window.electron?.writeClipboardHtml(html);
-    alert('Tabela wyceny skopiowana do schowka (HTML).');
+    setCopiedType('table');
+    setTimeout(() => setCopiedType(null), 2000);
   };
 
   const handleCopySchedule = async () => {
     if (!estimation) return;
     const html = formatScheduleToHTML(estimation);
     await window.electron?.writeClipboardHtml(html);
-    alert('Harmonogram skopiowany do schowka (HTML).');
+    setCopiedType('schedule');
+    setTimeout(() => setCopiedType(null), 2000);
+  };
+
+  const handleExportExcel = () => {
+    if (!estimation || !project) return;
+    exportEstimationToExcel(estimation, project, isBrutto);
   };
 
   const handleReset = () => {
@@ -147,6 +157,16 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
             )}
           </div>
 
+          <div className="w-px h-8 bg-gray-100 dark:bg-gray-700 mx-1" />
+
+          <button
+            onClick={handleExportExcel}
+            className="p-2 text-gray-400 hover:text-emerald-500 transition-colors"
+            title="Eksportuj do Excel"
+          >
+            <FileSpreadsheet size={20} />
+          </button>
+
           <button
             onClick={handleReset}
             className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
@@ -163,12 +183,18 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
               <h3 className="font-bold text-gray-900 dark:text-white">Kalkulator Roboczogodzin</h3>
-              <button
-                onClick={handleCopyTable}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition"
-              >
-                <Copy size={14} /> Kopiuj
-              </button>
+              <div className="flex items-center gap-2">
+                {copiedType === 'table' && (
+                  <span className="text-xs text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                )}
+                <button
+                  onClick={handleCopyTable}
+                  className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
+                  title="Kopiuj tabelę"
+                >
+                  <Copy size={16} />
+                </button>
+              </div>
             </div>
             <EstimationTable 
               estimation={estimation} 
@@ -185,12 +211,18 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
               <h3 className="font-bold text-gray-900 dark:text-white">Harmonogram</h3>
-              <button
-                onClick={handleCopySchedule}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition"
-              >
-                <Copy size={14} /> Kopiuj
-              </button>
+              <div className="flex items-center gap-2">
+                {copiedType === 'schedule' && (
+                  <span className="text-xs text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                )}
+                <button
+                  onClick={handleCopySchedule}
+                  className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
+                  title="Kopiuj harmonogram"
+                >
+                  <Copy size={16} />
+                </button>
+              </div>
             </div>
             <div className="p-6">
               <ScheduleManager 
@@ -200,6 +232,19 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* EMAIL TEMPLATE SECTION */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
+          <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Mail className="text-indigo-500" size={18} /> Szablon wiadomości E-mail
+          </h3>
+        </div>
+        <EmailTemplateSection 
+          estimation={estimation}
+          setEstimation={setEstimation}
+        />
       </div>
     </div>
   );
