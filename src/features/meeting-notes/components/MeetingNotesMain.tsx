@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Users, FileText, Send, CheckCircle2, Trash2, Loader2, FileDown, Sparkles, LogIn, LogOut, Key, ChevronUp, ChevronDown, Mail, Copy } from 'lucide-react';
-import { type Project, type MeetingNoteData, type Stakeholder } from '../../../App';
+import type { Project, MeetingNoteData, Stakeholder } from '../../../types';
 import { Editor } from './Editor';
 import { format } from 'date-fns';
 import { exportNoteToWord } from '../services/wordExportService';

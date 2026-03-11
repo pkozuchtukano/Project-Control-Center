@@ -1,5 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { format, differenceInDays, parseISO, isAfter } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import { format } from 'date-fns';
+
+import type { 
+  Project, Order, Settings, Stakeholder, TaskType, 
+  DailyHub, DailySection, DailyComment, 
+  Estimation, MeetingNoteData, OrderItem, EmailTemplate
+} from './types';
 
 declare global {
   interface Window {
@@ -30,9 +36,22 @@ declare global {
       getGoogleAuthUrl: () => Promise<string>;
       authorizeGoogle: (code: string) => Promise<any>;
       logoutGoogle: () => Promise<void>;
+      openExternal: (url: string) => Promise<{ success: boolean }>;
+      
+      // Daily Handlers
+      getDailyHubs: () => Promise<DailyHub[]>;
+      saveDailyHub: (hub: DailyHub) => Promise<{ success: boolean }>;
+      deleteDailyHub: (id: string) => Promise<{ success: boolean }>;
+      getDailySections: (hubId: string) => Promise<DailySection[]>;
+      saveDailySection: (section: DailySection) => Promise<{ success: boolean }>;
+      deleteDailySection: (id: string) => Promise<{ success: boolean }>;
+      reorderDailySections: (sections: { id: string, orderIndex: number }[]) => Promise<{ success: boolean }>;
+      getDailyComments: () => Promise<DailyComment[]>;
+      saveDailyComment: (data: { issueId: string, content: string }) => Promise<{ success: boolean }>;
     }
   }
 }
+
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, CartesianGrid
@@ -42,12 +61,15 @@ import {
   Clock, AlertTriangle,
   Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  Code, PenTool, Database, Monitor, Headphones, Terminal,
-  Wrench, Bug, Palette, Server, Cpu, Globe, Key, Lock, Network, Shield, Smartphone,
-  Wifi, Search, Map, Calendar, Image as ImageIcon, Video, FileSearch, HelpCircle,
-  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book,
-  CheckCircle, AlertCircle
+  CheckCircle, AlertCircle, Code
 } from 'lucide-react';
+
+import { 
+  ProjectProvider, useProjectContext, useOrders, 
+  useProjectCalculations, useDarkMode 
+} from './context/ProjectContext';
+
+import { TaskTypeIconMap } from './utils/icons';
 
 // ==========================================
 import { YouTrackTab } from './components/YouTrackTab';
@@ -57,368 +79,33 @@ import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-regi
 import { FileUp, FileDown } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
+import { DailyMain } from './features/daily/components/DailyMain';
 
-export type Stakeholder = {
-  id: string;
-  name: string;
-  role: string;
-  company: 'customer' | 'contractor';
-  isPresent: boolean;
-};
+// Export everything from context for convenience (optional, but avoids breaking other imports immediately)
+export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
 
-export type TaskType = {
-  id: string;
-  name: string;
-  color: string;
-  icon: string;
-};
-
-export const TaskTypeIconMap: Record<string, React.ElementType> = {
-  Code, Terminal, PenTool, Database, Monitor, Headphones, Briefcase, Layers,
-  Wrench, Bug, Palette, Server, Cpu, Globe, Key, Lock, Network, Shield, Smartphone,
-  Wifi, Search, Map, Calendar, ImageIcon, Video, FileSearch, HelpCircle,
-  ShoppingCart, Zap, Heart, Star, Flag, Box, Crosshair, Music, Book
-};
-
-export type Project = {
-  id: string;
-  code: string;
-  name: string;
-  contractNo: string;
-  contractSubject?: string;
-  dateFrom: string;
-  dateTo: string;
-  minHours: number;
-  maxHours: number;
-  rateNetto: number;
-  rateBrutto: number;
-  vatRate: number;
-  youtrackQuery?: string;
-  taskTypes?: TaskType[];
-  googleDocLink?: string;
-  stakeholders?: Stakeholder[];
-};
-
-export type OrderItem = {
-  id: string;
-  name: string;
-  date: string;
-  hours: number;
-};
-
-export type Order = {
-  id: string;
-  projectId: string;
-  orderNumber: string;
-  title: string;
-  priority: 'wysoki' | 'normalny' | 'niski';
-  problemDescription: string;
-  expectedStateDescription: string;
-  items: OrderItem[];
-  location: string;
-  methodologyRequired: boolean;
-  methodologyScope: string;
-  scheduleFrom: string;
-  scheduleTo: string;
-  handoverDate?: string;
-  acceptanceDate?: string;
-  systemModule?: string;
-  notes?: string;
-  createdAt: string;
-};
-
-export type EstimationItem = {
-  id: string;
-  name: string;
-  baseHours: number;
-  multiplier: number;
-  finalHours: number;
-  isOverridden: boolean;
-  rate?: number;
-};
-
-export type EmailTemplate = {
-  to: string;
-  cc: string;
-  subject: string;
-  body: string;
-  variables: Record<string, string>;
-};
-
-export type Estimation = {
-  projectId: string;
-  items: EstimationItem[];
-  scheduleMode: 'simple' | 'milestones';
-  scheduleData: {
-    simple: { start: string; end: string };
-    milestones: { id: string; name: string; date: string }[];
-  };
-  emailTemplate?: EmailTemplate;
-  lastModified: string;
-};
-
-export type MeetingNoteData = {
-  projectId: string;
-  titleTemplate: string;
-  lastMeetingTitle: string;
-  stakeholders: Stakeholder[];
-  content: string; // Rich text / JSON
-  variables?: Record<string, string>;
-  emailTemplate?: EmailTemplate;
-  lastModified: string;
-};
-
-export type Settings = {
-  youtrackBaseUrl: string;
-  youtrackToken: string;
-  googleClientId?: string;
-  googleClientSecret?: string;
-};
-
-// ==========================================
-// SERVICES & HOOKS
-// ==========================================
-
-type ProjectContextType = {
-  projects: Project[];
-  orders: Order[];
-  selectedProject: Project | null;
-  setSelectedProject: (p: Project | null) => void;
-  isLoading: boolean;
-  error: string | null;
-  addProject: (p: Omit<Project, 'id'>) => Promise<void>;
-  updateProject: (id: string, p: Partial<Project>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
-  addOrder: (o: Omit<Order, 'id'>) => Promise<void>;
-  updateOrder: (id: string, o: Partial<Order>) => Promise<void>;
-  deleteOrder: (id: string) => Promise<void>;
-  settings: Settings | null;
-  updateSettings: (s: Settings) => Promise<void>;
-  importOrders: (orders: Order[]) => Promise<void>;
-};
-
-const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
-
-export const ProjectProvider = ({ children }: { children: ReactNode }) => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const syncDb = async (newProjects: Project[], newOrders: Order[], newSettings?: Settings) => {
-    const sToSave = newSettings !== undefined ? newSettings : settings;
-    console.log('App: syncDb called. sToSave keys:', sToSave ? Object.keys(sToSave) : 'null');
-    try {
-      if (!window.electron) {
-        console.warn("Aplikacja uruchomiona poza Electronem. Zapis do localStorage.");
-        localStorage.setItem('pcc_projects', JSON.stringify(newProjects));
-        localStorage.setItem('pcc_orders', JSON.stringify(newOrders));
-        if (sToSave) localStorage.setItem('pcc_settings', JSON.stringify(sToSave));
-      } else {
-        await window.electron.writeDb({ projects: newProjects, orders: newOrders, settings: sToSave || undefined });
-      }
-      setProjects(newProjects);
-      setOrders(newOrders);
-      if (sToSave) setSettings(sToSave);
-    } catch (err: any) {
-      console.error(err);
-      setError("Błąd zapisu do pliku: " + err.message);
-      throw err;
-    }
-  };
-
-  const generateId = () => {
-    return typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-  };
-
-  useEffect(() => {
-    const initDb = async () => {
-      try {
-        if (!window.electron) {
-          console.warn("Aplikacja uruchomiona poza Electronem. Odczyt z localStorage.");
-          const storedProjects = localStorage.getItem('pcc_projects');
-          const storedOrders = localStorage.getItem('pcc_orders');
-          const storedSettings = localStorage.getItem('pcc_settings');
-
-          if (storedProjects) setProjects(JSON.parse(storedProjects));
-          if (storedSettings) setSettings(JSON.parse(storedSettings));
-
-          if (storedOrders) {
-            const parsedOrders = JSON.parse(storedOrders);
-            parsedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            setOrders(parsedOrders);
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        const data = await window.electron.readDb();
-        setProjects(data.projects || []);
-        if (data.settings) setSettings(data.settings);
-
-        const loadedOrders = data.orders || [];
-        loadedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setOrders(loadedOrders);
-        setIsLoading(false);
-      } catch (err: any) {
-        console.error("Local DB Error:", err);
-        setError("Błąd pobierania danych z lokalnego pliku JSON.");
-        setIsLoading(false);
-      }
-    };
-    initDb();
-  }, []);
-
-  const addProject = async (p: Omit<Project, 'id'>) => {
-    const newProject = { ...p, id: generateId() };
-    await syncDb([...projects, newProject], orders);
-  };
-
-  const updateProject = async (id: string, updates: Partial<Project>) => {
-    const updated = projects.map(proj => proj.id === id ? { ...proj, ...updates } : proj);
-    await syncDb(updated, orders);
-    if (selectedProject?.id === id) {
-      setSelectedProject({ ...selectedProject, ...updates });
-    }
-  };
-
-  const deleteProject = async (id: string) => {
-    const updated = projects.filter(proj => proj.id !== id);
-    const updatedOrders = orders.filter(o => o.projectId !== id); // Cascade delete
-    await syncDb(updated, updatedOrders);
-    if (selectedProject?.id === id) setSelectedProject(null);
-  };
-
-  const addOrder = async (o: Omit<Order, 'id'>) => {
-    const newOrder = { ...o, id: generateId() };
-    await syncDb(projects, [newOrder, ...orders]);
-  };
-
-  const updateOrder = async (id: string, updates: Partial<Order>) => {
-    const updated = orders.map(order => order.id === id ? { ...order, ...updates } : order);
-    await syncDb(projects, updated);
-  };
-
-  const deleteOrder = async (id: string) => {
-    const updated = orders.filter(order => order.id !== id);
-    await syncDb(projects, updated);
-  };
-
-  const updateSettings = async (newSettings: Settings) => {
-    await syncDb(projects, orders, newSettings);
-  };
-
-  const importOrders = async (ordersToImport: Order[]) => {
-    try {
-      if (window.electron) {
-        await window.electron.importOrders({ orders: ordersToImport, projectId: selectedProject?.id || '' });
-        // Reload
-        const data = await window.electron.readDb();
-        setOrders(data.orders || []);
-      } else {
-        const updated = [...orders];
-        ordersToImport.forEach(o => {
-           if (!updated.find(existing => existing.id === o.id)) {
-             updated.push(o);
-           }
-        });
-        await syncDb(projects, updated);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError("Błąd importu zleceń: " + err.message);
-    }
-  };
-
-  return (
-    <ProjectContext.Provider value={{
-      projects, orders, settings, selectedProject, setSelectedProject,
-      isLoading, error, addProject, updateProject, deleteProject,
-      addOrder, updateOrder, deleteOrder, updateSettings, importOrders
-    }}>
-      {children}
-    </ProjectContext.Provider>
-  );
-};
-
-export const useProjectContext = () => {
-  const context = useContext(ProjectContext);
-  if (!context) throw new Error('useProjectContext must be used within ProjectProvider');
-  return context;
-};
-
-export const useOrders = (projectId: string | undefined) => {
-  const { orders: allOrders, isLoading, error, addOrder, updateOrder, deleteOrder, importOrders } = useProjectContext();
-  const orders = projectId ? allOrders.filter(o => o.projectId === projectId) : [];
-  return { orders, isLoading, error, addOrder, updateOrder, deleteOrder, importOrders };
-};
-
-// Custom Hook for Analytics Calculations
-export const useProjectCalculations = (project: Project | null) => {
-  if (!project) return null;
-  const today = new Date();
-
-  const start = project.dateFrom ? parseISO(project.dateFrom) : today;
-  const end = project.dateTo ? parseISO(project.dateTo) : today;
-
-  const totalDays = project.dateFrom && project.dateTo ? differenceInDays(end, start) : 0;
-  const daysPassed = project.dateFrom ? differenceInDays(today, start) : 0;
-
-  let timeProgress = 0;
-  if (totalDays > 0) {
-    timeProgress = Math.max(0, Math.min(100, (daysPassed / totalDays) * 100));
-  } else if (project.dateFrom && today >= start) {
-    timeProgress = 100;
-  }
-
-  const isEndingSoon = project.dateTo ? differenceInDays(end, today) <= 14 && differenceInDays(end, today) > 0 : false;
-  const isOverdue = project.dateTo ? isAfter(today, end) : false;
-
-  return {
-    timeProgress: Math.round(timeProgress),
-    daysRemaining: project.dateTo ? differenceInDays(end, today) : 0,
-    totalDays,
-    daysPassed,
-    isEndingSoon,
-    isOverdue,
-    budgetMin: project.minHours ? project.minHours * project.rateNetto : 0,
-    budgetMax: project.maxHours ? project.maxHours * project.rateNetto : 0,
-  };
-};
-
-export const useDarkMode = () => {
-  const [isDark, setIsDark] = useState(true); // Default to dark mode per requirements
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (isDark) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  }, [isDark]);
-
-  return { isDark, toggleDark: () => setIsDark(!isDark) };
-};
-
-// ==========================================
-// COMPONENTS
-// ==========================================
-
-const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings }: {
+const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, currentView, onViewChange }: {
   isDark: boolean,
   toggleDark: () => void,
   onOpenModal: () => void,
-  onOpenSettings: () => void
+  onOpenSettings: () => void,
+  currentView: 'dashboard' | 'daily',
+  onViewChange: (view: 'dashboard' | 'daily') => void
 }) => {
   const { projects, selectedProject, setSelectedProject, isLoading } = useProjectContext();
 
+  const handleProjectClick = (p: Project) => {
+    onViewChange('dashboard');
+    setSelectedProject(p);
+  };
+
+  const handleDailyClick = () => {
+    onViewChange('daily');
+    setSelectedProject(null);
+  };
+
   return (
-    <aside className="w-64 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-screen h-full sticky top-0 transition-colors">
+    <aside className="w-64 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-screen h-full sticky top-0 transition-colors shrink-0">
       <div className="p-6 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
@@ -454,13 +141,13 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings }: {
             {projects.map(p => (
               <button
                 key={p.id}
-                onClick={() => setSelectedProject(p)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${selectedProject?.id === p.id
+                onClick={() => handleProjectClick(p)}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'dashboard' && selectedProject?.id === p.id
                   ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-600 dark:text-white shadow-sm'
                   : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
                   }`}
               >
-                <Briefcase size={16} className={selectedProject?.id === p.id ? 'opacity-100' : 'opacity-50'} />
+                <Briefcase size={16} className={currentView === 'dashboard' && selectedProject?.id === p.id ? 'opacity-100' : 'opacity-50'} />
                 <span className="truncate">{p.code}</span>
               </button>
             ))}
@@ -469,6 +156,20 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings }: {
             )}
           </div>
         )}
+
+        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Narzędzia</h2>
+          <button
+            onClick={handleDailyClick}
+            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'daily'
+              ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-600 dark:text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
+              }`}
+          >
+            <Activity size={16} className={currentView === 'daily' ? 'opacity-100' : 'opacity-50'} />
+            <span className="font-semibold">DAILY</span>
+          </button>
+        </div>
       </div>
 
       <div className="p-4 border-t border-gray-100 dark:border-gray-800">
@@ -2075,6 +1776,7 @@ const MainLayout = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
 
   const handleOpenModal = () => {
     setEditingProject(null);
@@ -2088,8 +1790,22 @@ const MainLayout = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans transition-colors dark:bg-gray-950 dark:text-gray-100 overflow-hidden">
-      <Sidebar isDark={isDark} toggleDark={toggleDark} onOpenModal={handleOpenModal} onOpenSettings={() => setIsSettingsOpen(true)} />
-      <DashboardView onEdit={handleEditProject} />
+      <Sidebar 
+        isDark={isDark} 
+        toggleDark={toggleDark} 
+        onOpenModal={handleOpenModal} 
+        onOpenSettings={() => setIsSettingsOpen(true)} 
+        currentView={currentView}
+        onViewChange={setCurrentView}
+      />
+      
+      <main className="flex-1 min-w-0 bg-gray-50 dark:bg-gray-950 transition-colors overflow-hidden flex flex-col h-screen">
+        {currentView === 'daily' ? (
+          <DailyMain />
+        ) : (
+          <DashboardView onEdit={handleEditProject} />
+        )}
+      </main>
 
       <ProjectModal
         isOpen={isModalOpen}

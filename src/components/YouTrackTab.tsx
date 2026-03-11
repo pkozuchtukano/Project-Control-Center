@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useYouTrack } from '../hooks/useYouTrack';
-import { useProjectContext, type Project, TaskTypeIconMap } from '../App';
+import { useProjectContext } from '../context/ProjectContext';
+import type { Project } from '../types';
+import { TaskTypeIconMap } from '../utils/icons';
 import { format } from 'date-fns';
 import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit, Plus, Trash2, Pencil, Code } from 'lucide-react';
 import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';

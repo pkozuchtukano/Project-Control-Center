@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { type Project } from '../../../App';
+import type { Project } from '../../../types';
 import { type WorkItem, type WorkCategory, type WorkItemRow } from '../types';
 
 declare const window: any;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Project, Estimation } from '../../../App';
+import type { Project, Estimation } from '../../../types';
 import { FileSpreadsheet, Loader2, Calculator, Save, Copy, RotateCcw, Mail } from 'lucide-react';
 import { EstimationTable } from './EstimationTable';
 import { ScheduleManager } from './ScheduleManager';

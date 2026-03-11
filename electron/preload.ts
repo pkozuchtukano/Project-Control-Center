@@ -31,5 +31,18 @@ contextBridge.exposeInMainWorld('electron', {
     logoutGoogle: () => ipcRenderer.invoke('logout-google'),
     openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
     writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
+    
+    // Daily Handlers
+    getDailyHubs: () => ipcRenderer.invoke('get-daily-hubs'),
+    saveDailyHub: (hub: any) => ipcRenderer.invoke('save-daily-hub', hub),
+    deleteDailyHub: (id: string) => ipcRenderer.invoke('delete-daily-hub', id),
+    getDailySections: (hubId: string) => ipcRenderer.invoke('get-daily-sections', hubId),
+    saveDailySection: (section: any) => ipcRenderer.invoke('save-daily-section', section),
+    deleteDailySection: (id: string) => ipcRenderer.invoke('delete-daily-section', id),
+    reorderDailySections: (sections: any[]) => ipcRenderer.invoke('reorder-daily-sections', sections),
+    getDailyComments: () => ipcRenderer.invoke('get-daily-comments'),
+    saveDailyComment: (data: { issueId: string, content: string }) => ipcRenderer.invoke('save-daily-comment', data),
+    getDailyIssueStates: () => ipcRenderer.invoke('get-daily-issue-states'),
+    saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => ipcRenderer.invoke('save-daily-issue-state', data),
 });
 

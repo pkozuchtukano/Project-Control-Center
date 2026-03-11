@@ -71,6 +71,10 @@ export interface WorkLogItem {
 }
 
 export interface IssueWithHistory extends YouTrackIssue {
+    project?: {
+        id: string;
+        shortName: string;
+    };
     timeline: ActivityItem[];
 }
 
@@ -147,7 +151,7 @@ export const fetchIssuesActivity = async (
     const issues: any[] = [];
     const ISSUES_PAGE = 100;
     let issueSkip = 0;
-    const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login),assignee(name,login),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
+    const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login,fullName),assignee(name,login,fullName),project(id,shortName),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
 
     while (true) {
         const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
@@ -379,6 +383,10 @@ export const fetchIssuesActivity = async (
                 updated: issue.updated,
                 reporter: issue.reporter,
                 assignee: assignee || issue.assignee || null,
+                project: issue.project ? {
+                    id: issue.project.id,
+                    shortName: issue.project.shortName
+                } : undefined,
                 dueDate,
                 estimation,
                 spentTime,

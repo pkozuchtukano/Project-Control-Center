@@ -69,6 +69,28 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS daily_hubs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        projectCodes TEXT NOT NULL -- Komenda rozdzielona przecinkami
+    );
+    CREATE TABLE IF NOT EXISTS daily_sections (
+        id TEXT PRIMARY KEY,
+        hubId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        youtrackStatuses TEXT NOT NULL, -- Statusy rozdzielone przecinkami
+        orderIndex INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS daily_comments (
+        issueId TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        lastModified TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS daily_issue_states (
+        issueId TEXT PRIMARY KEY,
+        isCollapsed INTEGER NOT NULL DEFAULT 0
+    );
 `);
 
 // Initialization of Google Docs Service
@@ -645,4 +667,153 @@ ipcMain.handle('logout-google', async () => {
 ipcMain.handle('open-external', async (_, url: string) => {
     await shell.openExternal(url);
     return { success: true };
+});
+
+// ==========================================
+// IPC DAILY HANDLERS
+// ==========================================
+
+ipcMain.handle('get-daily-hubs', async () => {
+    try {
+        const rows = db.prepare('SELECT * FROM daily_hubs').all();
+        return rows;
+    } catch (error) {
+        console.error('Błąd pobierania daily_hubs:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-hub', async (_, hub: any) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_hubs (id, name, description, projectCodes)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name,
+                description = excluded.description,
+                projectCodes = excluded.projectCodes
+        `).run(hub.id, hub.name, hub.description || '', hub.projectCodes);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_hub:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-daily-hub', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM daily_hubs WHERE id = ?').run(id);
+        db.prepare('DELETE FROM daily_sections WHERE hubId = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania daily_hub:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-daily-sections', async (_, hubId: string) => {
+    try {
+        const rows = db.prepare('SELECT * FROM daily_sections WHERE hubId = ? ORDER BY orderIndex ASC').all(hubId);
+        return rows;
+    } catch (error) {
+        console.error('Błąd pobierania daily_sections:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-section', async (_, section: any) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_sections (id, hubId, name, youtrackStatuses, orderIndex)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET 
+                name = excluded.name,
+                youtrackStatuses = excluded.youtrackStatuses,
+                orderIndex = excluded.orderIndex
+        `).run(section.id, section.hubId, section.name, section.youtrackStatuses, section.orderIndex);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_section:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-daily-section', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM daily_sections WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania daily_section:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('reorder-daily-sections', async (_, sections: { id: string, orderIndex: number }[]) => {
+    try {
+        const transaction = db.transaction(() => {
+            const stmt = db.prepare('UPDATE daily_sections SET orderIndex = ? WHERE id = ?');
+            for (const s of sections) {
+                stmt.run(s.orderIndex, s.id);
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd reorder daily_sections:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-daily-comments', async () => {
+    try {
+        const rows = db.prepare('SELECT * FROM daily_comments').all();
+        return rows;
+    } catch (error) {
+        console.error('Błąd pobierania daily_comments:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-comment', async (_, { issueId, content }: { issueId: string, content: string }) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_comments (issueId, content, lastModified)
+            VALUES (?, ?, ?)
+            ON CONFLICT(issueId) DO UPDATE SET 
+                content = excluded.content,
+                lastModified = excluded.lastModified
+        `).run(issueId, content, new Date().toISOString());
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_comment:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-daily-issue-states', async () => {
+    try {
+        const rows = db.prepare('SELECT * FROM daily_issue_states').all();
+        const map: Record<string, boolean> = {};
+        for (const row of rows as { issueId: string, isCollapsed: number }[]) {
+            map[row.issueId] = row.isCollapsed === 1;
+        }
+        return map;
+    } catch (error) {
+        console.error('Błąd pobierania daily_issue_states:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-issue-state', async (_, { issueId, isCollapsed }: { issueId: string, isCollapsed: boolean }) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_issue_states (issueId, isCollapsed)
+            VALUES (?, ?)
+            ON CONFLICT(issueId) DO UPDATE SET isCollapsed = excluded.isCollapsed
+        `).run(issueId, isCollapsed ? 1 : 0);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_issue_state:', error);
+        throw error;
+    }
 });
