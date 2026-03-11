@@ -24,7 +24,11 @@ export interface YouTrackIssue {
     summary: string;
     description?: string;
     resolved?: number | null;
+    updated?: number;
+    created?: number;
     dueDate?: number | null;
+    reporter?: { name: string; login: string };
+    assignee?: { name: string; login: string; fullName?: string } | null;
     estimation?: {
         presentation: string;
         minutes: number;
@@ -33,12 +37,23 @@ export interface YouTrackIssue {
         presentation: string;
         minutes: number;
     } | null;
-    state?: string | null;
-    type?: string;
+    state?: {
+        name: string;
+        color: { background: string; foreground: string };
+    } | null;
+    type?: {
+        name: string;
+        color: { background: string; foreground: string };
+    } | null;
     attachments?: {
+        id: string;
         name: string;
         url: string;
     }[];
+    priority?: {
+        name: string;
+        color: { background: string; foreground: string };
+    } | null;
 }
 
 export interface ActivityItem {
@@ -133,13 +148,18 @@ export const fetchIssuesActivity = async (
     const isZakonczone = tabName?.toLowerCase() === 'zakończone';
 
     if (customStatuses && customStatuses.length > 0) {
-        // Custom tab: filter by provided statuses
         const stateFilter = customStatuses.map(s => `{${s}}`).join(', ');
-        query = `project: ${projectName} State: ${stateFilter}`;
-
-        // If includeFilters is true OR (for backward compatibility) it's "Zakończone" and includeFilters is undefined
-        if (includeFilters === true || (isZakonczone && includeFilters !== false)) {
-            query += ` updated: ${dateFrom} .. ${dateTo}`;
+        
+        if (tab === 'Aktywności') {
+            // Broad query for the whole board: date activity OR specific global states
+            // Use flat structure to avoid parsing issues with parentheses in some versions
+            query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo} or project: ${projectName} State: ${stateFilter}`;
+        } else {
+            // Standard custom tab behavior
+            query = `project: ${projectName} State: ${stateFilter}`;
+            if (includeFilters === true || (isZakonczone && includeFilters !== false)) {
+                query += ` updated: ${dateFrom} .. ${dateTo}`;
+            }
         }
     } else if (tab === 'Do zrobienia') {
         query = `project: ${projectName} State: {To Do}`;
@@ -151,7 +171,7 @@ export const fetchIssuesActivity = async (
     const issues: any[] = [];
     const ISSUES_PAGE = 100;
     let issueSkip = 0;
-    const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login,fullName),assignee(name,login,fullName),project(id,shortName),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
+    const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login,fullName),assignee(name,login,fullName),project(id,shortName),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(id,name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
 
     while (true) {
         const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
@@ -318,9 +338,10 @@ export const fetchIssuesActivity = async (
             let dueDate: number | null = null;
             let estimation = null;
             let spentTime = null;
-            let state: string | null = null;
-            let type: string | undefined = undefined;
+            let state: { name: string; color: { background: string; foreground: string } } | null = null;
+            let type: { name: string; color: { background: string; foreground: string } } | null = null;
             let assignee: { name: string; login: string } | null = null;
+            let priority: { name: string; color: { background: string; foreground: string } } | null = null;
 
             if (issue.customFields) {
                 issue.customFields.forEach((f: any) => {
@@ -355,11 +376,17 @@ export const fetchIssuesActivity = async (
                         }
                     } else if (fname === 'state' || fname === 'status') {
                         if (f.value) {
-                            state = f.value.name || f.value.presentation || String(f.value);
+                            state = {
+                                name: f.value.name || f.value.presentation || String(f.value),
+                                color: f.value.color || { background: '#eee', foreground: '#444' }
+                            };
                         }
                     } else if (fname === 'type' || fname === 'typ') {
                         if (f.value) {
-                            type = f.value.name || f.value.presentation || String(f.value);
+                            type = {
+                                name: f.value.name || f.value.presentation || String(f.value),
+                                color: f.value.color || { background: '#eee', foreground: '#444' }
+                            };
                         }
                     } else if (fname === 'assignee' || fname === 'przypisany' || fname === 'osoba odpowiedzialna') {
                         if (f.value) {
@@ -368,6 +395,13 @@ export const fetchIssuesActivity = async (
                             if (user && (user.name || user.login)) {
                                 assignee = { name: user.name || user.login, login: user.login || user.name };
                             }
+                        }
+                    } else if (fname === 'priority' || fname === 'priorytet') {
+                        if (f.value) {
+                            priority = {
+                                name: f.value.name || f.value.presentation || String(f.value),
+                                color: f.value.color || { background: '#eee', foreground: '#444' }
+                            };
                         }
                     }
                 });
@@ -392,6 +426,7 @@ export const fetchIssuesActivity = async (
                 spentTime,
                 state,
                 type,
+                priority,
                 attachments: issue.attachments || [],
                 tags: issue.tags || [],
                 links: issue.links || [],

@@ -48,6 +48,8 @@ declare global {
       reorderDailySections: (sections: { id: string, orderIndex: number }[]) => Promise<{ success: boolean }>;
       getDailyComments: () => Promise<DailyComment[]>;
       saveDailyComment: (data: { issueId: string, content: string }) => Promise<{ success: boolean }>;
+      getDailyIssueStates: () => Promise<Record<string, boolean>>;
+      saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => Promise<{ success: boolean }>;
     }
   }
 }

@@ -767,7 +767,11 @@ ipcMain.handle('reorder-daily-sections', async (_, sections: { id: string, order
 ipcMain.handle('get-daily-comments', async () => {
     try {
         const rows = db.prepare('SELECT * FROM daily_comments').all();
-        return rows;
+        const map: Record<string, string> = {};
+        for (const row of rows as { issueId: string, content: string }[]) {
+            map[row.issueId] = row.content;
+        }
+        return map;
     } catch (error) {
         console.error('Błąd pobierania daily_comments:', error);
         throw error;
