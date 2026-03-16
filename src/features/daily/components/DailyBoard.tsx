@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
 import type { DailySection } from '../../../types';
@@ -15,8 +15,7 @@ interface DailyBoardProps {
 export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const { settings } = useProjectContext();
   const boardRef = useRef<HTMLDivElement>(null);
-  
-  // Dates logic (Smart Date Range)
+
   const { from: initialFrom, to: initialTo } = useMemo(() => getSmartDateRange(), []);
   const loadSavedDate = (key: 'dateFrom' | 'dateTo', fallback: string) => {
     if (typeof window === 'undefined') return fallback;
@@ -33,25 +32,35 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     }
     return fallback;
   };
+
   const [dateFrom, setDateFrom] = useState(() => loadSavedDate('dateFrom', initialFrom));
   const [dateTo, setDateTo] = useState(() => loadSavedDate('dateTo', initialTo));
-
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [showOnlyCommented, setShowOnlyCommented] = useState(false);
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
-
-  const { data: issues, isLoading, error: fetchError, fetchHistory } = useYouTrack();
-
   const [comments, setComments] = useState<Record<string, string>>({});
   const [issueStates, setIssueStates] = useState<Record<string, boolean>>({});
   const [isSyncing, setIsSyncing] = useState(false);
+  const [hasLoadedActivities, setHasLoadedActivities] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     const saved = localStorage.getItem('daily_collapsed_sections');
     return saved ? JSON.parse(saved) : { fixed_aktywnosci: false };
   });
-
   const [dynamicSections, setDynamicSections] = useState<DailySection[]>([]);
+
+  const {
+    data: activityIssues,
+    isLoading: isActivityLoading,
+    error: activityError,
+    fetchHistory: fetchActivityHistory
+  } = useYouTrack();
+  const {
+    data: boardIssues,
+    isLoading: isBoardLoading,
+    error: boardError,
+    fetchHistory: fetchBoardHistory
+  } = useYouTrack();
 
   const normalizeStatuses = (raw: string) => {
     if (!raw) return [];
@@ -96,7 +105,6 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     setDateTo(initialTo);
   };
 
-  // Load configuration and data
   useEffect(() => {
     const loadConfig = async () => {
       if (window.electron) {
@@ -110,7 +118,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   useEffect(() => {
     const loadData = async () => {
       if (window.electron) {
-        const savedComments = (await window.electron.getDailyComments()) as Record<string, string>;
+        const savedComments = (await window.electron.getDailyComments()) as unknown as Record<string, string>;
         const savedStates = (await window.electron.getDailyIssueStates()) as Record<string, boolean>;
         setComments(savedComments);
         setIssueStates(savedStates);
@@ -120,12 +128,12 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   }, []);
 
   const sections = useMemo<DailySection[]>(() => {
-    const fixed: DailySection = { 
-      id: 'fixed_aktywnosci', 
-      hubId, 
-      name: 'Aktywności', 
-      youtrackStatuses: '', 
-      orderIndex: -1 
+    const fixed: DailySection = {
+      id: 'fixed_aktywnosci',
+      hubId,
+      name: 'Aktywności',
+      youtrackStatuses: '',
+      orderIndex: -1
     };
     return [fixed, ...dynamicSections];
   }, [hubId, dynamicSections]);
@@ -139,38 +147,48 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     window.localStorage.setItem('daily_date_filters', JSON.stringify({ dateFrom, dateTo }));
   }, [dateFrom, dateTo]);
 
+  const combinedIssues = useMemo(() => {
+    const merged = new Map<string, IssueWithHistory>();
+    boardIssues.forEach(issue => merged.set(issue.id, issue));
+    activityIssues.forEach(issue => {
+      if (!merged.has(issue.id)) {
+        merged.set(issue.id, issue);
+      }
+    });
+    return Array.from(merged.values());
+  }, [activityIssues, boardIssues]);
+
   const projects = useMemo(() => {
     const foundCodes = new Set<string>();
-    issues.forEach((i: IssueWithHistory) => {
+    combinedIssues.forEach((i: IssueWithHistory) => {
       if (i.project?.shortName) {
         foundCodes.add(i.project.shortName.toUpperCase());
       }
     });
-    
+
     const configuredCodes = projectCodes.split(',').map(p => p.trim().toUpperCase());
-    
-    // Default to first project if none selected
+
     if (!selectedProject && configuredCodes.length > 0) {
       const firstProject = configuredCodes.find(code => foundCodes.has(code));
       if (firstProject) setSelectedProject(firstProject);
     }
-    
+
     return configuredCodes.filter(code => foundCodes.has(code));
-  }, [issues, projectCodes, selectedProject]);
+  }, [combinedIssues, projectCodes, selectedProject]);
 
   const uniqueAssignees = useMemo(() => {
     const aMap = new Map<string, { name: string; projects: Set<string> }>();
     let hasUnassigned = false;
     const unassignedProjects = new Set<string>();
 
-    issues.forEach((i: IssueWithHistory) => {
+    combinedIssues.forEach((i: IssueWithHistory) => {
       const assignee = (i as any).assignee;
       const projectShortName = i.project?.shortName;
 
       if (assignee) {
         const id = assignee.id || assignee.login;
         const name = assignee.fullName || assignee.name;
-        
+
         if (!aMap.has(id)) {
           aMap.set(id, { name, projects: new Set() });
         }
@@ -185,23 +203,23 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       }
     });
 
-    const sortedList = Array.from(aMap.entries()).sort((a,b) => a[1].name.localeCompare(b[1].name));
-    
+    const sortedList = Array.from(aMap.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name));
+
     if (hasUnassigned) {
       return [...sortedList, ['__unassigned__', { name: 'Nieprzypisane', projects: unassignedProjects }]] as [string, { name: string; projects: Set<string> }][];
     }
-    
-    return sortedList;
-  }, [issues]);
 
-  const filteredIssues = useMemo(() => {
-    return (issues as IssueWithHistory[]).filter(i => {
+    return sortedList;
+  }, [combinedIssues]);
+
+  const filterIssues = (list: IssueWithHistory[]) =>
+    list.filter(i => {
       const issueProject = i.project?.shortName;
       if (selectedProject && issueProject !== selectedProject) return false;
-      
+
       const assignee = (i as any).assignee;
       const assigneeId = assignee?.id || assignee?.login;
-      
+
       if (selectedAssignee) {
         if (selectedAssignee === '__unassigned__') {
           if (assignee) return false;
@@ -209,28 +227,54 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
           return false;
         }
       }
-      
+
       if (showOnlyCommented && !comments[i.idReadable]) return false;
       return true;
     });
-  }, [issues, selectedProject, selectedAssignee, showOnlyCommented, comments]);
+
+  const filteredActivityIssues = useMemo(
+    () => filterIssues(activityIssues as IssueWithHistory[]),
+    [activityIssues, selectedProject, selectedAssignee, showOnlyCommented, comments]
+  );
+
+  const filteredBoardIssues = useMemo(
+    () => filterIssues(boardIssues as IssueWithHistory[]),
+    [boardIssues, selectedProject, selectedAssignee, showOnlyCommented, comments]
+  );
 
   const activityIssueIds = useMemo(() => {
     const ids = new Set<string>();
     const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
     const toTime = new Date(`${dateTo}T23:59:59`).getTime();
-    filteredIssues.forEach((issue: IssueWithHistory) => {
+    filteredActivityIssues.forEach((issue: IssueWithHistory) => {
       if (issue.timeline?.some((a: any) => a.timestamp >= fromTime && a.timestamp <= toTime)) {
         ids.add(issue.idReadable);
       }
     });
     return ids;
-  }, [filteredIssues, dateFrom, dateTo]);
+  }, [filteredActivityIssues, dateFrom, dateTo]);
 
-  const handleFetchHistory = async () => {
+  const fetchActivitiesFirst = async () => {
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
     if (!dateFrom || !dateTo) return;
-    await fetchHistory(
+    await fetchActivityHistory(
+      settings.youtrackBaseUrl,
+      settings.youtrackToken,
+      projectCodes,
+      dateFrom,
+      dateTo,
+      'Aktywności',
+      undefined,
+      '',
+      false
+    );
+    setHasLoadedActivities(true);
+  };
+
+  const fetchBoardData = async () => {
+    if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
+    if (!dateFrom || !dateTo) return;
+    await fetchBoardHistory(
       settings.youtrackBaseUrl,
       settings.youtrackToken,
       projectCodes,
@@ -244,7 +288,20 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   };
 
   useEffect(() => {
-    handleFetchHistory();
+    let cancelled = false;
+
+    const loadInStages = async () => {
+      setHasLoadedActivities(false);
+      await fetchActivitiesFirst();
+      if (cancelled) return;
+      await fetchBoardData();
+    };
+
+    loadInStages();
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectCodes, dateFrom, dateTo, settings, boardStateFilters.join('|')]);
 
   const toggleAllSections = () => {
@@ -274,28 +331,30 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const syncYouTrack = async () => {
     setIsSyncing(true);
     try {
-      await handleFetchHistory();
+      setHasLoadedActivities(false);
+      await fetchActivitiesFirst();
+      await fetchBoardData();
     } finally {
       setIsSyncing(false);
     }
   };
 
-  if (isLoading && issues.length === 0) {
+  if (isActivityLoading && activityIssues.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-950/50 min-h-[400px]">
         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-        <p className="text-gray-500 font-medium">Synchronizacja z YouTrack...</p>
+        <p className="text-gray-500 font-medium">Pobieranie aktywności z YouTrack...</p>
       </div>
     );
   }
 
-  if (fetchError && issues.length === 0) {
+  if (activityError && activityIssues.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-950/50 min-h-[400px]">
         <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Błąd pobierania danych</h3>
-        <p className="text-gray-500 mb-6 text-center max-w-md">{fetchError}</p>
-        <button onClick={() => handleFetchHistory()} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+        <p className="text-gray-500 mb-6 text-center max-w-md">{activityError}</p>
+        <button onClick={() => syncYouTrack()} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
           <RefreshCw size={18} />
           Spróbuj ponownie
         </button>
@@ -306,116 +365,133 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden relative">
       <div className="flex flex-col gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-20">
-         <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-              {projects.map(code => (
-                <button
-                  key={code}
-                  onClick={() => setSelectedProject(selectedProject === code ? null : code)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
-                    selectedProject === code 
-                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]' 
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
-                  }`}
-                >
-                  {code}
-                </button>
-              ))}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+            {projects.map(code => (
+              <button
+                key={code}
+                onClick={() => setSelectedProject(selectedProject === code ? null : code)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
+                  selectedProject === code
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
+                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+                }`}
+              >
+                {code}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => handleDateFromChange(e.target.value)}
+                aria-label="Data od"
+                className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+              />
+              <span className="text-xs font-semibold text-gray-400">→</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => handleDateToChange(e.target.value)}
+                aria-label="Data do"
+                className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+              />
             </div>
+            <button
+              onClick={() => setShowOnlyCommented(!showOnlyCommented)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${showOnlyCommented ? 'bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-400 shadow-sm' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >
+              {showOnlyCommented ? <MessageSquare size={14} fill="currentColor" /> : <MessageSquare size={14} />}
+              Notatki
+            </button>
 
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-               <div className="flex items-center gap-1">
-                 <input
-                   type="date"
-                   value={dateFrom}
-                   onChange={(e) => handleDateFromChange(e.target.value)}
-                   aria-label="Data od"
-                   className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
-                 />
-                 <span className="text-xs font-semibold text-gray-400">→</span>
-                 <input
-                   type="date"
-                   value={dateTo}
-                   onChange={(e) => handleDateToChange(e.target.value)}
-                   aria-label="Data do"
-                   className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
-                 />
-                 <button
-                   type="button"
-                   onClick={resetDateRange}
-                   className="w-8 h-8 flex items-center justify-center rounded-lg border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all"
-                   title="Przywróć inteligentny zakres"
-                 >
-                   <RefreshCw size={14} />
-                   <span className="sr-only">Resetuj zakres dat</span>
-                 </button>
-               </div>
-               <button
-                  onClick={() => setShowOnlyCommented(!showOnlyCommented)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${showOnlyCommented ? 'bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-400 shadow-sm' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-                >
-                  {showOnlyCommented ? <MessageSquare size={14} fill="currentColor" /> : <MessageSquare size={14} />}
-                  Notatki
-                </button>
+            <button
+              onClick={() => setIsGlobalExpanded(!isGlobalExpanded)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isGlobalExpanded ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >
+              {isGlobalExpanded ? 'Zwiń' : 'Rozwiń'}
+            </button>
 
+            <button
+              onClick={syncYouTrack}
+              disabled={isSyncing}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSyncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'}`}
+            >
+              {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw size={14} />}
+              Pobierz dane
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+          {!hasLoadedActivities || isActivityLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+              Ładowanie aktywności...
+            </span>
+          ) : isBoardLoading ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+              Aktywności są już widoczne, trwa dociąganie pozostałych sekcji...
+            </span>
+          ) : boardError ? (
+            <span className="text-amber-600 dark:text-amber-400">
+              Aktywności załadowane, ale pozostałe sekcje nie zostały odświeżone.
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={resetDateRange}
+              className="text-[11px] font-semibold text-gray-500 hover:text-indigo-600 transition-colors"
+            >
+              Inteligentny zakres
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Osoby:</span>
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1">
+            <button onClick={() => setSelectedAssignee(null)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${!selectedAssignee ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>WSZYSCY</button>
+            {uniqueAssignees.map(([id, info]: any) => {
+              const isHighlighted = selectedProject ? info.projects.has(selectedProject) : true;
+              return (
                 <button
-                  onClick={() => setIsGlobalExpanded(!isGlobalExpanded)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isGlobalExpanded ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+                  key={id}
+                  onClick={() => setSelectedAssignee(id)}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap flex items-center gap-1.5
+                    ${selectedAssignee === id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}
+                    ${isHighlighted ? 'ring-1 ring-amber-400/50' : 'opacity-40'}
+                  `}
                 >
-                  {isGlobalExpanded ? 'Zwiń' : 'Rozwiń'}
+                  {info.name}
+                  {isHighlighted && selectedProject && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>}
                 </button>
-
-                <button
-                  onClick={syncYouTrack}
-                  disabled={isSyncing}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSyncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'}`}
-                >
-                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw size={14} />}
-                  Pobierz dane
-                </button>
-            </div>
-         </div>
-
-         <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Osoby:</span>
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-1">
-              <button onClick={() => setSelectedAssignee(null)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${!selectedAssignee ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>WSZYSCY</button>
-              {uniqueAssignees.map(([id, info]: any) => {
-                const isHighlighted = selectedProject ? info.projects.has(selectedProject) : true;
-                return (
-                  <button 
-                    key={id} 
-                    onClick={() => setSelectedAssignee(id)} 
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap flex items-center gap-1.5
-                      ${selectedAssignee === id ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}
-                      ${isHighlighted ? 'ring-1 ring-amber-400/50' : 'opacity-40'}
-                    `}
-                  >
-                    {info.name}
-                    {isHighlighted && selectedProject && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>}
-                  </button>
-                );
-              })}
-            </div>
-         </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      <div 
+      <div
         ref={boardRef}
         className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-950/50 scrollbar-thin scroll-smooth"
       >
         <div className="flex items-start gap-6 px-6 py-6 min-w-max min-h-full">
           {sections.map((section) => (
-            <DailySectionColumn 
-              key={section.id} 
-              section={section} 
-              issues={filteredIssues.filter(i => {
+            <DailySectionColumn
+              key={section.id}
+              section={section}
+              issues={(section.id === 'fixed_aktywnosci' ? filteredActivityIssues : filteredBoardIssues).filter(i => {
                 const hasTimelineInRange = activityIssueIds.has(i.idReadable);
 
                 if (section.id === 'fixed_aktywnosci') {
                   return !!hasTimelineInRange;
                 }
-                
+
                 const statuses = normalizeStatuses(section.youtrackStatuses);
                 const currentState = typeof i.state === 'string' ? i.state : i.state?.name;
                 if (!statuses.includes(currentState?.toLowerCase() || '')) return false;
@@ -428,8 +504,8 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               comments={comments}
               issueStates={issueStates}
               onCommentSave={(issueId: string, content: string) => {
-                setComments({...comments, [issueId]: content});
-                window.electron?.saveDailyComment({issueId, content});
+                setComments({ ...comments, [issueId]: content });
+                window.electron?.saveDailyComment({ issueId, content });
               }}
               onSaveIssueState={handleSaveIssueState}
               onAssigneeFilter={setSelectedAssignee}
@@ -443,12 +519,12 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               }))}
             />
           ))}
-          
+
           <div className="flex flex-col items-center justify-start w-10 shrink-0 pt-2">
-            <button 
+            <button
               onClick={toggleAllSections}
               className="p-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 hover:text-indigo-600 hover:border-indigo-600 transition-all shadow-sm group opacity-40 hover:opacity-100"
-              title={sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? "Rozwiń wszystkie sekcje" : "Zwiń sekcje"}
+              title={sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? 'Rozwiń wszystkie sekcje' : 'Zwiń sekcje'}
             >
               {sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? (
                 <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
@@ -467,7 +543,6 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       >
         <ArrowUp size={20} />
       </button>
-
     </div>
   );
 };
