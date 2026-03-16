@@ -5,6 +5,7 @@ import { DailyIssueCard } from './DailyIssueCard';
 interface DailySectionColumnProps {
   section: DailySection;
   issues: any[];
+  activityIssueIds: Set<string>;
   comments: Record<string, string>;
   issueStates: Record<string, boolean>;
   onCommentSave: (issueId: string, content: string) => void;
@@ -18,12 +19,13 @@ interface DailySectionColumnProps {
 }
 
 export const DailySectionColumn = ({ 
-  section, issues, comments, issueStates, 
+  section, issues, activityIssueIds, comments, issueStates, 
   onCommentSave, onSaveIssueState, 
   onAssigneeFilter, dateFrom, dateTo,
   columnCollapsed = false, onToggleColumnCollapse,
   isGlobalExpanded = false
 }: DailySectionColumnProps) => {
+  const isActivitySection = section.id === 'fixed_aktywnosci';
 
   return (
     <div className={`flex flex-col shrink-0 transition-all duration-300 ${columnCollapsed ? 'w-12' : 'w-80'} group/col relative`}>
@@ -64,20 +66,30 @@ export const DailySectionColumn = ({
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Brak</p>
             </div>
           ) : (
-            issues.map(issue => (
-              <DailyIssueCard 
-                key={issue.idReadable} 
-                issue={issue} 
-                localComment={comments[issue.idReadable] || ''}
-                isCollapsed={section.id === 'fixed_aktywnosci' ? (issueStates[issue.idReadable] ?? false) : (isGlobalExpanded ? false : (issueStates[issue.idReadable] ?? false))}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onAssigneeFilter={onAssigneeFilter}
-                onSaveComment={(content: string) => onCommentSave(issue.idReadable, content)}
-                onToggleCollapse={(isCollapsed: boolean) => onSaveIssueState(issue.idReadable, isCollapsed)}
-                showState={section.id === 'fixed_aktywnosci'}
-              />
-            ))
+            issues.map(issue => {
+              const storedState = issueStates[issue.idReadable];
+              const autoCollapsed = isActivitySection ? false : activityIssueIds.has(issue.idReadable);
+              let resolvedCollapsed = storedState !== undefined ? storedState : autoCollapsed;
+              if (isActivitySection) {
+                resolvedCollapsed = storedState ?? false;
+              } else if (isGlobalExpanded) {
+                resolvedCollapsed = false;
+              }
+              return (
+                <DailyIssueCard 
+                  key={issue.idReadable} 
+                  issue={issue} 
+                  localComment={comments[issue.idReadable] || ''}
+                  isCollapsed={resolvedCollapsed}
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onAssigneeFilter={onAssigneeFilter}
+                  onSaveComment={(content: string) => onCommentSave(issue.idReadable, content)}
+                  onToggleCollapse={(collapsed: boolean) => onSaveIssueState(issue.idReadable, collapsed)}
+                  showState={isActivitySection}
+                />
+              );
+            })
           )}
         </div>
       )}

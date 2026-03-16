@@ -122,6 +122,7 @@ export type DailySection = {
   name: string;
   youtrackStatuses: string; // Comma separated list
   orderIndex: number;
+  respectDates?: boolean;
 };
 
 export type DailyComment = {

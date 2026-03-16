@@ -50,7 +50,12 @@ export const DailyMain = () => {
           projectCodes: hub?.projectCodes || ''
         });
         if (hub) {
-          window.electron?.getDailySections(hub.id).then(setSections);
+          window.electron?.getDailySections(hub.id).then((loaded) => {
+            setSections((loaded || []).map((section: DailySection) => ({
+              ...section,
+              respectDates: !!section.respectDates
+            })));
+          });
         } else {
           setSections([]);
         }
@@ -82,17 +87,22 @@ export const DailyMain = () => {
         id: crypto.randomUUID(),
         name: '',
         youtrackStatuses: '',
-        orderIndex: sections.length
+        orderIndex: sections.length,
+        respectDates: false
       });
     };
 
     const handleSaveSection = () => {
       if (!editingSection?.name) return;
+      const normalizedSection = {
+        ...(editingSection as DailySection),
+        respectDates: !!editingSection.respectDates
+      };
       
       if (sections.find(s => s.id === editingSection.id)) {
-        setSections(sections.map(s => s.id === editingSection.id ? editingSection as DailySection : s));
+        setSections(sections.map(s => s.id === editingSection.id ? normalizedSection : s));
       } else {
-        setSections([...sections, editingSection as DailySection]);
+        setSections([...sections, normalizedSection]);
       }
       setEditingSection(null);
     };
@@ -161,7 +171,10 @@ export const DailyMain = () => {
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 ml-6 font-mono truncate">{s.youtrackStatuses}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button type="button" onClick={() => setEditingSection(s)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-gray-700 rounded-lg shadow-sm">
+                        {s.respectDates && (
+                          <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100/70 dark:bg-amber-900/40 px-2 py-0.5 rounded-full uppercase tracking-wide">Daty</span>
+                        )}
+                        <button type="button" onClick={() => setEditingSection({ ...s, respectDates: !!s.respectDates })} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-gray-700 rounded-lg shadow-sm">
                           <Edit2 size={14} />
                         </button>
                         <button type="button" onClick={() => handleDeleteSection(s.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-white dark:hover:bg-gray-700 rounded-lg shadow-sm">
@@ -182,6 +195,20 @@ export const DailyMain = () => {
                           <label className="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase mb-1">Statusy YouTrack (przecinek)</label>
                           <input value={editingSection.youtrackStatuses} onChange={e => setEditingSection({...editingSection, youtrackStatuses: e.target.value})} className="w-full rounded-lg border-indigo-200 dark:border-indigo-900 dark:bg-gray-800 px-3 py-2 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono" placeholder="In Progress, Testing" />
                         </div>
+                      </div>
+                      <div className="flex items-start gap-3 text-[11px] text-gray-600 dark:text-gray-300">
+                        <label className="inline-flex items-center gap-2 font-semibold text-indigo-600 dark:text-indigo-300">
+                          <input
+                            type="checkbox"
+                            className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                            checked={!!editingSection.respectDates}
+                            onChange={e => setEditingSection({ ...editingSection, respectDates: e.target.checked })}
+                          />
+                          Uwzględniaj daty
+                        </label>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                          Po zaznaczeniu kolumna pokaże tylko zadania z aktywnością w wybranym zakresie dat (poza sekcją „Aktywności”, która ma filtr zawsze).
+                        </span>
                       </div>
                       <div className="flex justify-end gap-2 text-sm">
                         <button type="button" onClick={() => setEditingSection(null)} className="px-3 py-1.5 text-gray-500 hover:bg-white/50 rounded-lg">Anuluj</button>

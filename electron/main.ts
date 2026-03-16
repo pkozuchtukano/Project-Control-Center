@@ -80,7 +80,8 @@ db.exec(`
         hubId TEXT NOT NULL,
         name TEXT NOT NULL,
         youtrackStatuses TEXT NOT NULL, -- Statusy rozdzielone przecinkami
-        orderIndex INTEGER NOT NULL
+        orderIndex INTEGER NOT NULL,
+        respectDates INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS daily_comments (
         issueId TEXT PRIMARY KEY,
@@ -99,6 +100,15 @@ const gDocsService = new GoogleDocsService(path.dirname(dbPath));
 // Migracja dla istniejących tabel
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
+try {
+    const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
+    const hasRespectDates = columns.some(col => col.name === 'respectDates');
+    if (!hasRespectDates) {
+        db.prepare('ALTER TABLE daily_sections ADD COLUMN respectDates INTEGER NOT NULL DEFAULT 0').run();
+    }
+} catch (error) {
+    console.error('Błąd migracji kolumny respectDates:', error);
+}
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS issue_categories (
@@ -713,8 +723,11 @@ ipcMain.handle('delete-daily-hub', async (_, id: string) => {
 
 ipcMain.handle('get-daily-sections', async (_, hubId: string) => {
     try {
-        const rows = db.prepare('SELECT * FROM daily_sections WHERE hubId = ? ORDER BY orderIndex ASC').all(hubId);
-        return rows;
+        const rows = db.prepare('SELECT * FROM daily_sections WHERE hubId = ? ORDER BY orderIndex ASC').all(hubId) as any[];
+        return rows.map(row => ({
+            ...row,
+            respectDates: row.respectDates === 1
+        }));
     } catch (error) {
         console.error('Błąd pobierania daily_sections:', error);
         throw error;
@@ -724,13 +737,14 @@ ipcMain.handle('get-daily-sections', async (_, hubId: string) => {
 ipcMain.handle('save-daily-section', async (_, section: any) => {
     try {
         db.prepare(`
-            INSERT INTO daily_sections (id, hubId, name, youtrackStatuses, orderIndex)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO daily_sections (id, hubId, name, youtrackStatuses, orderIndex, respectDates)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET 
                 name = excluded.name,
                 youtrackStatuses = excluded.youtrackStatuses,
-                orderIndex = excluded.orderIndex
-        `).run(section.id, section.hubId, section.name, section.youtrackStatuses, section.orderIndex);
+                orderIndex = excluded.orderIndex,
+                respectDates = excluded.respectDates
+        `).run(section.id, section.hubId, section.name, section.youtrackStatuses, section.orderIndex, section.respectDates ? 1 : 0);
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu daily_section:', error);

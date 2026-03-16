@@ -18,8 +18,23 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   
   // Dates logic (Smart Date Range)
   const { from: initialFrom, to: initialTo } = useMemo(() => getSmartDateRange(), []);
-  const [dateFrom] = useState(initialFrom);
-  const [dateTo] = useState(initialTo);
+  const loadSavedDate = (key: 'dateFrom' | 'dateTo', fallback: string) => {
+    if (typeof window === 'undefined') return fallback;
+    try {
+      const saved = window.localStorage.getItem('daily_date_filters');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.[key]) {
+          return parsed[key];
+        }
+      }
+    } catch {
+      // ignore malformed entries and fall back to defaults
+    }
+    return fallback;
+  };
+  const [dateFrom, setDateFrom] = useState(() => loadSavedDate('dateFrom', initialFrom));
+  const [dateTo, setDateTo] = useState(() => loadSavedDate('dateTo', initialTo));
 
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
@@ -37,6 +52,49 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   });
 
   const [dynamicSections, setDynamicSections] = useState<DailySection[]>([]);
+
+  const normalizeStatuses = (raw: string) => {
+    if (!raw) return [];
+    return raw
+      .split(/[\n,;]/)
+      .map(entry => entry.trim())
+      .filter(Boolean)
+      .map(entry => {
+        const parenMatch = entry.match(/\(([^)]+)\)$/);
+        const value = parenMatch ? parenMatch[1] : entry;
+        return value.trim().toLowerCase();
+      });
+  };
+
+  const boardStateFilters = useMemo(() => {
+    const stateSet = new Set<string>();
+    dynamicSections.forEach(section => {
+      if (section.respectDates) return;
+      normalizeStatuses(section.youtrackStatuses).forEach(state => stateSet.add(state));
+    });
+    return Array.from(stateSet);
+  }, [dynamicSections]);
+
+  const handleDateFromChange = (value: string) => {
+    if (!value) return;
+    if (value > dateTo) {
+      setDateTo(value);
+    }
+    setDateFrom(value);
+  };
+
+  const handleDateToChange = (value: string) => {
+    if (!value) return;
+    if (value < dateFrom) {
+      setDateFrom(value);
+    }
+    setDateTo(value);
+  };
+
+  const resetDateRange = () => {
+    setDateFrom(initialFrom);
+    setDateTo(initialTo);
+  };
 
   // Load configuration and data
   useEffect(() => {
@@ -75,6 +133,11 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   useEffect(() => {
     localStorage.setItem('daily_collapsed_sections', JSON.stringify(collapsedSections));
   }, [collapsedSections]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('daily_date_filters', JSON.stringify({ dateFrom, dateTo }));
+  }, [dateFrom, dateTo]);
 
   const projects = useMemo(() => {
     const foundCodes = new Set<string>();
@@ -152,8 +215,21 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     });
   }, [issues, selectedProject, selectedAssignee, showOnlyCommented, comments]);
 
+  const activityIssueIds = useMemo(() => {
+    const ids = new Set<string>();
+    const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
+    const toTime = new Date(`${dateTo}T23:59:59`).getTime();
+    filteredIssues.forEach((issue: IssueWithHistory) => {
+      if (issue.timeline?.some((a: any) => a.timestamp >= fromTime && a.timestamp <= toTime)) {
+        ids.add(issue.idReadable);
+      }
+    });
+    return ids;
+  }, [filteredIssues, dateFrom, dateTo]);
+
   const handleFetchHistory = async () => {
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
+    if (!dateFrom || !dateTo) return;
     await fetchHistory(
       settings.youtrackBaseUrl,
       settings.youtrackToken,
@@ -161,7 +237,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       dateFrom,
       dateTo,
       'Aktywności',
-      [],
+      boardStateFilters.length ? boardStateFilters : undefined,
       '',
       false
     );
@@ -169,7 +245,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
 
   useEffect(() => {
     handleFetchHistory();
-  }, [projectCodes, dateFrom, dateTo, settings]);
+  }, [projectCodes, dateFrom, dateTo, settings, boardStateFilters.join('|')]);
 
   const toggleAllSections = () => {
     const isAnySectionCollapsed = sections.some((s: any) => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]);
@@ -230,7 +306,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden relative">
       <div className="flex flex-col gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-20">
-         <div className="flex items-center justify-between gap-4">
+         <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
               {projects.map(code => (
                 <button
@@ -247,7 +323,33 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               ))}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+               <div className="flex items-center gap-1">
+                 <input
+                   type="date"
+                   value={dateFrom}
+                   onChange={(e) => handleDateFromChange(e.target.value)}
+                   aria-label="Data od"
+                   className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+                 />
+                 <span className="text-xs font-semibold text-gray-400">→</span>
+                 <input
+                   type="date"
+                   value={dateTo}
+                   onChange={(e) => handleDateToChange(e.target.value)}
+                   aria-label="Data do"
+                   className="w-[120px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-xs bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+                 />
+                 <button
+                   type="button"
+                   onClick={resetDateRange}
+                   className="w-8 h-8 flex items-center justify-center rounded-lg border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all"
+                   title="Przywróć inteligentny zakres"
+                 >
+                   <RefreshCw size={14} />
+                   <span className="sr-only">Resetuj zakres dat</span>
+                 </button>
+               </div>
                <button
                   onClick={() => setShowOnlyCommented(!showOnlyCommented)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${showOnlyCommented ? 'bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-400 shadow-sm' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
@@ -308,17 +410,21 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               key={section.id} 
               section={section} 
               issues={filteredIssues.filter(i => {
-                const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
-                const toTime = new Date(`${dateTo}T23:59:59`).getTime();
+                const hasTimelineInRange = activityIssueIds.has(i.idReadable);
 
                 if (section.id === 'fixed_aktywnosci') {
-                  return i.timeline?.some((a: any) => a.timestamp >= fromTime && a.timestamp <= toTime);
+                  return !!hasTimelineInRange;
                 }
                 
-                const statuses = section.youtrackStatuses.split(',').map(s => s.trim().toLowerCase());
+                const statuses = normalizeStatuses(section.youtrackStatuses);
                 const currentState = typeof i.state === 'string' ? i.state : i.state?.name;
-                return statuses.includes(currentState?.toLowerCase() || '');
+                if (!statuses.includes(currentState?.toLowerCase() || '')) return false;
+                if (section.respectDates) {
+                  return !!hasTimelineInRange;
+                }
+                return true;
               })}
+              activityIssueIds={activityIssueIds}
               comments={comments}
               issueStates={issueStates}
               onCommentSave={(issueId: string, content: string) => {
