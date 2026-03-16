@@ -6,11 +6,11 @@ import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Mention from '@tiptap/extension-mention';
 import { getSuggestionParams } from './suggestion';
-import { 
-  Bold, Italic, Underline as UnderlineIcon, 
-  List, ListOrdered, 
+import {
+  Bold, Italic, Underline as UnderlineIcon,
+  List, ListOrdered,
   Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, Pilcrow,
-  Quote, Undo, Redo 
+  Quote, Undo, Redo
 } from 'lucide-react';
 
 interface EditorProps {
@@ -18,19 +18,21 @@ interface EditorProps {
   onChange: (content: string) => void;
   placeholder?: string;
   stakeholders?: { id: string, name: string }[];
+  openLinksOnClick?: boolean;
+  minHeight?: number;
 }
 
-const MenuButton = ({ 
-  onClick, 
-  isActive = false, 
-  disabled = false, 
-  children, 
-  title 
-}: { 
-  onClick: () => void; 
-  isActive?: boolean; 
-  disabled?: boolean; 
-  children: React.ReactNode; 
+const MenuButton = ({
+  onClick,
+  isActive = false,
+  disabled = false,
+  children,
+  title
+}: {
+  onClick: () => void;
+  isActive?: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
   title: string;
 }) => (
   <button
@@ -39,8 +41,8 @@ const MenuButton = ({
     disabled={disabled}
     title={title}
     className={`p-2 rounded-md transition-colors ${
-      isActive 
-        ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400' 
+      isActive
+        ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400'
         : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
     } disabled:opacity-30`}
   >
@@ -48,13 +50,20 @@ const MenuButton = ({
   </button>
 );
 
-export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatki...', stakeholders = [] }: EditorProps) => {
+export const Editor = ({
+  content,
+  onChange,
+  placeholder = 'Zacznij pisać notatki...',
+  stakeholders = [],
+  openLinksOnClick = false,
+  minHeight = 380
+}: EditorProps) => {
   const editor = useEditor({
     extensions: [
       StarterKit,
       Underline,
       Link.configure({
-        openOnClick: false,
+        openOnClick: openLinksOnClick,
       }),
       Placeholder.configure({
         placeholder,
@@ -82,19 +91,18 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
     },
   });
 
-  if (!editor) {
-    return null;
-  }
-
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content);
     }
   }, [content, editor]);
 
+  if (!editor) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col w-full border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900/50 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
-      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
         <MenuButton
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -117,13 +125,13 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
         >
           <UnderlineIcon size={18} />
         </MenuButton>
-        
+
         <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
 
         <MenuButton
           onClick={() => editor.chain().focus().setParagraph().run()}
           isActive={editor.isActive('paragraph')}
-          title="Zwykły Tekst (Paragraf)"
+          title="Zwykły tekst"
         >
           <Pilcrow size={18} />
         </MenuButton>
@@ -212,8 +220,7 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
         </MenuButton>
       </div>
 
-      {/* Content Area */}
-      <div className="p-4 min-h-[400px]">
+      <div className="p-4" style={{ minHeight: `${Math.max(minHeight + 20, 120)}px` }}>
         <EditorContent editor={editor} className="prose dark:prose-invert max-w-none focus:outline-none" />
       </div>
 
@@ -236,7 +243,7 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisać notatk
           height: 0;
         }
         .ProseMirror {
-          min-height: 380px;
+          min-height: ${minHeight}px;
           outline: none;
         }
       `}</style>

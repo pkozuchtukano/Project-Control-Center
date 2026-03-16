@@ -69,6 +69,16 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS status_reports (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        dateFrom TEXT NOT NULL,
+        dateTo TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        data TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS daily_hubs (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -634,6 +644,59 @@ ipcMain.handle('save-meeting-notes', async (_, { projectId, data }: { projectId:
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu notatek:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-status-reports', async (_, projectId: string) => {
+    try {
+        const rows = db.prepare(`
+            SELECT data
+            FROM status_reports
+            WHERE projectId = ?
+            ORDER BY dateTo DESC, updatedAt DESC
+        `).all(projectId) as { data: string }[];
+        return rows.map(row => JSON.parse(row.data));
+    } catch (error) {
+        console.error('Błąd pobierania status reports:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-status-report', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO status_reports (id, projectId, title, dateFrom, dateTo, createdAt, updatedAt, data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                dateFrom = excluded.dateFrom,
+                dateTo = excluded.dateTo,
+                updatedAt = excluded.updatedAt,
+                data = excluded.data
+        `).run(
+            data.id,
+            projectId,
+            data.title,
+            data.dateFrom,
+            data.dateTo,
+            data.createdAt,
+            data.updatedAt,
+            JSON.stringify(data)
+        );
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu status report:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-status-report', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM status_reports WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania status report:', error);
         throw error;
     }
 });

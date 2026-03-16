@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment, 
-  Estimation, MeetingNoteData, OrderItem, EmailTemplate
+  Estimation, MeetingNoteData, OrderItem, EmailTemplate, StatusReport
 } from './types';
 
 declare global {
@@ -30,6 +30,9 @@ declare global {
       saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       getMeetingNotes: (projectId: string) => Promise<any>;
       saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
+      getStatusReports: (projectId: string) => Promise<StatusReport[]>;
+      saveStatusReport: (data: { projectId: string, data: StatusReport }) => Promise<{ success: boolean }>;
+      deleteStatusReport: (id: string) => Promise<{ success: boolean }>;
       writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
@@ -82,6 +85,7 @@ import { FileUp, FileDown } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
 import { DailyMain } from './features/daily/components/DailyMain';
+import { StatusMain } from './features/status/components/StatusMain';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -621,8 +625,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const inPct = youtrackTotal > 0 ? (youtrackHours['Inne'] / youtrackTotal) * 100 : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900/50">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
+      <div className="max-w-[1500px] mx-auto space-y-5">
 
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -903,6 +907,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
         {activeTab === 'status' && (
+          <StatusMain project={selectedProject} />
+        )}
+
+        {activeTab === '__status_placeholder__' && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
             <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-4">
               <Activity size={28} className="text-blue-400 dark:text-blue-500" />

@@ -255,7 +255,7 @@ export const DailyMain = () => {
                 onClick={(e) => handleEditHub(selectedHub, e)}
                 className="px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors flex items-center gap-1.5 border border-transparent hover:border-indigo-200"
               >
-                <SettingsIcon size={14} /> Konfiguracja Hubu
+                <SettingsIcon size={14} /> Konfiguracja
               </button>
             </div>
           </header>

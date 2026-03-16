@@ -50,6 +50,19 @@ export interface YouTrackIssue {
         name: string;
         url: string;
     }[];
+    links?: {
+        direction?: string;
+        linkType?: {
+            name?: string;
+            outwardName?: string;
+            inwardName?: string;
+        };
+        issues?: {
+            id: string;
+            idReadable: string;
+            summary?: string;
+        }[];
+    }[];
     priority?: {
         name: string;
         color: { background: string; foreground: string };
