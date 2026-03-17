@@ -6,16 +6,19 @@ import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import { GoogleDocsService } from './googleDocsService.js';
+import { getEnvSettings } from './envConfig.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
 const isDev = !app.isPackaged;
 const appDir = app.getAppPath();
+const executableDir = path.dirname(app.getPath('exe'));
+const envSettings = getEnvSettings(appDir, executableDir);
 
 // Odnalezienie prawidłowego miejsca na bazę
 const dbPath = isDev
     ? path.join(appDir, 'baza_danych.db')
-    : path.join(path.dirname(app.getPath('exe')), 'baza_danych.db');
+    : path.join(executableDir, 'baza_danych.db');
 
 // Inicjalizacja SQLite
 const db = new Database(dbPath);
@@ -606,6 +609,11 @@ ipcMain.handle('write-clipboard-html', async (_, html: string) => {
 
 async function ensureGoogleCredentials() {
     console.log('Main: ensureGoogleCredentials starting...');
+    if (envSettings.googleClientId && envSettings.googleClientSecret) {
+        await gDocsService.setCredentials(envSettings.googleClientId, envSettings.googleClientSecret);
+        return true;
+    }
+
     const settingsRow = db.prepare(`SELECT data FROM settings WHERE id = 'default'`).get() as { data: string } | undefined;
     if (settingsRow) {
         console.log('Main: Found settings row');

@@ -3,6 +3,7 @@ import { format, differenceInDays, parseISO, isAfter } from 'date-fns';
 import type { 
   Project, Order, Settings, DailyHub, DailySection, DailyComment
 } from '../types';
+import { mergeSettingsWithEnv } from '../config/env';
 
 export type ProjectContextType = {
   projects: Project[];
@@ -29,6 +30,8 @@ export type ProjectContextType = {
 };
 
 export const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
+
+const SELECTED_PROJECT_STORAGE_KEY = 'pcc_selected_project_id';
 
 export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -74,7 +77,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
           const storedSettings = localStorage.getItem('pcc_settings');
 
           if (storedProjects) setProjects(JSON.parse(storedProjects));
-          if (storedSettings) setSettings(JSON.parse(storedSettings));
+          setSettings(mergeSettingsWithEnv(storedSettings ? JSON.parse(storedSettings) : null));
 
           if (storedOrders) {
             const parsedOrders = JSON.parse(storedOrders);
@@ -87,7 +90,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
         const data = await window.electron.readDb();
         setProjects(data.projects || []);
-        if (data.settings) setSettings(data.settings);
+        setSettings(mergeSettingsWithEnv(data.settings));
 
         const loadedOrders = data.orders || [];
         loadedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -107,6 +110,39 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     };
     initDb();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!selectedProject) {
+      sessionStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      return;
+    }
+
+    sessionStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, selectedProject.id);
+  }, [selectedProject]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || projects.length === 0) return;
+
+    const storedProjectId = sessionStorage.getItem(SELECTED_PROJECT_STORAGE_KEY);
+    if (!storedProjectId) return;
+
+    const matchingProject = projects.find((project) => project.id === storedProjectId);
+    if (!matchingProject) {
+      sessionStorage.removeItem(SELECTED_PROJECT_STORAGE_KEY);
+      return;
+    }
+
+    if (!selectedProject || selectedProject.id !== matchingProject.id) {
+      setSelectedProject(matchingProject);
+      return;
+    }
+
+    if (selectedProject !== matchingProject) {
+      setSelectedProject(matchingProject);
+    }
+  }, [projects, selectedProject]);
 
   const refreshDailyHubs = async () => {
     if (window.electron) {
@@ -165,7 +201,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateSettings = async (newSettings: Settings) => {
-    await syncDb(projects, orders, newSettings);
+    await syncDb(projects, orders, mergeSettingsWithEnv(newSettings) || undefined);
   };
 
   const importOrders = async (ordersToImport: Order[]) => {

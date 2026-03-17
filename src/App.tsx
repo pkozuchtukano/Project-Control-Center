@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 
 import type { 
@@ -6,6 +6,7 @@ import type {
   DailyHub, DailySection, DailyComment, 
   Estimation, MeetingNoteData, OrderItem, EmailTemplate, StatusReport
 } from './types';
+import { hasEnvManagedSettings } from './config/env';
 
 declare global {
   interface Window {
@@ -86,6 +87,11 @@ import { EstimationMain } from './features/estimation/components/EstimationMain'
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
 import { DailyMain } from './features/daily/components/DailyMain';
 import { StatusMain } from './features/status/components/StatusMain';
+import {
+  buildCbcpReportData,
+  exportCbcpReportToExcel,
+  exportCbcpReportToWord,
+} from './features/reports/services/cbcpReportExportService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -206,7 +212,7 @@ const ProjectModal = ({
   const [formData, setFormData] = useState<Omit<Project, 'id'>>({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
-    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
+    minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
     taskTypes: [],
     googleDocLink: '',
     stakeholders: []
@@ -231,6 +237,7 @@ const ProjectModal = ({
         rateNetto: projectToEdit.rateNetto,
         rateBrutto: projectToEdit.rateBrutto,
         vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
+        targetProfitPct: projectToEdit.targetProfitPct !== undefined ? projectToEdit.targetProfitPct : 20,
         taskTypes: projectToEdit.taskTypes || [],
         googleDocLink: projectToEdit.googleDocLink || '',
         stakeholders: projectToEdit.stakeholders || []
@@ -241,7 +248,7 @@ const ProjectModal = ({
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
-        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23,
+        minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
         taskTypes: [],
         googleDocLink: '',
         stakeholders: []
@@ -405,11 +412,22 @@ const ProjectModal = ({
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                     </div>
                     <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Docelowy zysk (%)</label>
+                      <input type="number" min="0" step="0.1" name="targetProfitPct" value={formData.targetProfitPct ?? 20} onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Cel liczony jako narzut względem godzin przepracowanych: (wykorzystane - przepracowane) / przepracowane.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link dokumentu Google dla Notatek</label>
                       <input name="googleDocLink" value={formData.googleDocLink} onChange={handleChange}
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
                         placeholder="https://docs.google.com/document/d/..." />
                     </div>
+                    <div></div>
                   </div>
                 </div>
               </div>
@@ -570,6 +588,29 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !selectedProject) return;
+
+    const storedTab = sessionStorage.getItem(`pcc_dashboard_active_tab:${selectedProject.id}`);
+    if (!storedTab) {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    const allowedTabs = ['dashboard', 'orders', 'work', 'settlements', 'status', 'youtrack', 'estimation', 'notes'];
+    if (allowedTabs.includes(storedTab)) {
+      setActiveTab(storedTab as typeof activeTab);
+      return;
+    }
+
+    setActiveTab('dashboard');
+  }, [selectedProject]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !selectedProject) return;
+    sessionStorage.setItem(`pcc_dashboard_active_tab:${selectedProject.id}`, activeTab);
+  }, [activeTab, selectedProject]);
+
   if (!selectedProject || !calculations) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/50 dark:bg-gray-900/50">
@@ -619,6 +660,52 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
   const youtrackTotal = youtrackHours['Programistyczne'] + youtrackHours['Obsługa projektu'] + youtrackHours['Inne'];
   const maxScale = Math.max(selectedProject.maxHours || 1, totalHoursUsed, youtrackTotal);
+  const hoursDifference = totalHoursUsed - youtrackTotal;
+  const hoursDifferencePct = totalHoursUsed > 0
+    ? (hoursDifference / totalHoursUsed) * 100
+    : 0;
+  const hoursDifferenceLabel = hoursDifference > 0
+    ? 'Wykorzystane wyższe od przepracowanych'
+    : hoursDifference < 0
+      ? 'Przepracowane wyższe od wykorzystanych'
+      : 'Wykorzystane równe przepracowanym';
+  const hoursDifferenceTone = hoursDifference > 0
+    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : hoursDifference < 0
+      ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+      : 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  const hoursDifferenceNet = hoursDifference * selectedProject.rateNetto;
+  const hoursDifferenceGross = hoursDifference * selectedProject.rateBrutto;
+  const targetProfitPct = selectedProject.targetProfitPct ?? 20;
+  const targetProfitRatio = targetProfitPct / 100;
+  const historicalUsedHours = totalHoursUsed;
+  const historicalWorkedHours = youtrackTotal;
+  const remainingPricedHours = remainingToMax;
+  const projectedTotalUsedHours = historicalUsedHours + remainingPricedHours;
+  const targetFinalWorkedHours = projectedTotalUsedHours / (1 + targetProfitRatio);
+  const allowedFutureWorkedForTarget = targetFinalWorkedHours - historicalWorkedHours;
+  const bestCaseFinalProfitPct = projectedTotalUsedHours > 0
+    ? (youtrackTotal > 0 ? ((projectedTotalUsedHours - youtrackTotal) / youtrackTotal) * 100 : Infinity)
+    : 0;
+  const rawRequiredMarkupPct = allowedFutureWorkedForTarget > 0
+    ? ((remainingPricedHours / allowedFutureWorkedForTarget) - 1) * 100
+    : null;
+  const requiredMarkupPctForTarget = rawRequiredMarkupPct === null ? null : Math.max(0, rawRequiredMarkupPct);
+  const allowedFutureWorkedDisplay = Math.max(0, allowedFutureWorkedForTarget);
+  const requiredMarkupDisplayValue = remainingPricedHours <= 0
+    ? (bestCaseFinalProfitPct >= targetProfitPct ? '0.0%' : '∞')
+    : allowedFutureWorkedForTarget <= 0
+      ? '∞'
+      : `${requiredMarkupPctForTarget?.toFixed(1)}%`;
+  const requiredMarkupStatus = remainingPricedHours <= 0
+    ? (bestCaseFinalProfitPct >= targetProfitPct
+        ? `Projekt już domyka co najmniej ${targetProfitPct}% zysku.`
+        : `Brak pozostałych godzin do wykorzystania, a projekt kończy się poniżej ${targetProfitPct}% zysku.`)
+    : allowedFutureWorkedForTarget <= 0
+      ? `Cel ${targetProfitPct}% zysku wymagałby nieskończonego narzutu przy dotychczasowej historii godzin.`
+      : requiredMarkupPctForTarget === 0
+        ? `Obecna historia projektu już zabezpiecza co najmniej ${targetProfitPct}% zysku przy pozostałych godzinach.`
+        : `Minimalny narzut dla kolejnych zleceń, aby domknąć projekt z ${targetProfitPct}% zysku.`;
 
   const progPct = youtrackTotal > 0 ? (youtrackHours['Programistyczne'] / youtrackTotal) * 100 : 0;
   const obsPct = youtrackTotal > 0 ? (youtrackHours['Obsługa projektu'] / youtrackTotal) * 100 : 0;
@@ -732,9 +819,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
             {/* HOURS COMPARISON PROGRESS */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-              <div className="flex items-center gap-2 text-gray-900 dark:text-white mb-6">
-                <Activity size={20} className="text-indigo-500" />
-                <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
+              <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                  <Activity size={20} className="text-indigo-500" />
+                  <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
+                </div>
+                <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
+                  {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifferenceLabel}
+                </div>
               </div>
               <div className="space-y-5">
                 <div>
@@ -808,9 +900,18 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       {selectedProject.minHours} <span className="text-sm text-gray-400 font-normal">/</span> {selectedProject.maxHours} <span className="text-sm text-gray-500 font-normal">h</span>
                     </div>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Różnica godzin vs przepracowane</p>
+                    <div className="flex items-baseline gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                      {hoursDifference > 0 ? '+' : ''}{hoursDifference.toFixed(1)} <span className="text-sm text-gray-500 font-normal">h</span>
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% marży godzin względem wykorzystanych
+                    </p>
+                  </div>
 
                   {isFinancialDataVisible && (
-                    <div className="col-span-2 grid grid-cols-2 gap-x-6 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="col-span-2 grid grid-cols-2 gap-x-6 gap-y-6 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2 duration-300">
                       <div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Stawka Godzinowa Brutto (Netto)</p>
                         <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
@@ -829,6 +930,36 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             <span>{budgetMin.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {budgetMax.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN</span>
                           </div>
                         </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Wartość różnicy godzin Brutto (Netto)</p>
+                        <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                          {hoursDifferenceGross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'always' })} <span className="text-sm text-gray-500 font-normal pb-0.5">PLN</span>
+                          <span className="text-sm text-gray-400 dark:text-gray-500 font-normal pb-0.5 ml-1">({hoursDifferenceNet.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'always' })} PLN)</span>
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                          {hoursDifference > 0 ? 'Dodatnia różnica oznacza zysk firmy na różnicy godzin.' : hoursDifference < 0 ? 'Ujemna różnica oznacza, że przepracowano więcej niż wykorzystano.' : 'Brak różnicy wartości godzin.'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Wymagany narzut w kolejnych zleceniach do {targetProfitPct}% zysku</p>
+                        <div className="flex items-end gap-2 text-gray-900 dark:text-white font-bold sm:text-lg">
+                          {requiredMarkupDisplayValue}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                          {requiredMarkupStatus}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                          Historia projektu: wykorzystane {historicalUsedHours.toFixed(1)}h, przepracowane {historicalWorkedHours.toFixed(1)}h. Pozostały limit do wyceny: {remainingPricedHours.toFixed(1)}h.
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                          Aby domknąć projekt z {targetProfitPct}% zysku, łączna liczba godzin przepracowanych na koniec nie powinna przekroczyć {targetFinalWorkedHours.toFixed(1)}h, czyli na pozostałej puli można jeszcze przepracować maksymalnie {allowedFutureWorkedDisplay.toFixed(1)}h.
+                        </p>
+                        {(allowedFutureWorkedForTarget <= 0 || remainingPricedHours <= 0) && (
+                          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            Maksymalny możliwy zysk przy obecnej historii: {Number.isFinite(bestCaseFinalProfitPct) ? `${bestCaseFinalProfitPct.toFixed(1)}%` : '∞'}.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1133,6 +1264,32 @@ const OrdersRegistryView = () => {
   );
 };
 
+const handleDateInputTabNavigation = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  if (event.key !== 'Tab') return;
+
+  const container = event.currentTarget.closest('form, .no-print, [role="dialog"]');
+  if (!container) return;
+
+  const focusableElements = Array.from(
+    container.querySelectorAll<HTMLElement>('input, select, textarea, button, [tabindex]:not([tabindex="-1"])')
+  ).filter((element) => {
+    if (element.hasAttribute('disabled')) return false;
+    if (element.getAttribute('aria-hidden') === 'true') return false;
+    if (element.tabIndex < 0) return false;
+    return element.offsetParent !== null;
+  });
+
+  const currentIndex = focusableElements.indexOf(event.currentTarget);
+  if (currentIndex === -1) return;
+
+  const nextIndex = event.shiftKey ? currentIndex - 1 : currentIndex + 1;
+  const nextElement = focusableElements[nextIndex];
+  if (!nextElement) return;
+
+  event.preventDefault();
+  nextElement.focus();
+};
+
 const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   const [formData, setFormData] = useState<Omit<Order, 'id'>>({
     projectId: project?.id || '',
@@ -1234,16 +1391,36 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
           <form id="order-form" onSubmit={handleSubmit} className="space-y-8">
 
             {/* Sekcja 1: Podstawowe */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="md:col-span-1">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formularz zlecenia nr *</label>
                 <input required name="orderNumber" value={formData.orderNumber} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
               </div>
-              <div>
+              <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tytuł zlecenia *</label>
                 <input required name="title" value={formData.title} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 md:col-span-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji od</label>
+                  <input type="date" name="scheduleFrom" value={formData.scheduleFrom} onChange={handleChange} onKeyDown={handleDateInputTabNavigation} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji do</label>
+                  <input type="date" name="scheduleTo" value={formData.scheduleTo} onChange={handleChange} onKeyDown={handleDateInputTabNavigation} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 md:col-span-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data przekazania</label>
+                  <input type="date" name="handoverDate" value={formData.handoverDate || ''} onChange={handleChange} onKeyDown={handleDateInputTabNavigation} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data odbioru zlecenia</label>
+                  <input type="date" name="acceptanceDate" value={formData.acceptanceDate || ''} onChange={handleChange} onKeyDown={handleDateInputTabNavigation} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 md:col-span-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">System / Moduł</label>
                   <input name="systemModule" value={formData.systemModule || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition" />
@@ -1255,26 +1432,6 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                     <option value="normalny">Normalny</option>
                     <option value="wysoki">Wysoki</option>
                   </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji od</label>
-                  <input type="date" name="scheduleFrom" value={formData.scheduleFrom} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data realizacji do</label>
-                  <input type="date" name="scheduleTo" value={formData.scheduleTo} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data przekazania</label>
-                  <input type="date" name="handoverDate" value={formData.handoverDate || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data odbioru zlecenia</label>
-                  <input type="date" name="acceptanceDate" value={formData.acceptanceDate || ''} onChange={handleChange} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
               </div>
             </div>
@@ -1324,7 +1481,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                           <input value={item.name} onChange={e => handleItemChange(item.id, 'name', e.target.value)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition" placeholder="Wpisz nazwę..." />
                         </td>
                         <td className="py-2 px-4">
-                          <input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'date', e.target.value)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
+                          <input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'date', e.target.value)} onKeyDown={handleDateInputTabNavigation} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                         </td>
                         <td className="py-2 px-4">
                           <input type="number" min="0" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
@@ -1408,23 +1565,7 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
 
   if (!isOpen) return null;
 
-  const filteredOrders = orders.filter(o => {
-    const pFrom = periodFrom ? new Date(periodFrom) : new Date(0);
-    const pTo = periodTo ? new Date(periodTo) : new Date(8640000000000000);
-    // Include end of the day for the 'to' date
-    pTo.setHours(23, 59, 59, 999);
-
-    if (o.acceptanceDate) {
-      const aDate = new Date(o.acceptanceDate);
-      return aDate >= pFrom && aDate <= pTo;
-    } else {
-      const cDate = new Date(o.createdAt);
-      return cDate >= pFrom && cDate <= pTo;
-    }
-  }).sort((a, b) => a.orderNumber.localeCompare(b.orderNumber, undefined, { numeric: true }));
-
-  const realizedOrders = filteredOrders.filter(o => o.acceptanceDate);
-  const remainingOrders = filteredOrders.length - realizedOrders.length;
+  const reportData = buildCbcpReportData(orders, periodFrom, periodTo, reportDate);
 
   return (
     <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto">
@@ -1438,33 +1579,37 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
         }
       `}</style>
 
-      {/* HEADER CONTROLS (Nie drukuje się) */}
       <div className="no-print sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 p-4 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center z-10">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Sporządzono:</label>
-            <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+            <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Okres od:</label>
-            <input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+            <input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Do:</label>
-            <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+            <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-            Zamknij
+          <button onClick={() => exportCbcpReportToWord(project, reportData)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
+            <FileText size={16} /> Export Word
+          </button>
+          <button onClick={() => exportCbcpReportToExcel(project, reportData)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
+            <FileSpreadsheet size={16} /> Export Excel
           </button>
           <button onClick={() => window.print()} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-sm">
             <Printer size={16} /> Export PDF / Drukuj
           </button>
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+            Zamknij
+          </button>
         </div>
       </div>
 
-      {/* DOCUMENT TO PRINT */}
       <div className="print-section max-w-[297mm] mx-auto p-12 bg-white min-h-screen font-serif text-[12px] leading-relaxed text-black">
         <div className="text-right font-bold mb-6">
           Załącznik nr 14. Wzór raportu końcowego z realizacji usług.
@@ -1485,13 +1630,13 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
           </div>
           <div className="space-y-2">
             <div>
-              Liczba zgłoszeń w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{filteredOrders.length}</span>
+              Liczba zgłoszeń w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{reportData.totalOrders}</span>
             </div>
             <div>
-              Liczba zgłoszeń zrealizowanych w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{realizedOrders.length}</span>
+              Liczba zgłoszeń zrealizowanych w raportowanym okresie <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{reportData.realizedOrders}</span>
             </div>
             <div>
-              Liczba zgłoszeń pozostających w realizacji <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{remainingOrders}</span>
+              Liczba zgłoszeń pozostających w realizacji <span className="border-b border-dotted border-black inline-block min-w-[40px] text-center">{reportData.remainingOrders}</span>
             </div>
           </div>
         </div>
@@ -1510,23 +1655,19 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map(order => {
-              const totalHours = order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0);
-              const itemsList = order.items.map(i => i.name).join(", ");
-              return (
-                <tr key={order.id}>
-                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.orderNumber}</td>
-                  <td className="border border-black p-2">{order.title}</td>
-                  <td className="border border-black p-2 text-xs">{itemsList}</td>
-                  <td className="border border-black p-2 text-center text-xs">{order.systemModule || ''}</td>
-                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.scheduleFrom || order.createdAt.split('T')[0]}</td>
-                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.handoverDate || ''}</td>
-                  <td className="border border-black p-2 text-center whitespace-nowrap">{order.acceptanceDate || ''}</td>
-                  <td className="border border-black p-2 text-center whitespace-nowrap">{totalHours}h</td>
-                </tr>
-              )
-            })}
-            {filteredOrders.length === 0 && (
+            {reportData.rows.map((row) => (
+              <tr key={`${row.orderNumber}-${row.title}`}>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{row.orderNumber}</td>
+                <td className="border border-black p-2">{row.title}</td>
+                <td className="border border-black p-2 text-xs">{row.products}</td>
+                <td className="border border-black p-2 text-center text-xs">{row.systemModule}</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{row.orderDate}</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{row.handoverDate}</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{row.acceptanceDate}</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{row.totalHours}h</td>
+              </tr>
+            ))}
+            {reportData.rows.length === 0 && (
               <tr>
                 <td colSpan={8} className="border border-black p-4 text-center italic text-gray-500">
                   Brak zleceń w wybranym okresie.
@@ -1677,14 +1818,13 @@ const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clien
 };
 
 const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-  const { settings, updateSettings } = useProjectContext();
-  const [formData, setFormData] = useState<Settings>({ 
-    youtrackBaseUrl: '', 
+  const { settings } = useProjectContext();
+  const [formData, setFormData] = useState<Settings>({
+    youtrackBaseUrl: '',
     youtrackToken: '',
     googleClientId: '',
     googleClientSecret: ''
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -1697,18 +1837,6 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
     }
   }, [settings, isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    console.log('SettingsModal: Submitting formData. Keys:', Object.keys(formData));
-    try {
-      await updateSettings(formData);
-      onClose();
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -1717,26 +1845,40 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <SettingsIcon size={20} className="text-indigo-500" />
-            Ustawienia Główne
+            Ustawienia G??wne
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
+        <div className="p-6">
           <div className="space-y-4">
+            {hasEnvManagedSettings ? (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                Dane konfiguracyjne s? pobierane z pliku `.env`.
+              </div>
+            ) : null}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">YouTrack Base URL</label>
-              <input required name="youtrackBaseUrl" value={formData.youtrackBaseUrl} onChange={e => setFormData({ ...formData, youtrackBaseUrl: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="np. https://twojadomena.youtrack.cloud" />
+              <input
+                readOnly
+                name="youtrackBaseUrl"
+                value={formData.youtrackBaseUrl}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
+                placeholder="np. https://twojadomena.youtrack.cloud"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Permanent Token</label>
-              <input type="password" required name="youtrackToken" value={formData.youtrackToken} onChange={e => setFormData({ ...formData, youtrackToken: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                placeholder="Wprowadź token API" />
+              <input
+                type="password"
+                readOnly
+                name="youtrackToken"
+                value={formData.youtrackToken}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
+                placeholder="Token z pliku .env"
+              />
             </div>
 
             <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
@@ -1744,15 +1886,24 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client ID</label>
-                  <input name="googleClientId" value={formData.googleClientId} onChange={e => setFormData({ ...formData, googleClientId: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                    placeholder="Wklej Client ID" />
+                  <input
+                    readOnly
+                    name="googleClientId"
+                    value={formData.googleClientId}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
+                    placeholder="Client ID z pliku .env"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client Secret</label>
-                  <input type="password" name="googleClientSecret" value={formData.googleClientSecret} onChange={e => setFormData({ ...formData, googleClientSecret: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-                    placeholder="Wklej Client Secret" />
+                  <input
+                    type="password"
+                    readOnly
+                    name="googleClientSecret"
+                    value={formData.googleClientSecret}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
+                    placeholder="Client Secret z pliku .env"
+                  />
                 </div>
                 <GoogleAuthSection clientId={formData.googleClientId || ''} clientSecret={formData.googleClientSecret || ''} />
               </div>
@@ -1760,14 +1911,15 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
           </div>
 
           <div className="mt-8 flex justify-end gap-3">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
-              Anuluj
-            </button>
-            <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900 transition flex items-center justify-center min-w-[120px]">
-              {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : 'Zapisz'}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900 transition flex items-center justify-center min-w-[120px]"
+            >
+              Zamknij
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

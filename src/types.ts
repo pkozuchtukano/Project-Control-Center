@@ -26,6 +26,7 @@ export type Project = {
   rateNetto: number;
   rateBrutto: number;
   vatRate: number;
+  targetProfitPct?: number;
   youtrackQuery?: string;
   taskTypes?: TaskType[];
   googleDocLink?: string;
