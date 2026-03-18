@@ -102,6 +102,7 @@ import {
   exportPmsReportToWord,
 } from './features/reports/services/pmsReportExportService';
 import { buildExecutiveSettlementReportData } from './features/reports/services/settlementExecutiveReportService';
+import { exportExecutiveSettlementReportToWord } from './features/reports/services/settlementExecutiveWordExportService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -1174,7 +1175,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   </div>
                   <h3 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">Zestawienie kontraktu i rozliczeń</h3>
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-                    Widok pokazuje realne wykorzystanie godzin z umowy: całość zakontraktowaną w zleceniach, część już rozliczoną oraz pozycje, które nadal czekają na PO.
+                    Widok pokazuje realne wykorzystanie godzin z umowy: całość zakontraktowaną w zleceniach, część już rozliczoną oraz pozycje, które nadal czekają na protokół odbioru.
                   </p>
                 </div>
                 <div className="flex min-w-[220px] flex-col gap-3 lg:items-end">
@@ -1354,7 +1355,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Mają datę od, bez przekazania i bez odbioru</p>
                     </div>
                     <div className="rounded-2xl bg-sky-50 p-4 dark:bg-sky-900/20">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Oddane PP</p>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Po protokole przekazania</p>
                       <p className="mt-2 text-3xl font-black text-sky-800 dark:text-sky-200">{handedOverPendingOrders.length}</p>
                       <p className="mt-1 text-xs text-sky-700/80 dark:text-sky-300/80">Mają przekazanie, nadal bez odbioru</p>
                     </div>
@@ -2410,6 +2411,7 @@ const ExecutiveSettlementReportModal = ({
 }) => {
   const [reportDate, setReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingWord, setIsExportingWord] = useState(false);
   const [isPdfPasswordModalOpen, setIsPdfPasswordModalOpen] = useState(false);
   const [pdfPassword, setPdfPassword] = useState('');
   const [pdfPasswordConfirmation, setPdfPasswordConfirmation] = useState('');
@@ -2435,6 +2437,12 @@ const ExecutiveSettlementReportModal = ({
     risk: 'border-red-200 bg-red-50 text-red-900',
     neutral: 'border-slate-200 bg-slate-50 text-slate-900',
   };
+  const teamChartPalette = ['#2563eb', '#4f46e5', '#0891b2', '#7c3aed', '#0f766e', '#ea580c', '#db2777', '#64748b'];
+  const pdfTeamChartData = reportData.topContributors.map((contributor, index) => ({
+    name: contributor.name,
+    value: contributor.hours,
+    fill: teamChartPalette[index % teamChartPalette.length],
+  }));
 
   const renderPdfBars = (
     data: { name: string; value: number; fill: string }[],
@@ -2533,6 +2541,19 @@ const ExecutiveSettlementReportModal = ({
     }
 
     await performPdfExport();
+  };
+
+  const handleWordExport = async () => {
+    setIsExportingWord(true);
+    try {
+      await exportExecutiveSettlementReportToWord(project, reportData, {
+        includeFinancialData: isFinancialDataVisible,
+      });
+    } catch (error: any) {
+      alert(`Nie udało się zapisać raportu Word.\n${error?.message || 'Nieznany błąd.'}`);
+    } finally {
+      setIsExportingWord(false);
+    }
   };
 
   return (
@@ -2687,7 +2708,7 @@ const ExecutiveSettlementReportModal = ({
       <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-sm">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Raport zarządczy PDF</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Raport zarządczy</p>
             <h3 className="mt-1 text-lg font-black text-slate-900">{project.code} - rozliczenia, wykresy i komentarz zarządczy</h3>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -2711,6 +2732,14 @@ const ExecutiveSettlementReportModal = ({
               title={isFinancialDataVisible ? 'Ukryj kwoty' : 'Pokaż kwoty'}
             >
               <DollarSign size={16} />
+            </button>
+            <button
+              onClick={() => void handleWordExport()}
+              disabled={isExportingWord}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+            >
+              <FileText size={16} />
+              {isExportingWord ? 'Zapisywanie Word...' : 'Export Word'}
             </button>
             <button
               onClick={() => void handlePdfExport()}
@@ -2992,10 +3021,10 @@ const ExecutiveSettlementReportModal = ({
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Zespół projektowy</p>
                 <h3 className="mt-1 text-lg font-black text-slate-900">Najwięcej zalogowanych godzin</h3>
               </div>
-              <div className="print-chart h-[280px]">
-                {reportData.teamChartData.length > 0 ? (
+              <div className={isExportingPdf ? 'space-y-4' : 'print-chart h-[280px]'}>
+                {(isExportingPdf ? pdfTeamChartData : reportData.teamChartData).length > 0 ? (
                   isExportingPdf ? (
-                    renderPdfBars(reportData.teamChartData, (value) => `${formatOrderHours(value)} h`)
+                    renderPdfBars(pdfTeamChartData, (value) => `${formatOrderHours(value)} h`)
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 48, bottom: 10 }}>

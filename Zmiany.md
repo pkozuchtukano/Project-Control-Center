@@ -42,6 +42,15 @@
 - 2026-03-18 – Hasło dla PDF z widocznymi kwotami
   -- Eksport raportu zarządczego do PDF pyta teraz o hasło, jeśli przed zapisem włączone są dane finansowe.
   -- Po wygenerowaniu dokument jest szyfrowany hasłem po stronie Electron, więc otwarcie pliku PDF wymaga podania ustawionego hasła.
+- 2026-03-18 – Pełna lista zespołu w raporcie PDF
+  -- Sekcja `Zespół projektowy` w eksporcie PDF przestała ograniczać się do skróconego wykresu i renderuje teraz pełną listę osób z zalogowanymi godzinami.
+  -- Widok PDF nie ucina już członków zespołu przez limit 6 pozycji ani przez stałą wysokość kontenera wykresu.
+- 2026-03-18 – Eksport raportu zarządczego do Word
+  -- Dodano osobny eksport `Word` dla raportu zarządczego rozliczeń, dostępny z tego samego okna co eksport PDF.
+  -- Dokument `.docx` zawiera podsumowanie projektu, KPI, statusy, komentarze zarządcze, zestawienia godzinowe oraz pełną listę zespołu, a dane finansowe są uwzględniane tylko wtedy, gdy były odsłonięte w raporcie.
+- 2026-03-18 – Rozwinięcie skrótów PO i PP w widokach oraz raportach
+  -- W obszarze rozliczeń i raportów zastąpiono skróty `PO` i `PP` pełnymi nazwami: `protokół odbioru` oraz `protokół przekazania`, z dopasowaniem do kontekstu językowego.
+  -- Interfejs i eksporty pokazują teraz jednoznaczne, pełne określenia zamiast skrótów, co poprawia czytelność dla odbiorców raportów.
 
 ## Synchronizacja bazy danych
 - 2026-03-18 – Ręczny eksport i import bazy danych

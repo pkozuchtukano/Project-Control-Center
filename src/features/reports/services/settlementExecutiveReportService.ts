@@ -196,12 +196,12 @@ export const buildExecutiveSettlementReportData = ({
     pendingOrders.length === 0
       ? {
           title: 'Brak nierozliczonych zleceń',
-          body: 'Wszystkie zlecenia mają już uzupełnione PO, więc część formalno-rozliczeniowa jest domknięta.',
+          body: 'Wszystkie zlecenia mają już uzupełniony protokół odbioru, więc część formalno-rozliczeniowa jest domknięta.',
           tone: 'positive',
         }
       : {
-          title: 'Część zleceń nadal czeka na PO',
-          body: `${pendingOrders.length} zleceń odpowiada za ${formatHours(pendingSettlementHours)} i ${formatMoney(pendingNetValue)} netto. W tym ${handedOverPendingOrders.length} po oddaniu PP, ${inProgressOrders.length} w trakcie oraz ${cancelledOrders.length} anulowanych poza rozliczeniem.`,
+          title: 'Część zleceń nadal czeka na protokół odbioru',
+          body: `${pendingOrders.length} zleceń odpowiada za ${formatHours(pendingSettlementHours)} i ${formatMoney(pendingNetValue)} netto. W tym ${handedOverPendingOrders.length} po przekazaniu protokołu przekazania, ${inProgressOrders.length} w trakcie oraz ${cancelledOrders.length} anulowanych poza rozliczeniem.`,
           tone: handedOverPendingOrders.length > 0 ? 'warning' : 'neutral',
         },
     profitabilityHours >= 0
@@ -331,8 +331,8 @@ export const buildExecutiveSettlementReportData = ({
     }));
 
   const statusChartData: ExecutiveReportChartBar[] = [
-    { name: 'Rozliczone PO', value: settledHours, fill: '#059669' },
-    { name: 'Oddane PP bez PO', value: handedOverPendingHours, fill: '#0284c7' },
+    { name: 'Rozliczone protokołem odbioru', value: settledHours, fill: '#059669' },
+    { name: 'Po protokole przekazania bez protokołu odbioru', value: handedOverPendingHours, fill: '#0284c7' },
     { name: 'W trakcie', value: inProgressHours, fill: '#d97706' },
     { name: 'Anulowane', value: cancelledHours, fill: '#64748b' },
   ];
@@ -342,14 +342,14 @@ export const buildExecutiveSettlementReportData = ({
       label: 'Rozliczone',
       count: settledOrders.length,
       hours: settledHours,
-      note: 'Zlecenia z uzupełnionym PO.',
+      note: 'Zlecenia z uzupełnionym protokołem odbioru.',
       fill: '#059669',
     },
     {
-      label: 'Oddane PP',
+      label: 'Po protokole przekazania',
       count: handedOverPendingOrders.length,
       hours: handedOverPendingHours,
-      note: 'Zlecenia po przekazaniu, nadal bez PO.',
+      note: 'Zlecenia po protokole przekazania, nadal bez protokołu odbioru.',
       fill: '#0284c7',
     },
     {
