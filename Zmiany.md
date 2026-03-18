@@ -12,6 +12,36 @@
 - 2026-03-17 – Wykluczenie sekretów i lokalnej bazy z Git
   -- Uporządkowano plik `.gitignore` i dodano wykluczenia dla `.env`, `.google-tokens.json` oraz plików SQLite (`baza_danych.db`, `-shm`, `-wal`).
   -- Sekrety i lokalne pliki danych pozostają dostępne wyłącznie lokalnie, a kolejne commity nie powinny już blokować push przez GitHub Push Protection.
+- 2026-03-18 – Korekta ignorowania lokalnych plików sekretów
+  -- Rozszerzono `.gitignore` o rzeczywiste lokalne nazwy plików `env` oraz `google-tokens.json`, które były używane w repo obok wariantów z kropką.
+  -- Git przestaje śledzić lokalne pliki z sekretami w używanym nazewnictwie, co usuwa blokadę push spowodowaną przez GitHub Push Protection.
+- 2026-03-18 – Konfiguracja YouTrack i Google tylko z pliku `.env`
+  -- Usunięto z aplikacji zapis `youtrackBaseUrl`, `youtrackToken`, `googleClientId` i `googleClientSecret` do SQLite oraz `localStorage`, a źródłem tych danych pozostaje wyłącznie plik `.env`.
+  -- Odczyt ustawień w UI i w procesie Electron został przepięty na wartości z `.env`, a legacy tabela `settings` jest usuwana przy inicjalizacji bazy, aby stare sekrety nie pozostawały w pliku SQLite.
+- 2026-03-18 – Ukrycie wartości sekretów w oknie ustawień
+  -- W modalu `Ustawienia Główne` usunięto pola pokazujące rzeczywiste wartości `YouTrack Base URL`, `Permanent Token`, `Google Client ID` i `Google Client Secret`.
+  -- Ekran pokazuje teraz tylko status obecności konfiguracji w `.env`, a logika autoryzacji Google nadal korzysta z danych załadowanych z pliku bez renderowania ich w interfejsie.
+- 2026-03-18 – Uproszczenie okna ustawień głównych
+  -- Z modala `Ustawienia Główne` usunięto także pomocniczy opis i statusy konfiguracji `.env`, ponieważ te informacje nie są potrzebne w interfejsie aplikacji.
+  -- Okno ustawień pozostawia wyłącznie operacyjną sekcję `Google Cloud (Docs API)` potrzebną do podglądu stanu połączenia i wylogowania konta Google.
+- 2026-03-18 – Stabilizacja wykresów w eksporcie PDF
+  -- W raporcie zarządczym PDF poprawiono marginesy wykresów Recharts oraz szerokości osi, aby etykiety i wartości nie były przycinane po wygenerowaniu pliku.
+  -- Przed wywołaniem `printToPDF` aplikacja wymusza teraz dodatkowy `resize` i dwa przebiegi `requestAnimationFrame`, dzięki czemu wykresy mają czas przeliczyć układ do trybu eksportu.
+- 2026-03-18 – Stałe wymiary wykresów podczas zapisu PDF
+  -- Podczas eksportu raportu zarządczego do PDF wykresy przestają korzystać z `ResponsiveContainer` i są renderowane ze stałymi wymiarami dopasowanymi do strony raportu.
+  -- Zmiana eliminuje zależność od pomiaru kontenera w trybie `printToPDF`, który powodował rozjechanie wszystkich wykresów mimo poprawnych danych wejściowych.
+- 2026-03-18 – Wymuszenie pełnego przełączenia widoku przed zapisem PDF
+  -- Sekwencja eksportu raportu zarządczego została uzupełniona o dodatkowe opóźnienie i dwa przebiegi `requestAnimationFrame` po ustawieniu trybu `isExportingPdf`.
+  -- Eksport `printToPDF` dostaje czas na pełne przerysowanie raportu do wariantu PDF, co ma zapobiec zapisywaniu starego układu wykresów z widoku ekranowego.
+- 2026-03-18 – Dopasowanie kart KPI do większych wartości
+  -- W kartach podsumowania raportu zarządczego zmniejszono napięcie typografii dla dużych liczb godzin oraz dodano bezpieczne zawijanie wartości `Netto` i `Brutto`.
+  -- Większe kwoty i liczby godzin mieszczą się teraz w kartach bez wypychania układu lub łamania estetyki sekcji KPI.
+- 2026-03-18 – Utrzymanie waluty w jednej linii w kartach KPI
+  -- W małych kafelkach `Netto` i `Brutto` ustawiono zapis kwoty z `zł` jako nierozdzielny fragment oraz delikatnie zmniejszono rozmiar tekstu.
+  -- Waluta nie spada już do osobnej linii przy większych liczbach, a cała wartość pozostaje czytelna w obrębie kafelka.
+- 2026-03-18 – Hasło dla PDF z widocznymi kwotami
+  -- Eksport raportu zarządczego do PDF pyta teraz o hasło, jeśli przed zapisem włączone są dane finansowe.
+  -- Po wygenerowaniu dokument jest szyfrowany hasłem po stronie Electron, więc otwarcie pliku PDF wymaga podania ustawionego hasła.
 
 ## Synchronizacja bazy danych
 - 2026-03-18 – Ręczny eksport i import bazy danych

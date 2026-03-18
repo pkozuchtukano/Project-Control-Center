@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { format, differenceInDays, parseISO, isAfter } from 'date-fns';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { differenceInDays, parseISO, isAfter } from 'date-fns';
 import type { 
-  Project, Order, Settings, DailyHub, DailySection, DailyComment
+  Project, Order, Settings, DailyHub
 } from '../types';
-import { mergeSettingsWithEnv } from '../config/env';
+import { getEnvSettingsOrNull } from '../config/env';
 
 export type ProjectContextType = {
   projects: Project[];
@@ -42,19 +42,19 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const syncDb = async (newProjects: Project[], newOrders: Order[], newSettings?: Settings) => {
-    const sToSave = newSettings !== undefined ? newSettings : settings;
+  const syncDb = async (newProjects: Project[], newOrders: Order[]) => {
+    const resolvedSettings = getEnvSettingsOrNull();
     try {
       if (!window.electron) {
         localStorage.setItem('pcc_projects', JSON.stringify(newProjects));
         localStorage.setItem('pcc_orders', JSON.stringify(newOrders));
-        if (sToSave) localStorage.setItem('pcc_settings', JSON.stringify(sToSave));
+        localStorage.removeItem('pcc_settings');
       } else {
-        await window.electron.writeDb({ projects: newProjects, orders: newOrders, settings: sToSave || undefined });
+        await window.electron.writeDb({ projects: newProjects, orders: newOrders });
       }
       setProjects(newProjects);
       setOrders(newOrders);
-      if (sToSave) setSettings(sToSave);
+      setSettings(resolvedSettings);
     } catch (err: any) {
       console.error(err);
       setError("Błąd zapisu do pliku: " + err.message);
@@ -74,10 +74,10 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         if (!window.electron) {
           const storedProjects = localStorage.getItem('pcc_projects');
           const storedOrders = localStorage.getItem('pcc_orders');
-          const storedSettings = localStorage.getItem('pcc_settings');
 
           if (storedProjects) setProjects(JSON.parse(storedProjects));
-          setSettings(mergeSettingsWithEnv(storedSettings ? JSON.parse(storedSettings) : null));
+          localStorage.removeItem('pcc_settings');
+          setSettings(getEnvSettingsOrNull());
 
           if (storedOrders) {
             const parsedOrders = JSON.parse(storedOrders);
@@ -90,7 +90,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
         const data = await window.electron.readDb();
         setProjects(data.projects || []);
-        setSettings(mergeSettingsWithEnv(data.settings));
+        setSettings(data.settings || getEnvSettingsOrNull());
 
         const loadedOrders = data.orders || [];
         loadedOrders.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -200,8 +200,8 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
     await syncDb(projects, updated);
   };
 
-  const updateSettings = async (newSettings: Settings) => {
-    await syncDb(projects, orders, mergeSettingsWithEnv(newSettings) || undefined);
+  const updateSettings = async (_newSettings: Settings) => {
+    setSettings(getEnvSettingsOrNull());
   };
 
   const importOrders = async (ordersToImport: Order[]) => {

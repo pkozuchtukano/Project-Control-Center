@@ -6,13 +6,12 @@ import type {
   DailyHub, DailySection, DailyComment, 
   Estimation, MeetingNoteData, OrderItem, EmailTemplate, StatusReport
 } from './types';
-import { hasEnvManagedSettings } from './config/env';
 
 declare global {
   interface Window {
     electron?: {
       readDb: () => Promise<{ projects: Project[], orders: Order[], settings?: Settings }>;
-      writeDb: (data: { projects: Project[], orders: Order[], settings?: Settings }) => Promise<{ success: boolean }>;
+      writeDb: (data: { projects: Project[], orders: Order[] }) => Promise<{ success: boolean }>;
       fetchYouTrack: (options: any) => Promise<any>;
       getExcludedIssues: () => Promise<string[]>;
       setIssueExcluded: (id: string, excluded: boolean) => Promise<{ success: boolean }>;
@@ -45,7 +44,7 @@ declare global {
       openExternal: (url: string) => Promise<{ success: boolean }>;
       exportDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
       importDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
-      exportPdf: (options?: { defaultFileName?: string }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+      exportPdf: (options?: { defaultFileName?: string; password?: string }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
       
       // Daily Handlers
       getDailyHubs: () => Promise<DailyHub[]>;
@@ -2411,6 +2410,10 @@ const ExecutiveSettlementReportModal = ({
 }) => {
   const [reportDate, setReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isPdfPasswordModalOpen, setIsPdfPasswordModalOpen] = useState(false);
+  const [pdfPassword, setPdfPassword] = useState('');
+  const [pdfPasswordConfirmation, setPdfPasswordConfirmation] = useState('');
+  const [pdfPasswordError, setPdfPasswordError] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2433,7 +2436,40 @@ const ExecutiveSettlementReportModal = ({
     neutral: 'border-slate-200 bg-slate-50 text-slate-900',
   };
 
-  const handlePdfExport = async () => {
+  const renderPdfBars = (
+    data: { name: string; value: number; fill: string }[],
+    formatValue: (value: number) => string,
+    options?: { compact?: boolean },
+  ) => {
+    const maxValue = Math.max(1, ...data.map((item) => item.value));
+
+    return (
+      <div className={options?.compact ? 'space-y-3' : 'space-y-4'}>
+        {data.map((item) => (
+          <div key={item.name} className="grid grid-cols-[180px_minmax(0,1fr)_72px] items-center gap-4">
+            <p className="text-xs font-semibold leading-5 text-slate-600">{item.name}</p>
+            <div className="h-4 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${Math.max(3, (item.value / maxValue) * 100)}%`, backgroundColor: item.fill }}
+              />
+            </div>
+            <p className="text-right text-xs font-bold text-slate-500">{formatValue(item.value)}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const closePdfPasswordModal = () => {
+    if (isExportingPdf) return;
+    setIsPdfPasswordModalOpen(false);
+    setPdfPassword('');
+    setPdfPasswordConfirmation('');
+    setPdfPasswordError('');
+  };
+
+  const performPdfExport = async (password?: string) => {
     if (!window.electron?.exportPdf) {
       alert('Eksport PDF nie jest dostępny w tej wersji aplikacji.');
       return;
@@ -2442,10 +2478,17 @@ const ExecutiveSettlementReportModal = ({
     setIsExportingPdf(true);
     try {
       document.body.classList.add('pdf-export-active');
-      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
 
       const result = await window.electron.exportPdf({
         defaultFileName: `raport-zarzadczy-${project.code}-${reportDate}.pdf`,
+        password,
       });
 
       if (result.canceled || !result.success) {
@@ -2459,6 +2502,37 @@ const ExecutiveSettlementReportModal = ({
       document.body.classList.remove('pdf-export-active');
       setIsExportingPdf(false);
     }
+  };
+
+  const handleProtectedPdfExport = async () => {
+    if (!pdfPassword) {
+      setPdfPasswordError('Podaj hasło do otwarcia pliku PDF.');
+      return;
+    }
+
+    if (pdfPassword !== pdfPasswordConfirmation) {
+      setPdfPasswordError('Hasła nie są zgodne.');
+      return;
+    }
+
+    setPdfPasswordError('');
+    setIsPdfPasswordModalOpen(false);
+    const password = pdfPassword;
+    setPdfPassword('');
+    setPdfPasswordConfirmation('');
+    await performPdfExport(password);
+  };
+
+  const handlePdfExport = async () => {
+    if (isFinancialDataVisible) {
+      setPdfPassword('');
+      setPdfPasswordConfirmation('');
+      setPdfPasswordError('');
+      setIsPdfPasswordModalOpen(true);
+      return;
+    }
+
+    await performPdfExport();
   };
 
   return (
@@ -2541,6 +2615,74 @@ const ExecutiveSettlementReportModal = ({
           }
         }
       `}</style>
+
+      {isPdfPasswordModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Zabezpieczenie PDF</p>
+            <h3 className="mt-2 text-xl font-black text-slate-900">Ustaw hasło do otwarcia pliku</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Eksport zawiera widoczne kwoty. Podaj hasło, które będzie wymagane przy otwieraniu tego pliku PDF.
+            </p>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Hasło PDF</label>
+                <input
+                  type="password"
+                  value={pdfPassword}
+                  onChange={(event) => {
+                    setPdfPassword(event.target.value);
+                    if (pdfPasswordError) setPdfPasswordError('');
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Wpisz hasło do pliku PDF"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Potwierdź hasło</label>
+                <input
+                  type="password"
+                  value={pdfPasswordConfirmation}
+                  onChange={(event) => {
+                    setPdfPasswordConfirmation(event.target.value);
+                    if (pdfPasswordError) setPdfPasswordError('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      void handleProtectedPdfExport();
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Powtórz hasło"
+                />
+              </div>
+            </div>
+
+            {pdfPasswordError ? (
+              <p className="mt-3 text-sm font-medium text-red-600">{pdfPasswordError}</p>
+            ) : null}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closePdfPasswordModal}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                Anuluj
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleProtectedPdfExport()}
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              >
+                Zapisz zabezpieczony PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-sm">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -2661,19 +2803,23 @@ const ExecutiveSettlementReportModal = ({
               {reportData.metrics.map((metric) => (
                 <div key={metric.label} className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{metric.label}</p>
-                  <div className="mt-3 text-3xl font-black" style={{ color: metric.accent }}>
-                    {formatOrderHours(metric.hours)}
-                    <span className="ml-1 text-sm font-semibold text-slate-400">h</span>
+                  <div className="mt-3 flex min-w-0 items-baseline gap-1" style={{ color: metric.accent }}>
+                    <span className="min-w-0 break-words text-[2rem] font-black leading-none sm:text-3xl">{formatOrderHours(metric.hours)}</span>
+                    <span className="shrink-0 text-sm font-semibold text-slate-400">h</span>
                   </div>
                   {isFinancialDataVisible && (
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Netto</p>
-                        <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.netValue)} zł</p>
+                        <p className="mt-1 text-[0.92rem] font-bold leading-5 text-slate-900">
+                          <span className="whitespace-nowrap">{formatCurrencyValue(metric.netValue)} zł</span>
+                        </p>
                       </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Brutto</p>
-                        <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.grossValue)} zł</p>
+                        <p className="mt-1 text-[0.92rem] font-bold leading-5 text-slate-900">
+                          <span className="whitespace-nowrap">{formatCurrencyValue(metric.grossValue)} zł</span>
+                        </p>
                       </div>
                     </div>
                   )}
@@ -2725,19 +2871,23 @@ const ExecutiveSettlementReportModal = ({
                 <h3 className="mt-1 text-lg font-black text-slate-900">Kontrakt, rozliczenia i praca zespołu</h3>
               </div>
               <div className="print-chart h-[260px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.hoursChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
-                      {reportData.hoursChartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {isExportingPdf ? (
+                  renderPdfBars(reportData.hoursChartData, (value) => `${formatOrderHours(value)} h`)
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.hoursChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
+                        {reportData.hoursChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -2748,19 +2898,23 @@ const ExecutiveSettlementReportModal = ({
               </div>
               {isFinancialDataVisible ? (
                 <div className="print-chart h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.valuesChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
-                      <Tooltip formatter={(value: number | string | undefined) => [`${formatCurrencyValue(Number(value || 0))} zł`, 'Netto']} />
-                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
-                        {reportData.valuesChartData.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {isExportingPdf ? (
+                    renderPdfBars(reportData.valuesChartData, (value) => `${formatCurrencyValue(value)} zł`)
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.valuesChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
+                        <Tooltip formatter={(value: number | string | undefined) => [`${formatCurrencyValue(Number(value || 0))} zł`, 'Netto']} />
+                        <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
+                          {reportData.valuesChartData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               ) : (
                 <div className="flex h-[260px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-8 text-center text-sm leading-7 text-slate-500">
@@ -2775,19 +2929,23 @@ const ExecutiveSettlementReportModal = ({
                 <h3 className="mt-1 text-lg font-black text-slate-900">Godziny według etapu formalnego</h3>
               </div>
               <div className="print-chart h-[240px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.statusChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-12} textAnchor="end" height={46} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={60} isAnimationActive={false}>
-                      {reportData.statusChartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {isExportingPdf ? (
+                  renderPdfBars(reportData.statusChartData, (value) => `${formatOrderHours(value)} h`, { compact: true })
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.statusChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-12} textAnchor="end" height={46} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={60} isAnimationActive={false}>
+                        {reportData.statusChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -2797,19 +2955,23 @@ const ExecutiveSettlementReportModal = ({
                 <h3 className="mt-1 text-lg font-black text-slate-900">Struktura godzin z YouTrack</h3>
               </div>
               <div className="print-chart h-[240px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportData.categoryChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={70} isAnimationActive={false}>
-                      {reportData.categoryChartData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {isExportingPdf ? (
+                  renderPdfBars(reportData.categoryChartData, (value) => `${formatOrderHours(value)} h`, { compact: true })
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.categoryChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={70} isAnimationActive={false}>
+                        {reportData.categoryChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
           </div>
@@ -2832,19 +2994,23 @@ const ExecutiveSettlementReportModal = ({
               </div>
               <div className="print-chart h-[280px]">
                 {reportData.teamChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 48, bottom: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" opacity={0.45} />
-                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Number(value).toFixed(0)}h`} />
-                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={148} tickMargin={10} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
-                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                      <Bar dataKey="value" radius={[0, 12, 12, 0]} maxBarSize={28} isAnimationActive={false}>
-                        {reportData.teamChartData.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  isExportingPdf ? (
+                    renderPdfBars(reportData.teamChartData, (value) => `${formatOrderHours(value)} h`)
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 48, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" opacity={0.45} />
+                        <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Number(value).toFixed(0)}h`} />
+                        <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={148} tickMargin={10} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                        <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                        <Bar dataKey="value" radius={[0, 12, 12, 0]} maxBarSize={28} isAnimationActive={false}>
+                          {reportData.teamChartData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm leading-6 text-slate-500">
                     Brak zalogowanych godzin w YouTrack. Po synchronizacji rejestru pracy raport pokaże realne obciążenie zespołu.
@@ -2891,23 +3057,6 @@ const ExecutiveSettlementReportModal = ({
 
 const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const { settings } = useProjectContext();
-  const [formData, setFormData] = useState<Settings>({
-    youtrackBaseUrl: '',
-    youtrackToken: '',
-    googleClientId: '',
-    googleClientSecret: ''
-  });
-
-  useEffect(() => {
-    if (settings) {
-      setFormData({
-        youtrackBaseUrl: settings.youtrackBaseUrl || '',
-        youtrackToken: settings.youtrackToken || '',
-        googleClientId: settings.googleClientId || '',
-        googleClientSecret: settings.googleClientSecret || ''
-      });
-    }
-  }, [settings, isOpen]);
 
   if (!isOpen) return null;
 
@@ -2917,7 +3066,7 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <SettingsIcon size={20} className="text-indigo-500" />
-            Ustawienia G??wne
+            Ustawienia Główne
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
             <X size={20} />
@@ -2926,58 +3075,10 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
 
         <div className="p-6">
           <div className="space-y-4">
-            {hasEnvManagedSettings ? (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-                Dane konfiguracyjne s? pobierane z pliku `.env`.
-              </div>
-            ) : null}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">YouTrack Base URL</label>
-              <input
-                readOnly
-                name="youtrackBaseUrl"
-                value={formData.youtrackBaseUrl}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
-                placeholder="np. https://twojadomena.youtrack.cloud"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Permanent Token</label>
-              <input
-                type="password"
-                readOnly
-                name="youtrackToken"
-                value={formData.youtrackToken}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
-                placeholder="Token z pliku .env"
-              />
-            </div>
-
-            <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Cloud (Docs API)</h3>
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client ID</label>
-                  <input
-                    readOnly
-                    name="googleClientId"
-                    value={formData.googleClientId}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
-                    placeholder="Client ID z pliku .env"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Google Client Secret</label>
-                  <input
-                    type="password"
-                    readOnly
-                    name="googleClientSecret"
-                    value={formData.googleClientSecret}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700/70 px-3 py-2 text-sm text-gray-900 dark:text-white outline-none transition"
-                    placeholder="Client Secret z pliku .env"
-                  />
-                </div>
-                <GoogleAuthSection clientId={formData.googleClientId || ''} clientSecret={formData.googleClientSecret || ''} />
+                <GoogleAuthSection clientId={settings?.googleClientId || ''} clientSecret={settings?.googleClientSecret || ''} />
               </div>
             </div>
           </div>

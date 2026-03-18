@@ -10,7 +10,7 @@ export const envSettings: Settings = {
   googleDriveSharedFolderLink: valueOrEmpty(import.meta.env.VITE_GOOGLE_DRIVE_SHARED_FOLDER_LINK),
 };
 
-export const hasEnvManagedSettings = Boolean(
+export const hasEnvSettings = Boolean(
   envSettings.youtrackBaseUrl ||
   envSettings.youtrackToken ||
   envSettings.googleClientId ||
@@ -18,16 +18,8 @@ export const hasEnvManagedSettings = Boolean(
   envSettings.googleDriveSharedFolderLink
 );
 
-export const mergeSettingsWithEnv = (settings?: Partial<Settings> | null): Settings | null => {
-  const merged: Settings = {
-    youtrackBaseUrl: envSettings.youtrackBaseUrl || settings?.youtrackBaseUrl || '',
-    youtrackToken: envSettings.youtrackToken || settings?.youtrackToken || '',
-    googleClientId: envSettings.googleClientId || settings?.googleClientId || '',
-    googleClientSecret: envSettings.googleClientSecret || settings?.googleClientSecret || '',
-    googleDriveSharedFolderLink: envSettings.googleDriveSharedFolderLink || settings?.googleDriveSharedFolderLink || '',
-  };
-
-  return merged.youtrackBaseUrl || merged.youtrackToken || merged.googleClientId || merged.googleClientSecret || merged.googleDriveSharedFolderLink
-    ? merged
-    : null;
-};
+export const getEnvSettingsOrNull = (): Settings | null => (
+  hasEnvSettings
+    ? { ...envSettings }
+    : null
+);

@@ -3,8 +3,10 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 const { app, BrowserWindow, ipcMain, shell, dialog } = electron;
 import path from 'path';
 import fs from 'fs/promises';
+import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
 
@@ -35,10 +37,6 @@ db.exec(`
         data TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS orders (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS settings (
         id TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
@@ -110,6 +108,7 @@ db.exec(`
         isCollapsed INTEGER NOT NULL DEFAULT 0
     );
 `);
+db.exec('DROP TABLE IF EXISTS settings');
 
 // Initialization of Google Docs Service
 const gDocsService = new GoogleDocsService(path.dirname(dbPath));
@@ -147,10 +146,6 @@ const initializeDatabase = () => {
             data TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS orders (
-            id TEXT PRIMARY KEY,
-            data TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS settings (
             id TEXT PRIMARY KEY,
             data TEXT NOT NULL
         );
@@ -231,6 +226,7 @@ const initializeDatabase = () => {
             updatedAt TEXT NOT NULL
         );
     `);
+    db.exec('DROP TABLE IF EXISTS settings');
 
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
@@ -400,13 +396,15 @@ ipcMain.handle('read-db', async () => {
 
         const projects = fetchAll('projects');
         const orders = fetchAll('orders');
-
-        // Settings are stored as a single object but technically could be multiple rows. For now, we take row 'default'
-        const settingsRow = db.prepare(`SELECT data FROM settings WHERE id = 'default'`).get() as { data: string } | undefined;
-        let settings = undefined;
-        if (settingsRow && settingsRow.data) {
-            settings = JSON.parse(settingsRow.data);
-        }
+        const settings = (
+            envSettings.youtrackBaseUrl ||
+            envSettings.youtrackToken ||
+            envSettings.googleClientId ||
+            envSettings.googleClientSecret ||
+            envSettings.googleDriveSharedFolderLink
+        )
+            ? { ...envSettings }
+            : undefined;
 
         return { projects, orders, settings };
     } catch (error) {
@@ -417,7 +415,7 @@ ipcMain.handle('read-db', async () => {
 
 // Stary zapis całego pliku zastępujemy transakcją czyszczenia i wstawiania na nowo, 
 // lub optymalniej UPSERT-ami, ale aby zachować kompatybilność z pełnym zapisem `writeDb`, zrobimy transakcję kasująco-wstawiającą.
-ipcMain.handle('write-db', async (_, data: { projects?: any[]; orders?: any[]; settings?: any }) => {
+ipcMain.handle('write-db', async (_, data: { projects?: any[]; orders?: any[] }) => {
     try {
         const transaction = db.transaction(() => {
             // Nadpisywanie projektów
@@ -436,12 +434,6 @@ ipcMain.handle('write-db', async (_, data: { projects?: any[]; orders?: any[]; s
                 for (const ord of data.orders) {
                     insertOrder.run(ord.id, JSON.stringify(ord));
                 }
-            }
-
-            // Zapis settings jako id "default"
-            if (data.settings) {
-                const insertSettings = db.prepare('INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)');
-                insertSettings.run('default', JSON.stringify(data.settings));
             }
         });
 
@@ -848,22 +840,6 @@ async function ensureGoogleCredentials() {
         await gDocsService.setCredentials(envSettings.googleClientId, envSettings.googleClientSecret);
         return true;
     }
-
-    const settingsRow = db.prepare(`SELECT data FROM settings WHERE id = 'default'`).get() as { data: string } | undefined;
-    if (settingsRow) {
-        console.log('Main: Found settings row');
-        const settings = JSON.parse(settingsRow.data);
-        console.log('Main: Settings keys:', Object.keys(settings));
-        if (settings.googleClientId && settings.googleClientSecret) {
-            console.log('Main: Google credentials found in settings, calling gDocsService.setCredentials');
-            await gDocsService.setCredentials(settings.googleClientId, settings.googleClientSecret);
-            return true;
-        } else {
-            console.log('Main: Google credentials missing in settings keys');
-        }
-    } else {
-        console.log('Main: Settings row not found');
-    }
     return false;
 }
 
@@ -1171,7 +1147,7 @@ ipcMain.handle('import-database', async () => {
     }
 });
 
-ipcMain.handle('export-pdf', async (_, options?: { defaultFileName?: string }) => {
+ipcMain.handle('export-pdf', async (_, options?: { defaultFileName?: string; password?: string }) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
         throw new Error('Okno aplikacji nie jest dostępne.');
     }
@@ -1201,7 +1177,16 @@ ipcMain.handle('export-pdf', async (_, options?: { defaultFileName?: string }) =
         preferCSSPageSize: true,
     });
 
-    await fs.writeFile(saveResult.filePath, pdfBuffer);
+    const password = options?.password;
+    const finalPdfBytes = password
+        ? await encryptPDF(
+            new Uint8Array(pdfBuffer),
+            password,
+            randomBytes(24).toString('hex'),
+        )
+        : new Uint8Array(pdfBuffer);
+
+    await fs.writeFile(saveResult.filePath, Buffer.from(finalPdfBytes));
 
     return {
         success: true,

@@ -29,7 +29,9 @@ release
 
 # Local secrets and runtime data
 .env
+env
 .google-tokens.json
+google-tokens.json
 baza_danych.db
 baza_danych.db-shm
 baza_danych.db-wal
