@@ -96,6 +96,11 @@ import {
   exportCbcpReportToExcel,
   exportCbcpReportToWord,
 } from './features/reports/services/cbcpReportExportService';
+import {
+  buildPmsReportData,
+  exportPmsReportToExcel,
+  exportPmsReportToWord,
+} from './features/reports/services/pmsReportExportService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -1098,6 +1103,7 @@ const OrdersRegistryView = () => {
   const { orders, isLoading, addOrder, updateOrder, deleteOrder, importOrders } = useOrders(selectedProject?.id);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isPmsReportModalOpen, setIsPmsReportModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   if (!selectedProject) return null;
@@ -1186,6 +1192,9 @@ const OrdersRegistryView = () => {
 
           <button onClick={() => setIsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
             <FileText size={16} /> Raport CBCP
+          </button>
+          <button onClick={() => setIsPmsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
+            <FileText size={16} /> Raport PMS
           </button>
           <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
             <Plus size={16} /> Nowe Zlecenie
@@ -1285,6 +1294,7 @@ const OrdersRegistryView = () => {
 
       <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} />
       <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={selectedProject} orders={orders} />
+      <ReportPmsModal isOpen={isPmsReportModalOpen} onClose={() => setIsPmsReportModalOpen(false)} project={selectedProject} orders={orders} />
     </div>
   );
 };
@@ -1748,6 +1758,145 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
                 </td>
               </tr>
             )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const ReportPmsModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean, onClose: () => void, project: Project, orders: Order[] }) => {
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [periodFrom, setPeriodFrom] = useState(project?.dateFrom || '');
+  const [periodTo, setPeriodTo] = useState(project?.dateTo || '');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPeriodFrom(project?.dateFrom || '');
+    setPeriodTo(project?.dateTo || '');
+  }, [isOpen, project?.dateFrom, project?.dateTo]);
+
+  if (!isOpen) return null;
+
+  const reportData = buildPmsReportData(orders, project, periodFrom, periodTo, reportDate);
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto">
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 10mm; }
+          body { background: white; }
+          .no-print { display: none !important; }
+          .print-section { display: block !important; padding: 0 !important; }
+          .print-table th, .print-table td { border: 1px solid black !important; padding: 4px !important; font-size: 10px !important; vertical-align: middle !important; }
+        }
+      `}</style>
+
+      <div className="no-print sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 p-4 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center z-10">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Sporządzono:</label>
+            <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Okres od:</label>
+            <input type="date" value={periodFrom} onChange={e => setPeriodFrom(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Do:</label>
+            <input type="date" value={periodTo} onChange={e => setPeriodTo(e.target.value)} onKeyDown={handleDateInputTabNavigation} className="border border-gray-300 rounded px-2 py-1 text-sm bg-white outline-none focus:border-indigo-500" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => exportPmsReportToWord(project, reportData)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
+            <FileText size={16} /> Export Word
+          </button>
+          <button onClick={() => exportPmsReportToExcel(project, reportData)} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-2">
+            <FileSpreadsheet size={16} /> Export Excel
+          </button>
+          <button onClick={() => window.print()} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition flex items-center gap-2 shadow-sm">
+            <Printer size={16} /> Export PDF / Drukuj
+          </button>
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+            Zamknij
+          </button>
+        </div>
+      </div>
+
+      <div className="print-section max-w-[420mm] mx-auto p-8 bg-white min-h-screen font-serif text-[11px] leading-relaxed text-black">
+        <div className="text-right font-bold mb-6">
+          Raport PMS
+        </div>
+
+        <div className="mb-6 space-y-1">
+          <div><strong>Projekt:</strong> {project.code}</div>
+          <div><strong>Umowa:</strong> {project.contractNo}</div>
+          <div><strong>Data sporządzenia raportu:</strong> {reportDate}</div>
+          <div><strong>Raport za okres:</strong> {periodFrom} do {periodTo}</div>
+          <div><strong>Liczba zgłoszeń:</strong> {reportData.totalOrders}</div>
+          <div><strong>Liczba zgłoszeń zrealizowanych:</strong> {reportData.realizedOrders}</div>
+          <div><strong>Liczba zgłoszeń pozostających w realizacji:</strong> {reportData.remainingOrders}</div>
+        </div>
+
+        <table className="w-full text-left border-collapse print-table table-fixed">
+          <thead>
+            <tr className="bg-gray-50 font-bold">
+              <th className="border border-black p-2 text-center w-16">Nr zlecenia</th>
+              <th className="border border-black p-2 text-center w-24">Od</th>
+              <th className="border border-black p-2 text-center w-24">Do</th>
+              <th className="border border-black p-2 text-center w-28">Protokół przekazania</th>
+              <th className="border border-black p-2 text-center w-24">Protokół odbioru</th>
+              <th className="border border-black p-2 text-center w-56">Tytuł zlecenia</th>
+              <th className="border border-black p-2 text-center w-28">Produkty zlecenia</th>
+              <th className="border border-black p-2 text-center w-20">Liczba godzin zleconych</th>
+              <th className="border border-black p-2 text-center w-20">Stawka (netto)</th>
+              <th className="border border-black p-2 text-center w-24">Kwota (netto)</th>
+              <th className="border border-black p-2 text-center w-20">Łącznie zrealizowano (h)</th>
+              <th className="border border-black p-2 text-center w-28">Łącznie kwota (netto)</th>
+              <th className="border border-black p-2 text-center w-24">Łącznie brutto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reportData.rows.map((row) => (
+              row.lines.map((line, lineIndex) => (
+                <tr key={`${row.orderId}-${lineIndex}`}>
+                  {lineIndex === 0 && (
+                    <>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-center whitespace-nowrap">{row.orderNumber}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-center whitespace-nowrap">{row.from}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-center whitespace-nowrap">{row.to}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-center whitespace-nowrap">{row.handoverDate}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-center whitespace-nowrap">{row.acceptanceDate}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 align-top">{row.title}</td>
+                    </>
+                  )}
+                  <td className="border border-black p-2">{line.name}</td>
+                  <td className="border border-black p-2 text-right whitespace-nowrap">{formatOrderHours(line.hours)}</td>
+                  <td className="border border-black p-2 text-right whitespace-nowrap">{project.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+                  <td className="border border-black p-2 text-right whitespace-nowrap">{line.amountNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+                  {lineIndex === 0 && (
+                    <>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-right whitespace-nowrap font-bold">{formatOrderHours(row.totalHours)}</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-right whitespace-nowrap font-bold">{row.totalNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+                      <td rowSpan={row.lines.length} className="border border-black p-2 text-right whitespace-nowrap font-bold">{row.totalBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+                    </>
+                  )}
+                </tr>
+              ))
+            ))}
+            {reportData.rows.length === 0 && (
+              <tr>
+                <td colSpan={13} className="border border-black p-4 text-center italic text-gray-500">
+                  Brak zleceń w wybranym okresie.
+                </td>
+              </tr>
+            )}
+            <tr className="font-bold bg-gray-50">
+              <td colSpan={10} className="border border-black p-2 text-right">Suma</td>
+              <td className="border border-black p-2 text-right whitespace-nowrap">{formatOrderHours(reportData.grandTotalHours)}</td>
+              <td className="border border-black p-2 text-right whitespace-nowrap">{reportData.grandTotalNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+              <td className="border border-black p-2 text-right whitespace-nowrap">{reportData.grandTotalBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td>
+            </tr>
           </tbody>
         </table>
       </div>

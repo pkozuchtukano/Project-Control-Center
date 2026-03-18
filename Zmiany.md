@@ -31,6 +31,9 @@
 - 2026-03-18 – Dwa miejsca po przecinku dla roboczogodzin
   -- Pole `L. godzin rob.` w formularzu zlecenia przyjmuje teraz wartości z krokiem `0.01`, a podsumowania godzin w formularzu i na liście zleceń są formatowane do dwóch miejsc po przecinku.
   -- Rejestr zleceń oraz widok/eksport raportu CBCP zachowują precyzję `0,00 h`, dzięki czemu częściowe roboczogodziny nie są już zaokrąglane w prezentacji.
+- 2026-03-18 – Dodanie raportu PMS
+  -- W rejestrze zleceń dodano osobny raport `PMS` z tym samym zestawem filtrów i akcji eksportu co raport `CBCP`, dostępny z nowego przycisku w nagłówku widoku.
+  -- Raport `PMS` rozbija zlecenie na wiersze `Produkty zlecenia`, scala pionowo komórki wspólne dla jednego zlecenia, pokazuje godziny i kwoty per produkt oraz sumy łączne w podglądzie wydruku, eksporcie Excel i eksporcie Word.
 
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów
