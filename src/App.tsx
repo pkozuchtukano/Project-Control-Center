@@ -45,6 +45,7 @@ declare global {
       openExternal: (url: string) => Promise<{ success: boolean }>;
       exportDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
       importDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
+      exportPdf: (options?: { defaultFileName?: string }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
       
       // Daily Handlers
       getDailyHubs: () => Promise<DailyHub[]>;
@@ -660,8 +661,11 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     budgetMin, budgetMax
   } = calculations;
 
-  const settledHours = orders?.filter(o => o.acceptanceDate).reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) || 0;
-  const contractedHours = orders?.filter(o => !o.acceptanceDate).reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) || 0;
+  const settledOrders = orders.filter(isSettledOrder);
+  const cancelledOrders = orders.filter(isCancelledOrder);
+  const pendingSettlementOrders = orders.filter(isPendingSettlementOrder);
+  const settledHours = settledOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
+  const contractedHours = pendingSettlementOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const totalHoursUsed = settledHours + contractedHours;
   const remainingToMax = Math.max(0, selectedProject.maxHours - totalHoursUsed);
 
@@ -742,8 +746,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const progPct = youtrackTotal > 0 ? (youtrackHours['Programistyczne'] / youtrackTotal) * 100 : 0;
   const obsPct = youtrackTotal > 0 ? (youtrackHours['Obsługa projektu'] / youtrackTotal) * 100 : 0;
   const inPct = youtrackTotal > 0 ? (youtrackHours['Inne'] / youtrackTotal) * 100 : 0;
-  const inProgressOrders = orders.filter(order => !order.handoverDate && !order.acceptanceDate);
-  const handedOverPendingOrders = orders.filter(order => !!order.handoverDate && !order.acceptanceDate);
+  const inProgressOrders = pendingSettlementOrders.filter(isInProgressPendingOrder);
+  const handedOverPendingOrders = pendingSettlementOrders.filter(isHandedOverPendingOrder);
   const pendingSettlementHours = contractedHours;
   const contractedTotalHours = totalHoursUsed;
   const remainingInContract = selectedProject.maxHours - contractedTotalHours;
@@ -768,40 +772,40 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     {
       label: 'Umowa max godzin',
       value: formatOrderHours(selectedProject.maxHours),
-      amountNet: formatCurrencyValue(selectedProject.maxHours * selectedProject.rateNetto),
-      amountGross: formatCurrencyValue(selectedProject.maxHours * selectedProject.rateBrutto),
+      amountNet: selectedProject.maxHours * selectedProject.rateNetto,
+      amountGross: selectedProject.maxHours * selectedProject.rateBrutto,
       note: 'Limit maksymalny zapisany w umowie dla projektu.',
       tone: 'text-slate-700 dark:text-slate-200',
     },
     {
       label: 'Zakontraktowane',
       value: formatOrderHours(contractedTotalHours),
-      amountNet: formatCurrencyValue(contractedNetValue),
-      amountGross: formatCurrencyValue(contractedGrossValue),
+      amountNet: contractedNetValue,
+      amountGross: contractedGrossValue,
       note: 'Suma wszystkich godzin ze zleceń zapisanych w rejestrze.',
       tone: 'text-indigo-700 dark:text-indigo-300',
     },
     {
       label: 'Rozliczone',
       value: formatOrderHours(settledHours),
-      amountNet: formatCurrencyValue(settledNetValue),
-      amountGross: formatCurrencyValue(settledGrossValue),
-      note: 'Zlecenia z uzupełnionym PO, czyli formalnie rozliczone.',
+      amountNet: settledNetValue,
+      amountGross: settledGrossValue,
+      note: 'Zlecenia z uzupełnioną datą odbioru, czyli formalnie rozliczone.',
       tone: 'text-emerald-700 dark:text-emerald-300',
     },
     {
       label: 'Do rozliczenia',
       value: formatOrderHours(pendingSettlementHours),
-      amountNet: formatCurrencyValue(pendingNetValue),
-      amountGross: formatCurrencyValue(pendingGrossValue),
-      note: 'Zlecenia bez PO: w trakcie albo po oddaniu PP.',
+      amountNet: pendingNetValue,
+      amountGross: pendingGrossValue,
+      note: 'Zlecenia z uzupełnioną datą realizacji od, nadal bez daty odbioru.',
       tone: 'text-amber-700 dark:text-amber-300',
     },
     {
       label: 'Pozostało w umowie',
       value: formatOrderHours(remainingInContract),
-      amountNet: formatCurrencyValue(remainingNetValue),
-      amountGross: formatCurrencyValue(remainingGrossValue),
+      amountNet: remainingNetValue,
+      amountGross: remainingGrossValue,
       note: remainingInContract >= 0
         ? 'Pozostała pula godzin do wykorzystania w umowie.'
         : 'Przekroczono maksymalny limit godzin w umowie.',
@@ -814,19 +818,22 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     {
       label: 'Zakontraktowane godziny',
       value: formatOrderHours(contractedTotalHours),
-      note: `Wartość netto ${formatCurrencyValue(contractedNetValue)} zł, brutto ${formatCurrencyValue(contractedGrossValue)} zł.`,
+      note: 'Suma godzin zakontraktowanych w zleceniach projektu.',
+      financialNote: `Netto ${formatCurrencyValue(contractedNetValue)} zł, brutto ${formatCurrencyValue(contractedGrossValue)} zł.`,
       tone: 'text-indigo-700 dark:text-indigo-300',
     },
     {
       label: 'Rzeczywiście przepracowane',
       value: formatOrderHours(youtrackTotal),
-      note: `Na podstawie rejestru pracy YouTrack. Wartość netto ${formatCurrencyValue(workedNetValue)} zł, brutto ${formatCurrencyValue(workedGrossValue)} zł.`,
+      note: 'Na podstawie rejestru pracy YouTrack.',
+      financialNote: `Netto ${formatCurrencyValue(workedNetValue)} zł, brutto ${formatCurrencyValue(workedGrossValue)} zł.`,
       tone: 'text-violet-700 dark:text-violet-300',
     },
     {
       label: 'Zysk na różnicy godzin',
       value: formatOrderHours(profitabilityHours),
-      note: `Różnica zakontraktowane - przepracowane. Netto ${formatCurrencyValue(profitabilityNetValue)} zł, brutto ${formatCurrencyValue(profitabilityGrossValue)} zł.`,
+      note: 'Różnica zakontraktowane - przepracowane.',
+      financialNote: `Netto ${formatCurrencyValue(profitabilityNetValue)} zł, brutto ${formatCurrencyValue(profitabilityGrossValue)} zł.`,
       tone: profitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
     },
   ];
@@ -1172,13 +1179,26 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   </p>
                 </div>
                 <div className="flex min-w-[220px] flex-col gap-3 lg:items-end">
-                  <button
-                    onClick={() => setIsExecutiveSettlementReportOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/70 bg-white/90 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-white dark:border-emerald-900/50 dark:bg-slate-900/70 dark:text-emerald-300 dark:hover:bg-slate-900"
-                  >
-                    <Printer size={16} />
-                    Raport zarządczy PDF
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsFinancialDataVisible(!isFinancialDataVisible)}
+                      className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-sm font-semibold shadow-sm transition ${
+                        isFinancialDataVisible
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:border-emerald-900/40 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40'
+                          : 'border-white/70 bg-white/90 text-slate-500 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-900'
+                      }`}
+                      title={isFinancialDataVisible ? 'Ukryj kwoty' : 'Pokaż kwoty'}
+                    >
+                      <DollarSign size={18} />
+                    </button>
+                    <button
+                      onClick={() => setIsExecutiveSettlementReportOpen(true)}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/70 bg-white/90 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-white dark:border-emerald-900/50 dark:bg-slate-900/70 dark:text-emerald-300 dark:hover:bg-slate-900"
+                    >
+                      <Printer size={16} />
+                      Raport zarządczy PDF
+                    </button>
+                  </div>
                   <div className="w-full min-w-[220px] rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
                     <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Wykorzystanie umowy</p>
                     <div className="mt-2 flex items-baseline gap-2">
@@ -1215,12 +1235,16 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   </div>
                   <div className="mt-3 space-y-1">
                     <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      Netto: {row.amountNet} zł
-                    </p>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      Brutto: {row.amountGross} zł
-                    </p>
+                    {isFinancialDataVisible && (
+                      <>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                          Netto: {formatCurrencyValue(Number(row.amountNet))} zł
+                        </p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                          Brutto: {formatCurrencyValue(Number(row.amountGross))} zł
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1243,16 +1267,18 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           <p className={`text-2xl font-black ${row.tone}`}>{row.value} h</p>
                         </div>
                       </div>
-                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Netto</p>
-                          <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{row.amountNet} zł</p>
+                      {isFinancialDataVisible && (
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Netto</p>
+                            <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{formatCurrencyValue(Number(row.amountNet))} zł</p>
+                          </div>
+                          <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Brutto</p>
+                            <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{formatCurrencyValue(Number(row.amountGross))} zł</p>
+                          </div>
                         </div>
-                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Brutto</p>
-                          <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{row.amountGross} zł</p>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1269,6 +1295,11 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           <p className={`text-xl font-black ${row.tone}`}>{row.value} h</p>
                         </div>
                         <p className="mt-2 text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
+                        {isFinancialDataVisible && (
+                          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                            {row.financialNote}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1316,17 +1347,22 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
 
                 <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Status zleceń bez PO</h4>
-                  <div className="mt-5 grid grid-cols-2 gap-4">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Status zleceń</h4>
+                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-900/20">
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">W trakcie</p>
                       <p className="mt-2 text-3xl font-black text-amber-800 dark:text-amber-200">{inProgressOrders.length}</p>
-                      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Bez PP i bez PO</p>
+                      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Mają datę od, bez przekazania i bez odbioru</p>
                     </div>
                     <div className="rounded-2xl bg-sky-50 p-4 dark:bg-sky-900/20">
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Oddane PP</p>
                       <p className="mt-2 text-3xl font-black text-sky-800 dark:text-sky-200">{handedOverPendingOrders.length}</p>
-                      <p className="mt-1 text-xs text-sky-700/80 dark:text-sky-300/80">Mają PP, nadal bez PO</p>
+                      <p className="mt-1 text-xs text-sky-700/80 dark:text-sky-300/80">Mają przekazanie, nadal bez odbioru</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-100 p-4 dark:bg-slate-800/70">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600 dark:text-slate-300">Anulowane</p>
+                      <p className="mt-2 text-3xl font-black text-slate-800 dark:text-slate-100">{cancelledOrders.length}</p>
+                      <p className="mt-1 text-xs text-slate-600/80 dark:text-slate-300/80">Nie mają uzupełnionej żadnej daty</p>
                     </div>
                   </div>
                 </div>
@@ -1381,6 +1417,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         project={selectedProject}
         orders={orders}
         workItems={workItems}
+        isFinancialDataVisible={isFinancialDataVisible}
+        onToggleFinancialData={() => setIsFinancialDataVisible(!isFinancialDataVisible)}
       />
     </div >
   );
@@ -1613,6 +1651,24 @@ const handleDateInputTabNavigation = (event: React.KeyboardEvent<HTMLInputElemen
   nextElement.focus();
 };
 
+const hasOrderDateValue = (value?: string) => Boolean(value && value.trim());
+const getOrderHoursTotal = (order: Order) =>
+  order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+const isCancelledOrder = (order: Order) =>
+  !hasOrderDateValue(order.scheduleFrom)
+  && !hasOrderDateValue(order.scheduleTo)
+  && !hasOrderDateValue(order.handoverDate)
+  && !hasOrderDateValue(order.acceptanceDate);
+const isSettledOrder = (order: Order) => hasOrderDateValue(order.acceptanceDate);
+const isPendingSettlementOrder = (order: Order) =>
+  !isCancelledOrder(order)
+  && !isSettledOrder(order)
+  && hasOrderDateValue(order.scheduleFrom);
+const isHandedOverPendingOrder = (order: Order) =>
+  isPendingSettlementOrder(order) && hasOrderDateValue(order.handoverDate);
+const isInProgressPendingOrder = (order: Order) =>
+  isPendingSettlementOrder(order) && !hasOrderDateValue(order.handoverDate);
+
 const createOrderItemRow = (overrides?: Partial<OrderItem>): OrderItem => ({
   id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
   name: '',
@@ -1634,6 +1690,12 @@ const formatOrderHours = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const removeFinancialSentences = (text: string) =>
+  text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !/zł/i.test(sentence))
+    .join(' ')
+    .trim();
 
 const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   const [formData, setFormData] = useState<Omit<Order, 'id'>>({
@@ -2336,14 +2398,19 @@ const ExecutiveSettlementReportModal = ({
   project,
   orders,
   workItems,
+  isFinancialDataVisible,
+  onToggleFinancialData,
 }: {
   isOpen: boolean;
   onClose: () => void;
   project: Project;
   orders: Order[];
   workItems: ReturnType<typeof useWorkRegistry>['workItems'];
+  isFinancialDataVisible: boolean;
+  onToggleFinancialData: () => void;
 }) => {
   const [reportDate, setReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -2366,19 +2433,64 @@ const ExecutiveSettlementReportModal = ({
     neutral: 'border-slate-200 bg-slate-50 text-slate-900',
   };
 
+  const handlePdfExport = async () => {
+    if (!window.electron?.exportPdf) {
+      alert('Eksport PDF nie jest dostępny w tej wersji aplikacji.');
+      return;
+    }
+
+    setIsExportingPdf(true);
+    try {
+      const result = await window.electron.exportPdf({
+        defaultFileName: `raport-zarzadczy-${project.code}-${reportDate}.pdf`,
+      });
+
+      if (result.canceled || !result.success) {
+        return;
+      }
+
+      alert(`Raport został zapisany do pliku PDF.\nPlik: ${result.filePath || 'raport.pdf'}`);
+    } catch (error: any) {
+      alert(`Nie udało się zapisać raportu PDF.\n${error?.message || 'Nieznany błąd.'}`);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-100/95 text-slate-900 backdrop-blur-sm">
+    <div className="report-root fixed inset-0 z-[110] overflow-y-auto bg-slate-100/95 text-slate-900 backdrop-blur-sm">
       <style>{`
         @media print {
-          @page { size: A4 landscape; margin: 12mm; }
-          body { background: white !important; }
+          @page { size: A4 portrait; margin: 10mm; }
+          html, body {
+            background: white !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
           .no-print { display: none !important; }
-          .report-shell { max-width: none !important; padding: 0 !important; }
+          .report-root {
+            position: static !important;
+            inset: auto !important;
+            overflow: visible !important;
+            height: auto !important;
+            background: white !important;
+            backdrop-filter: none !important;
+          }
+          .report-shell {
+            max-width: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            space-y: 0 !important;
+          }
           .report-page {
+            overflow: visible !important;
             box-shadow: none !important;
-            margin: 0 0 10mm 0 !important;
-            break-after: page;
-            page-break-after: always;
+            border-radius: 0 !important;
+            margin: 0 0 8mm 0 !important;
+            break-after: auto !important;
+            page-break-after: auto !important;
+            break-inside: auto !important;
+            page-break-inside: auto !important;
           }
           .report-page:last-child {
             break-after: auto;
@@ -2391,6 +2503,9 @@ const ExecutiveSettlementReportModal = ({
           .print-chart text {
             fill: #475569 !important;
             font-size: 11px !important;
+          }
+          .print-chart {
+            height: 190px !important;
           }
         }
       `}</style>
@@ -2413,11 +2528,23 @@ const ExecutiveSettlementReportModal = ({
               />
             </label>
             <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              onClick={onToggleFinancialData}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border text-sm font-semibold shadow-sm transition ${
+                isFinancialDataVisible
+                  ? 'border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+              }`}
+              title={isFinancialDataVisible ? 'Ukryj kwoty' : 'Pokaż kwoty'}
+            >
+              <DollarSign size={16} />
+            </button>
+            <button
+              onClick={() => void handlePdfExport()}
+              disabled={isExportingPdf}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
             >
               <Printer size={16} />
-              Export PDF / Drukuj
+              {isExportingPdf ? 'Zapisywanie PDF...' : 'Export PDF'}
             </button>
             <button
               onClick={onClose}
@@ -2429,7 +2556,7 @@ const ExecutiveSettlementReportModal = ({
         </div>
       </div>
 
-      <div className="report-shell mx-auto max-w-[1400px] space-y-6 p-5">
+      <div className="report-shell mx-auto max-w-[980px] space-y-6 p-5">
         <section className="report-page overflow-hidden rounded-[28px] bg-white shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
           <div className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(135deg,_#0f172a_0%,_#1e293b_48%,_#0f766e_100%)] px-8 py-8 text-white">
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-400/20 blur-3xl" />
@@ -2445,22 +2572,22 @@ const ExecutiveSettlementReportModal = ({
                   Raport pokazuje bieżący stan kontraktu, formalne rozliczenia zleceń, rzeczywiste roboczogodziny z YouTrack oraz syntetyczny komentarz o tym, co aktualnie dzieje się w projekcie.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm text-slate-100 md:min-w-[360px]">
-                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Kod projektu</p>
-                  <p className="mt-2 text-xl font-black">{project.code}</p>
+              <div className="grid grid-cols-2 gap-4 text-sm text-slate-100 md:min-w-[400px]">
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Kod projektu</p>
+                  <p className="mt-3 break-words text-[1.9rem] font-black leading-none">{project.code}</p>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Umowa</p>
-                  <p className="mt-2 text-xl font-black">{project.contractNo || 'brak'}</p>
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Umowa</p>
+                  <p className="mt-3 break-words text-[1.9rem] font-black leading-none">{project.contractNo || 'brak'}</p>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Okres projektu</p>
-                  <p className="mt-2 text-sm font-semibold">{reportData.projectPeriodLabel}</p>
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Okres projektu</p>
+                  <p className="mt-3 break-words text-base font-semibold leading-6">{reportData.projectPeriodLabel}</p>
                 </div>
-                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Stan na dzień</p>
-                  <p className="mt-2 text-sm font-semibold">{reportDate}</p>
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Stan na dzień</p>
+                  <p className="mt-3 break-words text-base font-semibold leading-6">{reportDate}</p>
                 </div>
               </div>
             </div>
@@ -2498,7 +2625,7 @@ const ExecutiveSettlementReportModal = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {reportData.metrics.map((metric) => (
                 <div key={metric.label} className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                   <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{metric.label}</p>
@@ -2506,49 +2633,89 @@ const ExecutiveSettlementReportModal = ({
                     {formatOrderHours(metric.hours)}
                     <span className="ml-1 text-sm font-semibold text-slate-400">h</span>
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Netto</p>
-                      <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.netValue)} zł</p>
+                  {isFinancialDataVisible && (
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Netto</p>
+                        <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.netValue)} zł</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Brutto</p>
+                        <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.grossValue)} zł</p>
+                      </div>
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Brutto</p>
-                      <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.grossValue)} zł</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres godzin</p>
-                  <h3 className="mt-1 text-lg font-black text-slate-900">Kontrakt, rozliczenia i praca zespołu</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {reportData.highlights.map((highlight) => (
+                <div key={highlight.title} className={`avoid-break rounded-[24px] border p-5 ${toneClasses[highlight.tone]}`}>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">Komentarz</p>
+                  <h3 className="mt-2 text-lg font-black">{highlight.title}</h3>
+                  <p className="mt-3 text-sm leading-7">{isFinancialDataVisible ? highlight.body : removeFinancialSentences(highlight.body)}</p>
                 </div>
-                <div className="print-chart h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.hoursChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
-                        {reportData.hoursChartData.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres wartości</p>
-                  <h3 className="mt-1 text-lg font-black text-slate-900">Wartość kontraktu i bieżącej zyskowności</h3>
+        <section className="report-page overflow-hidden rounded-[28px] bg-white px-8 py-8 shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
+          <div className="border-b border-slate-200 pb-6">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Strona analityczna</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-900">Godziny, rozliczenia i status projektu</h2>
+            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
+              Ta strona pokazuje przekrój wykonanych i rozliczonych godzin, bieżący status formalny zleceń oraz strukturę pracy widoczną w danych projektowych.
+            </p>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {reportData.statusCards.map((statusCard) => (
+                <div key={statusCard.label} className="min-w-0 rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)] px-5 py-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="break-words text-[10px] font-bold uppercase leading-4 tracking-[0.12em] text-slate-400">{statusCard.label}</p>
+                      <p className="mt-3 text-4xl font-black leading-none text-slate-900">{statusCard.count}</p>
+                    </div>
+                    <div className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: statusCard.fill }} />
+                  </div>
+                  <p className="mt-3 break-words text-base font-bold leading-5" style={{ color: statusCard.fill }}>{formatOrderHours(statusCard.hours)} h</p>
+                  <p className="mt-2 break-words text-xs leading-5 text-slate-500">{statusCard.note}</p>
                 </div>
-                <div className="print-chart h-[280px]">
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-5">
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres godzin</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Kontrakt, rozliczenia i praca zespołu</h3>
+              </div>
+              <div className="print-chart h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={reportData.hoursChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
+                      {reportData.hoursChartData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres wartości</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Wartość kontraktu i bieżącej zyskowności</h3>
+              </div>
+              {isFinancialDataVisible ? (
+                <div className="print-chart h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={reportData.valuesChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
@@ -2563,48 +2730,19 @@ const ExecutiveSettlementReportModal = ({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              {reportData.highlights.map((highlight) => (
-                <div key={highlight.title} className={`avoid-break rounded-[24px] border p-5 ${toneClasses[highlight.tone]}`}>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">Komentarz</p>
-                  <h3 className="mt-2 text-lg font-black">{highlight.title}</h3>
-                  <p className="mt-3 text-sm leading-7">{highlight.body}</p>
+              ) : (
+                <div className="flex h-[260px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-8 text-center text-sm leading-7 text-slate-500">
+                  Dane kwotowe są ukryte. Kliknij ikonę dolara w nagłówku raportu, aby odsłonić wartości netto i wykres finansowy.
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        </section>
 
-        <section className="report-page overflow-hidden rounded-[28px] bg-white px-8 py-8 shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
-          <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Strona operacyjna</p>
-              <h2 className="mt-2 text-2xl font-black text-slate-900">Co realnie dzieje się w projekcie</h2>
-              <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
-                Ta strona pokazuje, jak rozkłada się praca zespołu, które zlecenia są jeszcze poza formalnym rozliczeniem oraz jaka jest struktura zalogowanych roboczogodzin.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              {reportData.statusCards.map((statusCard) => (
-                <div key={statusCard.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{statusCard.label}</p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">{statusCard.count}</p>
-                  <p className="mt-1 text-sm font-semibold" style={{ color: statusCard.fill }}>{formatOrderHours(statusCard.hours)} h</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 grid grid-cols-1 gap-5 xl:grid-cols-2">
             <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Status zleceń</p>
                 <h3 className="mt-1 text-lg font-black text-slate-900">Godziny według etapu formalnego</h3>
               </div>
-              <div className="print-chart h-[280px]">
+              <div className="print-chart h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={reportData.statusChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
@@ -2626,7 +2764,7 @@ const ExecutiveSettlementReportModal = ({
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Kategorie pracy</p>
                 <h3 className="mt-1 text-lg font-black text-slate-900">Struktura godzin z YouTrack</h3>
               </div>
-              <div className="print-chart h-[280px]">
+              <div className="print-chart h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={reportData.categoryChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
@@ -2643,14 +2781,24 @@ const ExecutiveSettlementReportModal = ({
               </div>
             </div>
           </div>
+        </section>
 
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="report-page overflow-hidden rounded-[28px] bg-white px-8 py-8 shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
+          <div className="border-b border-slate-200 pb-6">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Strona operacyjna</p>
+            <h2 className="mt-2 text-2xl font-black text-slate-900">Co realnie dzieje się w projekcie</h2>
+            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
+              Ta strona pokazuje rozkład pracy zespołu oraz osoby, które faktycznie logowały roboczogodziny w projekcie.
+            </p>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-5">
             <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Zespół projektowy</p>
                 <h3 className="mt-1 text-lg font-black text-slate-900">Najwięcej zalogowanych godzin</h3>
               </div>
-              <div className="print-chart h-[320px]">
+              <div className="print-chart h-[280px]">
                 {reportData.teamChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 30, bottom: 10 }}>

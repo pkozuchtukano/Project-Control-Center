@@ -51,6 +51,24 @@
 - 2026-03-18 – Raport zarządczy PDF dla rozliczeń
   -- Do zakładki `Rozliczenia` dodano osobny przycisk `Raport zarządczy PDF`, który otwiera widok przygotowany do eksportu `PDF / Drukuj`.
   -- Raport pokazuje karty KPI, wykresy godzinowe i wartościowe, rozkład zleceń według statusu formalnego, strukturę pracy z YouTrack, zestawienie osób z zalogowanymi godzinami oraz automatyczne komentarze opisujące bieżący stan projektu.
+- 2026-03-18 – Maskowanie kwot w rozliczeniach
+  -- Wszystkie kwoty w zakładce `Rozliczenia` i w raporcie zarządczym PDF są domyślnie ukryte, aby ograniczyć przypadkowe ujawnienie danych finansowych.
+  -- Dodano przełącznik z ikoną dolara, który odsłania albo ponownie chowa całe linie finansowe `Netto` i `Brutto` oraz wykres finansowy, zamiast maskować same liczby.
+  -- Poprawiono źródło danych finansowych w zestawieniach, aby kwoty były przechowywane jako wartości liczbowe do momentu renderowania i nie wyświetlały `NaN` po odsłonięciu.
+- 2026-03-18 – Pionowy układ raportu zarządczego PDF
+  -- Raport zarządczy PDF przebudowano z układu poziomego na pionowy `A4 portrait`, aby strony łamały się przewidywalnie przy wydruku.
+  -- Zawartość rozdzielono na osobne strony: podsumowanie i KPI, analitykę godzin oraz osobną stronę operacyjną dla zespołu, dzięki czemu druga i kolejne strony nie są gubione przy generowaniu PDF.
+  -- Uporządkowano nagłówek strony analitycznej raportu: statusy zleceń przeniesiono pod opis sekcji i pokazano jako większe, czytelniejsze karty zamiast wąskich kafelków ustawionych obok tekstu.
+  -- Dopasowano typografię i siatkę kart statusów tak, aby dłuższe etykiety i opisy zawijały się wewnątrz kafelków i nie wychodziły poza ich obrys.
+  -- Poprawiono także padding i proporcje kart z metadanymi projektu w nagłówku raportu, aby dłuższe wartości mieściły się estetycznie i nie wyglądały na ściśnięte.
+  -- Poprawiono mechanikę wydruku raportu: przy druku warstwa raportu przestaje działać jako przewijany overlay `fixed`, a sekcje nie wymuszają już zamknięcia na pojedynczej stronie, dzięki czemu PDF może generować tyle stron, ile wymaga pełna zawartość.
+- 2026-03-18 – Bezpośredni zapis raportu zarządczego do pliku PDF
+  -- Zastąpiono przycisk `Export PDF / Drukuj` w raporcie zarządczym natywnym eksportem Electron `printToPDF`, który zapisuje dokument bez otwierania systemowego okna drukowania.
+  -- Aplikacja pokazuje teraz okno zapisu pliku `.pdf`, generuje dokument w formacie `A4 portrait` z użyciem istniejących styli wydruku i zapisuje gotowy plik na dysku.
+- 2026-03-18 – Korekta statusów zleceń w rozliczeniach
+  -- Zmieniono logikę liczenia statusów zleceń: brak wszystkich dat oznacza `Anulowane`, a `Do rozliczenia` obejmuje tylko zlecenia z uzupełnioną datą realizacji `od`, ale bez daty odbioru.
+  -- Tę samą regułę zastosowano w zakładce `Rozliczenia` oraz w raporcie zarządczym PDF, aby liczniki, godziny i statusy były spójne w całej aplikacji.
+  -- Status `Anulowane` nie jest pokazywany jako osobny główny kafelek KPI; pozostaje jedynie jako element logiki i w sekcji statusów zleceń.
 
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów

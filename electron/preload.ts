@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('electron', {
     openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
     exportDatabase: () => ipcRenderer.invoke('export-database'),
     importDatabase: () => ipcRenderer.invoke('import-database'),
+    exportPdf: (options?: { defaultFileName?: string }) => ipcRenderer.invoke('export-pdf', options),
     writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
     
     // Daily Handlers

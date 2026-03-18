@@ -91,8 +91,23 @@ const formatDateLabel = (value?: string) => {
   return DATE_FORMATTER.format(date);
 };
 
+const hasOrderDateValue = (value?: string) => Boolean(value && value.trim());
 const sumOrderHours = (order: Order) =>
   order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+const isCancelledOrder = (order: Order) =>
+  !hasOrderDateValue(order.scheduleFrom)
+  && !hasOrderDateValue(order.scheduleTo)
+  && !hasOrderDateValue(order.handoverDate)
+  && !hasOrderDateValue(order.acceptanceDate);
+const isSettledOrder = (order: Order) => hasOrderDateValue(order.acceptanceDate);
+const isPendingSettlementOrder = (order: Order) =>
+  !isCancelledOrder(order)
+  && !isSettledOrder(order)
+  && hasOrderDateValue(order.scheduleFrom);
+const isHandedOverPendingOrder = (order: Order) =>
+  isPendingSettlementOrder(order) && hasOrderDateValue(order.handoverDate);
+const isInProgressPendingOrder = (order: Order) =>
+  isPendingSettlementOrder(order) && !hasOrderDateValue(order.handoverDate);
 
 export const buildExecutiveSettlementReportData = ({
   project,
@@ -105,10 +120,11 @@ export const buildExecutiveSettlementReportData = ({
   workItems: WorkItemRow[];
   reportDate: string;
 }): ExecutiveSettlementReportData => {
-  const settledOrders = orders.filter((order) => order.acceptanceDate);
-  const pendingOrders = orders.filter((order) => !order.acceptanceDate);
-  const inProgressOrders = pendingOrders.filter((order) => !order.handoverDate);
-  const handedOverPendingOrders = pendingOrders.filter((order) => !!order.handoverDate);
+  const settledOrders = orders.filter(isSettledOrder);
+  const cancelledOrders = orders.filter(isCancelledOrder);
+  const pendingOrders = orders.filter(isPendingSettlementOrder);
+  const inProgressOrders = pendingOrders.filter(isInProgressPendingOrder);
+  const handedOverPendingOrders = pendingOrders.filter(isHandedOverPendingOrder);
 
   const settledHours = settledOrders.reduce((sum, order) => sum + sumOrderHours(order), 0);
   const pendingSettlementHours = pendingOrders.reduce((sum, order) => sum + sumOrderHours(order), 0);
@@ -162,6 +178,7 @@ export const buildExecutiveSettlementReportData = ({
 
   const inProgressHours = inProgressOrders.reduce((sum, order) => sum + sumOrderHours(order), 0);
   const handedOverPendingHours = handedOverPendingOrders.reduce((sum, order) => sum + sumOrderHours(order), 0);
+  const cancelledHours = cancelledOrders.reduce((sum, order) => sum + sumOrderHours(order), 0);
   const topContributor = contributorHours[0];
 
   const highlights: ExecutiveReportHighlight[] = [
@@ -184,7 +201,7 @@ export const buildExecutiveSettlementReportData = ({
         }
       : {
           title: 'Część zleceń nadal czeka na PO',
-          body: `${pendingOrders.length} zleceń odpowiada za ${formatHours(pendingSettlementHours)} i ${formatMoney(pendingNetValue)} netto. W tym ${handedOverPendingOrders.length} po oddaniu PP i ${inProgressOrders.length} nadal w realizacji.`,
+          body: `${pendingOrders.length} zleceń odpowiada za ${formatHours(pendingSettlementHours)} i ${formatMoney(pendingNetValue)} netto. W tym ${handedOverPendingOrders.length} po oddaniu PP, ${inProgressOrders.length} w trakcie oraz ${cancelledOrders.length} anulowanych poza rozliczeniem.`,
           tone: handedOverPendingOrders.length > 0 ? 'warning' : 'neutral',
         },
     profitabilityHours >= 0
@@ -214,7 +231,8 @@ export const buildExecutiveSettlementReportData = ({
   const riskFlags = [
     remainingInContract < 0 ? 'przekroczenie limitu godzin' : null,
     profitabilityHours < 0 ? 'ujemna zyskowność godzinowa' : null,
-    pendingOrders.length > 0 ? 'nierozliczone zlecenia bez PO' : null,
+    pendingOrders.length > 0 ? 'zlecenia do rozliczenia' : null,
+    cancelledOrders.length > 0 ? 'anulowane zlecenia bez dat' : null,
   ].filter(Boolean) as string[];
 
   const summaryText = riskFlags.length > 0
@@ -264,6 +282,13 @@ export const buildExecutiveSettlementReportData = ({
       grossValue: Math.abs(remainingInContract * project.rateBrutto),
       accent: remainingInContract >= 0 ? '#c026d3' : '#dc2626',
     },
+    {
+      label: 'Anulowane',
+      hours: cancelledHours,
+      netValue: cancelledHours * project.rateNetto,
+      grossValue: cancelledHours * project.rateBrutto,
+      accent: '#64748b',
+    },
   ];
 
   const hoursChartData: ExecutiveReportChartBar[] = [
@@ -309,6 +334,7 @@ export const buildExecutiveSettlementReportData = ({
     { name: 'Rozliczone PO', value: settledHours, fill: '#059669' },
     { name: 'Oddane PP bez PO', value: handedOverPendingHours, fill: '#0284c7' },
     { name: 'W trakcie', value: inProgressHours, fill: '#d97706' },
+    { name: 'Anulowane', value: cancelledHours, fill: '#64748b' },
   ];
 
   const statusCards: ExecutiveReportStatusCard[] = [
@@ -330,8 +356,15 @@ export const buildExecutiveSettlementReportData = ({
       label: 'W trakcie',
       count: inProgressOrders.length,
       hours: inProgressHours,
-      note: 'Zlecenia bez PP i bez PO.',
+      note: 'Mają datę realizacji od, bez przekazania i bez odbioru.',
       fill: '#d97706',
+    },
+    {
+      label: 'Anulowane',
+      count: cancelledOrders.length,
+      hours: cancelledHours,
+      note: 'Nie mają uzupełnionej żadnej daty.',
+      fill: '#64748b',
     },
   ];
 

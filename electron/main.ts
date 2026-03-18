@@ -1171,6 +1171,45 @@ ipcMain.handle('import-database', async () => {
     }
 });
 
+ipcMain.handle('export-pdf', async (_, options?: { defaultFileName?: string }) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        throw new Error('Okno aplikacji nie jest dostępne.');
+    }
+
+    const sanitizedFileName = (options?.defaultFileName || `raport-${new Date().toISOString().slice(0, 10)}.pdf`)
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+        .trim();
+    const finalFileName = sanitizedFileName.toLowerCase().endsWith('.pdf')
+        ? sanitizedFileName
+        : `${sanitizedFileName}.pdf`;
+
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+        title: 'Zapisz raport PDF',
+        defaultPath: path.join(app.getPath('documents'), finalFileName),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, canceled: true };
+    }
+
+    const pdfBuffer = await mainWindow.webContents.printToPDF({
+        printBackground: true,
+        landscape: false,
+        pageSize: 'A4',
+        preferCSSPageSize: true,
+    });
+
+    await fs.writeFile(saveResult.filePath, pdfBuffer);
+
+    return {
+        success: true,
+        canceled: false,
+        filePath: saveResult.filePath,
+    };
+});
+
 // ==========================================
 // IPC DAILY HANDLERS
 // ==========================================
