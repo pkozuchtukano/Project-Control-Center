@@ -2441,6 +2441,9 @@ const ExecutiveSettlementReportModal = ({
 
     setIsExportingPdf(true);
     try {
+      document.body.classList.add('pdf-export-active');
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+
       const result = await window.electron.exportPdf({
         defaultFileName: `raport-zarzadczy-${project.code}-${reportDate}.pdf`,
       });
@@ -2453,6 +2456,7 @@ const ExecutiveSettlementReportModal = ({
     } catch (error: any) {
       alert(`Nie udało się zapisać raportu PDF.\n${error?.message || 'Nieznany błąd.'}`);
     } finally {
+      document.body.classList.remove('pdf-export-active');
       setIsExportingPdf(false);
     }
   };
@@ -2460,6 +2464,34 @@ const ExecutiveSettlementReportModal = ({
   return (
     <div className="report-root fixed inset-0 z-[110] overflow-y-auto bg-slate-100/95 text-slate-900 backdrop-blur-sm">
       <style>{`
+        body.pdf-export-active {
+          background: white !important;
+          overflow: visible !important;
+        }
+        body.pdf-export-active * {
+          visibility: hidden !important;
+        }
+        body.pdf-export-active .report-root,
+        body.pdf-export-active .report-root * {
+          visibility: visible !important;
+        }
+        body.pdf-export-active .report-root {
+          position: absolute !important;
+          inset: 0 !important;
+          z-index: 99999 !important;
+          overflow: visible !important;
+          height: auto !important;
+          background: white !important;
+          backdrop-filter: none !important;
+        }
+        body.pdf-export-active .no-print {
+          display: none !important;
+        }
+        body.pdf-export-active .report-shell {
+          max-width: 980px !important;
+          margin: 0 auto !important;
+          padding: 20px !important;
+        }
         @media print {
           @page { size: A4 portrait; margin: 10mm; }
           html, body {
@@ -2699,7 +2731,7 @@ const ExecutiveSettlementReportModal = ({
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
                     <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
                       {reportData.hoursChartData.map((entry) => (
                         <Cell key={entry.name} fill={entry.fill} />
                       ))}
@@ -2722,7 +2754,7 @@ const ExecutiveSettlementReportModal = ({
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
                       <Tooltip formatter={(value: number | string | undefined) => [`${formatCurrencyValue(Number(value || 0))} zł`, 'Netto']} />
-                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56} isAnimationActive={false}>
                         {reportData.valuesChartData.map((entry) => (
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}
@@ -2749,7 +2781,7 @@ const ExecutiveSettlementReportModal = ({
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-12} textAnchor="end" height={46} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
                     <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={60}>
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={60} isAnimationActive={false}>
                       {reportData.statusChartData.map((entry) => (
                         <Cell key={entry.name} fill={entry.fill} />
                       ))}
@@ -2771,7 +2803,7 @@ const ExecutiveSettlementReportModal = ({
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
                     <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={70}>
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={70} isAnimationActive={false}>
                       {reportData.categoryChartData.map((entry) => (
                         <Cell key={entry.name} fill={entry.fill} />
                       ))}
@@ -2801,12 +2833,12 @@ const ExecutiveSettlementReportModal = ({
               <div className="print-chart h-[280px]">
                 {reportData.teamChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 30, bottom: 10 }}>
+                    <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 48, bottom: 10 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" opacity={0.45} />
                       <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Number(value).toFixed(0)}h`} />
-                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={130} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={148} tickMargin={10} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
                       <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
-                      <Bar dataKey="value" radius={[0, 12, 12, 0]} maxBarSize={28}>
+                      <Bar dataKey="value" radius={[0, 12, 12, 0]} maxBarSize={28} isAnimationActive={false}>
                         {reportData.teamChartData.map((entry) => (
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}

@@ -65,6 +65,8 @@
 - 2026-03-18 – Bezpośredni zapis raportu zarządczego do pliku PDF
   -- Zastąpiono przycisk `Export PDF / Drukuj` w raporcie zarządczym natywnym eksportem Electron `printToPDF`, który zapisuje dokument bez otwierania systemowego okna drukowania.
   -- Aplikacja pokazuje teraz okno zapisu pliku `.pdf`, generuje dokument w formacie `A4 portrait` z użyciem istniejących styli wydruku i zapisuje gotowy plik na dysku.
+  -- Na czas eksportu PDF ukrywany jest cały interfejs aplikacji poza warstwą raportu, dzięki czemu zapisany plik zawiera wyłącznie raport zarządczy zamiast widoku całego okna programu.
+  -- Dla wykresów raportu wyłączono animacje Recharts podczas renderowania oraz zwiększono margines i szerokość osi nazw na stronie operacyjnej, aby eksport PDF nie ucinał etykiet i nie rozjeżdżał słupków zespołu.
 - 2026-03-18 – Korekta statusów zleceń w rozliczeniach
   -- Zmieniono logikę liczenia statusów zleceń: brak wszystkich dat oznacza `Anulowane`, a `Do rozliczenia` obejmuje tylko zlecenia z uzupełnioną datą realizacji `od`, ale bez daty odbioru.
   -- Tę samą regułę zastosowano w zakładce `Rozliczenia` oraz w raporcie zarządczym PDF, aby liczniki, godziny i statusy były spójne w całej aplikacji.
