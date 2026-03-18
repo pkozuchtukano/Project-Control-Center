@@ -24,6 +24,8 @@ declare global {
       setIssueTaskType: (issueId: string, taskTypeId: string) => Promise<{ success: boolean }>;
       getWorkItems: (projectId: string) => Promise<any[]>;
       upsertWorkItems: (data: { items: any[], projectId: string }) => Promise<{ success: boolean }>;
+      getOrderItemTemplate: (projectId: string) => Promise<{ names?: string[]; lastDate?: string } | null>;
+      saveOrderItemTemplate: (data: { projectId: string, data: { names: string[]; lastDate: string } }) => Promise<{ success: boolean }>;
       getIssueCategories: () => Promise<Record<string, string>>;
       setIssueCategory: (data: { issueId: string, category: string }) => Promise<{ success: boolean }>;
       importOrders: (data: { orders: any[], projectId: string }) => Promise<{ success: boolean }>;
@@ -41,6 +43,8 @@ declare global {
       authorizeGoogle: (code: string) => Promise<any>;
       logoutGoogle: () => Promise<void>;
       openExternal: (url: string) => Promise<{ success: boolean }>;
+      exportDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
+      importDatabase: () => Promise<{ success: boolean; canceled?: boolean; fileName?: string; modifiedTime?: string | null }>;
       
       // Daily Handlers
       getDailyHubs: () => Promise<DailyHub[]>;
@@ -96,11 +100,14 @@ import {
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
 
-const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, currentView, onViewChange }: {
+const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportDatabase, onImportDatabase, isDatabaseTransferPending, currentView, onViewChange }: {
   isDark: boolean,
   toggleDark: () => void,
   onOpenModal: () => void,
   onOpenSettings: () => void,
+  onExportDatabase: () => Promise<void>,
+  onImportDatabase: () => Promise<void>,
+  isDatabaseTransferPending: boolean,
   currentView: 'dashboard' | 'daily',
   onViewChange: (view: 'dashboard' | 'daily') => void
 }) => {
@@ -184,7 +191,25 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, currentView,
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-100 dark:border-gray-800">
+      <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+        <div className="space-y-2">
+          <button
+            onClick={() => void onExportDatabase()}
+            disabled={isDatabaseTransferPending}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FileDown size={16} />
+            Eksport bazy
+          </button>
+          <button
+            onClick={() => void onImportDatabase()}
+            disabled={isDatabaseTransferPending}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <FileUp size={16} />
+            Import bazy
+          </button>
+        </div>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
             PM
@@ -1215,7 +1240,7 @@ const OrdersRegistryView = () => {
                           {order.handoverDate || '-'} , {order.acceptanceDate || '-'}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right text-gray-500 whitespace-nowrap">{totalHours}h</td>
+                      <td className="px-6 py-4 text-right text-gray-500 whitespace-nowrap">{formatOrderHours(totalHours)}h</td>
                       <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                         <div className="text-indigo-600 dark:text-indigo-400 font-medium">
                           {(totalHours * selectedProject.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
@@ -1240,7 +1265,7 @@ const OrdersRegistryView = () => {
                 <tr>
                   <td colSpan={3} className="px-6 py-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
                   <td className="px-6 py-4 text-right text-indigo-600 dark:text-indigo-400 text-base">
-                    {orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0)}h
+                    {formatOrderHours(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0))}h
                   </td>
                   <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                     <div className="text-indigo-600 dark:text-indigo-400 text-base">
@@ -1290,6 +1315,26 @@ const handleDateInputTabNavigation = (event: React.KeyboardEvent<HTMLInputElemen
   nextElement.focus();
 };
 
+const createOrderItemRow = (overrides?: Partial<OrderItem>): OrderItem => ({
+  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+  name: '',
+  date: '',
+  hours: 0,
+  ...overrides,
+});
+
+const buildOrderItemsFromTemplate = (template?: { names?: string[]; lastDate?: string } | null): OrderItem[] => {
+  const names = (template?.names || []).map(name => name.trim()).filter(Boolean);
+  if (names.length === 0) {
+    return [createOrderItemRow(template?.lastDate ? { date: template.lastDate } : undefined)];
+  }
+
+  return names.map(name => createOrderItemRow({ name, date: template?.lastDate || '', hours: 0 }));
+};
+
+const formatOrderHours = (value: number) =>
+  value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   const [formData, setFormData] = useState<Omit<Order, 'id'>>({
     projectId: project?.id || '',
@@ -1298,7 +1343,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
     priority: 'niski',
     problemDescription: '',
     expectedStateDescription: '',
-    items: [{ id: Date.now().toString(), name: '', date: '', hours: 0 }],
+    items: [createOrderItemRow()],
     location: 'zdalnie',
     methodologyRequired: false,
     methodologyScope: '',
@@ -1312,9 +1357,22 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   });
 
   useEffect(() => {
-    if (orderToEdit) {
-      setFormData(orderToEdit);
-    } else if (project) {
+    const loadFormData = async () => {
+      if (!isOpen) return;
+
+      if (orderToEdit) {
+        setFormData(orderToEdit);
+        return;
+      }
+
+      if (!project) {
+        return;
+      }
+
+      const template = window.electron?.getOrderItemTemplate
+        ? await window.electron.getOrderItemTemplate(project.id)
+        : null;
+
       setFormData({
         projectId: project.id,
         orderNumber: '',
@@ -1322,16 +1380,21 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
         priority: 'niski',
         problemDescription: '',
         expectedStateDescription: '',
-        items: [{ id: Date.now().toString(), name: '', date: '', hours: 0 }],
+        items: buildOrderItemsFromTemplate(template),
         location: 'zdalnie',
         methodologyRequired: false,
         methodologyScope: '',
         scheduleFrom: '',
         scheduleTo: '',
+        handoverDate: '',
+        acceptanceDate: '',
         systemModule: project.code,
+        notes: '',
         createdAt: new Date().toISOString()
       });
-    }
+    };
+
+    void loadFormData();
   }, [orderToEdit, isOpen, project]);
 
   const handleChange = (e: any) => {
@@ -1349,7 +1412,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
   const addItemRow = () => {
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { id: Date.now().toString(), name: '', date: '', hours: 0 }]
+      items: [...prev.items, createOrderItemRow()]
     }));
   };
 
@@ -1362,6 +1425,17 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (project?.id && window.electron?.saveOrderItemTemplate) {
+      const names = formData.items.map(item => item.name.trim()).filter(Boolean);
+      const lastDatedItem = [...formData.items].reverse().find(item => item.date);
+      await window.electron.saveOrderItemTemplate({
+        projectId: project.id,
+        data: {
+          names,
+          lastDate: lastDatedItem?.date || '',
+        },
+      });
+    }
     await onSave(formData);
   };
 
@@ -1484,7 +1558,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                           <input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'date', e.target.value)} onKeyDown={handleDateInputTabNavigation} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                         </td>
                         <td className="py-2 px-4">
-                          <input type="number" min="0" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
+                          <input type="number" min="0" step="0.01" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
                         </td>
                         <td className="py-2 px-4 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap leading-tight">
                           <div className="font-medium text-gray-900 dark:text-white">{project?.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
@@ -1508,7 +1582,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
                   <tfoot className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 font-bold">
                     <tr>
                       <td colSpan={3} className="py-4 px-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
-                      <td className="py-4 px-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">{totalHours}</td>
+                      <td className="py-4 px-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">{formatOrderHours(totalHours)}</td>
                       <td></td>
                       <td className="py-4 px-4 text-right leading-tight whitespace-nowrap">
                         <div className="text-indigo-600 dark:text-indigo-400 text-lg">{totalAmountBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
@@ -1664,7 +1738,7 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.orderDate}</td>
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.handoverDate}</td>
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.acceptanceDate}</td>
-                <td className="border border-black p-2 text-center whitespace-nowrap">{row.totalHours}h</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{formatOrderHours(row.totalHours)}h</td>
               </tr>
             ))}
             {reportData.rows.length === 0 && (
@@ -1939,6 +2013,7 @@ const MainLayout = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
+  const [isDatabaseTransferPending, setIsDatabaseTransferPending] = useState(false);
 
   const handleOpenModal = () => {
     setEditingProject(null);
@@ -1950,6 +2025,40 @@ const MainLayout = () => {
     setIsModalOpen(true);
   };
 
+  const handleExportDatabase = async () => {
+    if (!window.electron?.exportDatabase) return;
+
+    setIsDatabaseTransferPending(true);
+    try {
+      const result = await window.electron.exportDatabase();
+      if (result.canceled || !result.success) return;
+      alert(`Baza danych została wyeksportowana do Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}`);
+    } catch (error: any) {
+      alert(`Nie udało się wyeksportować bazy danych do Google Drive.\n${error?.message || 'Nieznany błąd.'}`);
+    } finally {
+      setIsDatabaseTransferPending(false);
+    }
+  };
+
+  const handleImportDatabase = async () => {
+    if (!window.electron?.importDatabase) return;
+
+    const shouldImport = window.confirm('Czy pobrać bazę danych z udostępnionego folderu Google Drive i zastąpić nią lokalną bazę?');
+    if (!shouldImport) return;
+
+    setIsDatabaseTransferPending(true);
+    try {
+      const result = await window.electron.importDatabase();
+      if (result.canceled || !result.success) return;
+      alert(`Baza danych została pobrana z Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}\nAplikacja zostanie odświeżona.`);
+      window.location.reload();
+    } catch (error: any) {
+      alert(`Nie udało się pobrać bazy danych z Google Drive.\n${error?.message || 'Nieznany błąd.'}`);
+    } finally {
+      setIsDatabaseTransferPending(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans transition-colors dark:bg-gray-950 dark:text-gray-100 overflow-hidden">
       <Sidebar 
@@ -1957,6 +2066,9 @@ const MainLayout = () => {
         toggleDark={toggleDark} 
         onOpenModal={handleOpenModal} 
         onOpenSettings={() => setIsSettingsOpen(true)} 
+        onExportDatabase={handleExportDatabase}
+        onImportDatabase={handleImportDatabase}
+        isDatabaseTransferPending={isDatabaseTransferPending}
         currentView={currentView}
         onViewChange={setCurrentView}
       />

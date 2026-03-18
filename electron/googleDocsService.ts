@@ -2,7 +2,15 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import path from 'path';
 import fs from 'fs/promises';
-import { shell } from 'electron';
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+
+type DriveFileMetadata = {
+  id: string;
+  name: string;
+  modifiedTime?: string | null;
+  size?: string | null;
+};
 
 export class GoogleDocsService {
   private oauth2Client: OAuth2Client | null = null;
@@ -44,7 +52,10 @@ export class GoogleDocsService {
     if (!this.oauth2Client) throw new Error('Credentials not set');
     return this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: ['https://www.googleapis.com/auth/documents'],
+      scope: [
+        'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/drive',
+      ],
       prompt: 'consent'
     });
   }
@@ -71,6 +82,88 @@ export class GoogleDocsService {
   private extractDocId(url: string): string {
     const match = url.match(/\/d\/([^/]+)/);
     return match ? match[1] : url;
+  }
+
+  private extractDriveFolderId(folderLinkOrId: string): string {
+    const trimmed = folderLinkOrId.trim();
+    const folderMatch = trimmed.match(/\/folders\/([^/?]+)/);
+    if (folderMatch) return folderMatch[1];
+    return trimmed;
+  }
+
+  async getLatestDatabaseBackup(folderLinkOrId: string, fileName: string): Promise<DriveFileMetadata | null> {
+    if (!this.oauth2Client) throw new Error('Not authenticated');
+
+    const folderId = this.extractDriveFolderId(folderLinkOrId);
+    const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and name = '${fileName.replace(/'/g, "\\'")}' and trashed = false`,
+      fields: 'files(id,name,modifiedTime,size)',
+      orderBy: 'modifiedTime desc',
+      pageSize: 1,
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+    });
+
+    const file = response.data.files?.[0];
+    return file ? {
+      id: file.id || '',
+      name: file.name || fileName,
+      modifiedTime: file.modifiedTime,
+      size: file.size,
+    } : null;
+  }
+
+  async uploadDatabaseBackup(folderLinkOrId: string, localFilePath: string, fileName: string) {
+    if (!this.oauth2Client) throw new Error('Not authenticated');
+
+    const folderId = this.extractDriveFolderId(folderLinkOrId);
+    const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    const existingFile = await this.getLatestDatabaseBackup(folderId, fileName);
+
+    if (existingFile?.id) {
+      const updated = await drive.files.update({
+        fileId: existingFile.id,
+        media: {
+          mimeType: 'application/vnd.sqlite3',
+          body: createReadStream(localFilePath),
+        },
+        fields: 'id,name,modifiedTime,size',
+        supportsAllDrives: true,
+      });
+
+      return updated.data;
+    }
+
+    const created = await drive.files.create({
+      requestBody: {
+        name: fileName,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: 'application/vnd.sqlite3',
+        body: createReadStream(localFilePath),
+      },
+      fields: 'id,name,modifiedTime,size',
+      supportsAllDrives: true,
+    });
+
+    return created.data;
+  }
+
+  async downloadDatabaseBackup(fileId: string, destinationPath: string) {
+    if (!this.oauth2Client) throw new Error('Not authenticated');
+
+    const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    const response = await drive.files.get(
+      { fileId, alt: 'media', supportsAllDrives: true },
+      { responseType: 'stream' }
+    );
+
+    const targetStream = createWriteStream(destinationPath);
+    await pipeline(response.data, targetStream);
+
+    return { success: true, destinationPath };
   }
 
   async appendNote(docLink: string, title: string, participants: string[], content: string) {

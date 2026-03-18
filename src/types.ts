@@ -107,6 +107,7 @@ export type Settings = {
   youtrackToken: string;
   googleClientId?: string;
   googleClientSecret?: string;
+  googleDriveSharedFolderLink?: string;
 };
 
 // Daily Feature Types

@@ -8,6 +8,18 @@ import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, Chevro
 import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
 
+const getIssueBadgeLabel = (value: unknown) => {
+    if (typeof value === 'string') {
+        return value;
+    }
+
+    if (value && typeof value === 'object' && 'name' in value && typeof (value as { name?: unknown }).name === 'string') {
+        return (value as { name: string }).name;
+    }
+
+    return null;
+};
+
 export const YouTrackTab = ({ project }: { project: Project }) => {
     const { settings, updateProject } = useProjectContext();
 
@@ -759,9 +771,9 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                             {issue.idReadable}
                                         </a>
 
-                                        {issue.state && (
+                                        {getIssueBadgeLabel(issue.state) && (
                                             <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
-                                                {issue.state}
+                                                {getIssueBadgeLabel(issue.state)}
                                             </span>
                                         )}
 
@@ -804,7 +816,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                                         <div className="flex items-center gap-2 flex-1">
                                             <ChevronDown size={20} className="text-gray-400 transition-transform group-open:-rotate-180 flex-shrink-0" />
                                             <h3 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">
-                                                {issue.type && <span className="text-indigo-500 mr-2 font-bold opacity-80">[{issue.type}]</span>}
+                                                {getIssueBadgeLabel(issue.type) && <span className="text-indigo-500 mr-2 font-bold opacity-80">[{getIssueBadgeLabel(issue.type)}]</span>}
                                                 {issue.summary}
                                             </h3>
                                         </div>

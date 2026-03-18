@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electron', {
     setIssueTaskType: (issueId: string, taskTypeId: string) => ipcRenderer.invoke('set-issue-task-type', issueId, taskTypeId),
     getWorkItems: (projectId: string) => ipcRenderer.invoke('get-work-items', projectId),
     upsertWorkItems: (data: { items: any[], projectId: string }) => ipcRenderer.invoke('upsert-work-items', data),
+    getOrderItemTemplate: (projectId: string) => ipcRenderer.invoke('get-order-item-template', projectId),
+    saveOrderItemTemplate: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-order-item-template', data),
     getIssueCategories: () => ipcRenderer.invoke('get-issue-categories'),
     setIssueCategory: (data: { issueId: string, category: string }) => ipcRenderer.invoke('set-issue-category', data),
     setIssueCategoriesBulk: (data: { issueIds: string[], category: string }) => ipcRenderer.invoke('set-issue-categories-bulk', data),
@@ -33,6 +35,8 @@ contextBridge.exposeInMainWorld('electron', {
     authorizeGoogle: (code: string) => ipcRenderer.invoke('authorize-google', code),
     logoutGoogle: () => ipcRenderer.invoke('logout-google'),
     openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+    exportDatabase: () => ipcRenderer.invoke('export-database'),
+    importDatabase: () => ipcRenderer.invoke('import-database'),
     writeClipboardHtml: (html: string) => ipcRenderer.invoke('write-clipboard-html', html),
     
     // Daily Handlers

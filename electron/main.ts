@@ -1,6 +1,6 @@
 import electron from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-const { app, BrowserWindow, ipcMain, shell } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -19,9 +19,13 @@ const envSettings = getEnvSettings(appDir, executableDir);
 const dbPath = isDev
     ? path.join(appDir, 'baza_danych.db')
     : path.join(executableDir, 'baza_danych.db');
+const dbWalPath = `${dbPath}-wal`;
+const dbShmPath = `${dbPath}-shm`;
+const remoteDatabaseFileName = 'pcc-baza_danych.db';
+const googleDriveSharedFolderLink = envSettings.googleDriveSharedFolderLink?.trim() || '';
 
 // Inicjalizacja SQLite
-const db = new Database(dbPath);
+let db = new Database(dbPath);
 db.pragma('journal_mode = WAL'); // Wydajniejszy tryb zapisu
 
 // Tworzenie tabel Key-Value dla projektów, zgłoszeń i ustawień
@@ -128,7 +132,200 @@ db.exec(`
         issueId TEXT PRIMARY KEY,
         category TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS order_item_templates (
+        projectId TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
 `);
+
+const initializeDatabase = () => {
+    db.pragma('journal_mode = WAL');
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS orders (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS excluded_issues (
+            id TEXT PRIMARY KEY
+        );
+        CREATE TABLE IF NOT EXISTS youtrack_tabs (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            name TEXT NOT NULL,
+            statuses TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE TABLE IF NOT EXISTS youtrack_issue_task_types (
+            issueId TEXT PRIMARY KEY,
+            taskTypeId TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS work_items (
+            id TEXT PRIMARY KEY,
+            issueId TEXT,
+            issueReadableId TEXT,
+            issueSummary TEXT,
+            author TEXT,
+            authorName TEXT,
+            date TEXT,
+            minutes INTEGER,
+            description TEXT,
+            lastModified TEXT,
+            projectId TEXT
+        );
+        CREATE TABLE IF NOT EXISTS estimations (
+            projectId TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS meeting_notes (
+            projectId TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS status_reports (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            title TEXT NOT NULL,
+            dateFrom TEXT NOT NULL,
+            dateTo TEXT NOT NULL,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS daily_hubs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            projectCodes TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS daily_sections (
+            id TEXT PRIMARY KEY,
+            hubId TEXT NOT NULL,
+            name TEXT NOT NULL,
+            youtrackStatuses TEXT NOT NULL,
+            orderIndex INTEGER NOT NULL,
+            respectDates INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS daily_comments (
+            issueId TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            lastModified TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS daily_issue_states (
+            issueId TEXT PRIMARY KEY,
+            isCollapsed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS issue_categories (
+            issueId TEXT PRIMARY KEY,
+            category TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS order_item_templates (
+            projectId TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        );
+    `);
+
+    try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
+    try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
+    try {
+        const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
+        const hasRespectDates = columns.some(col => col.name === 'respectDates');
+        if (!hasRespectDates) {
+            db.prepare('ALTER TABLE daily_sections ADD COLUMN respectDates INTEGER NOT NULL DEFAULT 0').run();
+        }
+    } catch (error) {
+        console.error('Błąd migracji kolumny respectDates:', error);
+    }
+};
+
+const reopenDatabase = () => {
+    db = new Database(dbPath);
+    initializeDatabase();
+};
+
+const closeDatabase = () => {
+    try {
+        db.close();
+    } catch {
+        // ignore
+    }
+};
+
+const removeFileIfExists = async (filePath: string) => {
+    try {
+        await fs.unlink(filePath);
+    } catch {
+        // ignore
+    }
+};
+
+const getTimestampLabel = (date: Date) =>
+    date.toLocaleString('pl-PL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+
+const checkpointDatabase = () => {
+    try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch (error) {
+        console.error('Błąd checkpoint WAL:', error);
+    }
+};
+
+const createDatabaseSnapshot = async (targetPath: string) => {
+    checkpointDatabase();
+    await removeFileIfExists(targetPath);
+    await db.backup(targetPath);
+    return targetPath;
+};
+
+const getLocalDatabaseTimestamp = async () => {
+    const timestamps: number[] = [];
+    for (const candidate of [dbPath, dbWalPath, dbShmPath]) {
+        try {
+            const stats = await fs.stat(candidate);
+            timestamps.push(stats.mtimeMs);
+        } catch {
+            // ignore
+        }
+    }
+
+    return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+};
+
+const replaceLocalDatabaseFromFile = async (sourcePath: string) => {
+    const rollbackPath = path.join(app.getPath('temp'), `pcc-db-rollback-${Date.now()}.db`);
+    await createDatabaseSnapshot(rollbackPath);
+
+    closeDatabase();
+
+    try {
+        await removeFileIfExists(dbWalPath);
+        await removeFileIfExists(dbShmPath);
+        await fs.copyFile(sourcePath, dbPath);
+        reopenDatabase();
+        await removeFileIfExists(rollbackPath);
+    } catch (error) {
+        await removeFileIfExists(dbWalPath);
+        await removeFileIfExists(dbShmPath);
+        await fs.copyFile(rollbackPath, dbPath);
+        reopenDatabase();
+        await removeFileIfExists(rollbackPath);
+        throw error;
+    }
+};
 
 let mainWindow: BrowserWindowType | null = null;
 
@@ -136,6 +333,7 @@ let mainWindow: BrowserWindowType | null = null;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function createWindow() {
+    allowMainWindowClose = false;
     mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
@@ -155,6 +353,12 @@ async function createWindow() {
         return { action: 'deny' }; // zablokuj otwieranie sub-okienka Electronowego
     });
 
+    mainWindow.on('close', (event) => {
+        if (allowMainWindowClose) return;
+        event.preventDefault();
+        void handleMainWindowCloseRequest();
+    });
+
     mainWindow.maximize();
     mainWindow.show();
 
@@ -165,8 +369,9 @@ async function createWindow() {
     }
 }
 
-app.whenReady().then(() => {
-    createWindow();
+app.whenReady().then(async () => {
+    await maybeOfferRemoteDatabaseImport();
+    await createWindow();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -179,6 +384,10 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+app.on('before-quit', () => {
+    closeDatabase();
 });
 
 // ==========================================
@@ -520,6 +729,32 @@ ipcMain.handle('import-orders', async (_, { orders, projectId }: { orders: any[]
     }
 });
 
+ipcMain.handle('get-order-item-template', async (_, projectId: string) => {
+    try {
+        const row = db.prepare('SELECT data FROM order_item_templates WHERE projectId = ?').get(projectId) as { data: string } | undefined;
+        return row ? JSON.parse(row.data) : null;
+    } catch (error) {
+        console.error('Błąd pobierania szablonu pozycji zlecenia:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-order-item-template', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO order_item_templates (projectId, data, updatedAt)
+            VALUES (?, ?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET
+                data = excluded.data,
+                updatedAt = excluded.updatedAt
+        `).run(projectId, JSON.stringify(data), new Date().toISOString());
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu szablonu pozycji zlecenia:', error);
+        throw error;
+    }
+});
+
 ipcMain.handle('get-issue-categories', async () => {
     try {
         const rows = db.prepare('SELECT * FROM issue_categories').all();
@@ -631,6 +866,158 @@ async function ensureGoogleCredentials() {
     }
     return false;
 }
+
+const exportDatabaseBackupToGoogleDrive = async () => {
+    if (!googleDriveSharedFolderLink) {
+        throw new Error('Brak GOOGLE_DRIVE_SHARED_FOLDER_LINK w pliku .env.');
+    }
+
+    const hasCreds = await ensureGoogleCredentials();
+    if (!hasCreds) {
+        throw new Error('Brak skonfigurowanych danych Google Client ID / Secret.');
+    }
+
+    const authStatus = await gDocsService.getAuthStatus();
+    if (!authStatus.isAuthenticated) {
+        throw new Error('Brak aktywnej autoryzacji Google. Zaloguj się ponownie w ustawieniach aplikacji.');
+    }
+
+    const tempBackupPath = path.join(app.getPath('temp'), `${remoteDatabaseFileName}-${Date.now()}.db`);
+    try {
+        await createDatabaseSnapshot(tempBackupPath);
+        return await gDocsService.uploadDatabaseBackup(googleDriveSharedFolderLink, tempBackupPath, remoteDatabaseFileName);
+    } finally {
+        await removeFileIfExists(tempBackupPath);
+    }
+};
+
+const isInsufficientScopeError = (error: unknown) => {
+    if (!(error instanceof Error)) return false;
+    return error.message.includes('insufficient authentication scopes')
+        || error.message.includes('Request had insufficient authentication scopes');
+};
+
+const buildGoogleDriveScopeErrorMessage = () =>
+    'Aktualny token Google nie ma uprawnień do Google Drive. Wyloguj się z Google w ustawieniach aplikacji i zaloguj ponownie, aby nadać nowe uprawnienia.';
+
+const importDatabaseBackupFromGoogleDrive = async () => {
+    if (!googleDriveSharedFolderLink) {
+        throw new Error('Brak GOOGLE_DRIVE_SHARED_FOLDER_LINK w pliku .env.');
+    }
+
+    const hasCreds = await ensureGoogleCredentials();
+    if (!hasCreds) {
+        throw new Error('Brak skonfigurowanych danych Google Client ID / Secret.');
+    }
+
+    const authStatus = await gDocsService.getAuthStatus();
+    if (!authStatus.isAuthenticated) {
+        throw new Error('Brak aktywnej autoryzacji Google. Zaloguj się ponownie w ustawieniach aplikacji.');
+    }
+
+    const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileName);
+    if (!remoteFile?.id) {
+        throw new Error('W udostępnionym folderze Google Drive nie znaleziono kopii bazy danych.');
+    }
+
+    const tempImportPath = path.join(app.getPath('temp'), `${remoteDatabaseFileName}-import-${Date.now()}.db`);
+    try {
+        await gDocsService.downloadDatabaseBackup(remoteFile.id, tempImportPath);
+        await replaceLocalDatabaseFromFile(tempImportPath);
+        return remoteFile;
+    } finally {
+        await removeFileIfExists(tempImportPath);
+    }
+};
+
+const maybeOfferRemoteDatabaseImport = async () => {
+    if (!googleDriveSharedFolderLink) return;
+
+    try {
+        const hasCreds = await ensureGoogleCredentials();
+        if (!hasCreds) return;
+
+        const authStatus = await gDocsService.getAuthStatus();
+        if (!authStatus.isAuthenticated) return;
+
+        const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileName);
+        if (!remoteFile?.id || !remoteFile.modifiedTime) return;
+
+        const localTimestamp = await getLocalDatabaseTimestamp();
+        const remoteTimestamp = new Date(remoteFile.modifiedTime).getTime();
+        if (!Number.isFinite(remoteTimestamp) || remoteTimestamp <= localTimestamp) return;
+
+        const response = await dialog.showMessageBox({
+            type: 'question',
+            buttons: ['Tak', 'Nie'],
+            defaultId: 0,
+            cancelId: 1,
+            message: 'Jest nowsza baza danych, pobrać?',
+            detail: `Lokalna baza: ${localTimestamp > 0 ? getTimestampLabel(new Date(localTimestamp)) : 'brak lokalnej kopii'}\nZdalna baza: ${getTimestampLabel(new Date(remoteTimestamp))}`,
+        });
+
+        if (response.response !== 0) return;
+        await importDatabaseBackupFromGoogleDrive();
+    } catch (error) {
+        console.error('Błąd sprawdzania zdalnej bazy danych:', error);
+        if (isInsufficientScopeError(error)) {
+            await dialog.showMessageBox({
+                type: 'warning',
+                buttons: ['OK'],
+                message: 'Brak uprawnień Google Drive',
+                detail: buildGoogleDriveScopeErrorMessage(),
+            });
+        }
+    }
+};
+
+let allowMainWindowClose = false;
+let closePromptInProgress = false;
+
+const handleCloseExportFailure = async (error: unknown) => {
+    const response = await dialog.showMessageBox(mainWindow ?? undefined, {
+        type: 'error',
+        buttons: ['Zamknij bez eksportu', 'Anuluj'],
+        defaultId: 1,
+        cancelId: 1,
+        message: 'Nie udało się wyeksportować bazy danych.',
+        detail: error instanceof Error ? error.message : 'Nieznany błąd eksportu bazy danych.',
+    });
+
+    return response.response === 0;
+};
+
+const handleMainWindowCloseRequest = async () => {
+    if (!mainWindow || allowMainWindowClose || closePromptInProgress) return;
+
+    closePromptInProgress = true;
+    try {
+        const response = await dialog.showMessageBox(mainWindow, {
+            type: 'question',
+            buttons: ['Tak', 'Nie', 'Anuluj'],
+            defaultId: 0,
+            cancelId: 2,
+            message: 'Wyeksportować bazę?',
+            detail: 'Wybranie "Tak" zapisze aktualną bazę danych do współdzielonego folderu Google Drive przed zamknięciem aplikacji.',
+        });
+
+        if (response.response === 2) return;
+
+        if (response.response === 0) {
+            try {
+                await exportDatabaseBackupToGoogleDrive();
+            } catch (error) {
+                const shouldCloseWithoutExport = await handleCloseExportFailure(error);
+                if (!shouldCloseWithoutExport) return;
+            }
+        }
+
+        allowMainWindowClose = true;
+        mainWindow.destroy();
+    } finally {
+        closePromptInProgress = false;
+    }
+};
 
 ipcMain.handle('get-meeting-notes', async (_, projectId: string) => {
     try {
@@ -748,6 +1135,40 @@ ipcMain.handle('logout-google', async () => {
 ipcMain.handle('open-external', async (_, url: string) => {
     await shell.openExternal(url);
     return { success: true };
+});
+
+ipcMain.handle('export-database', async () => {
+    try {
+        const uploaded = await exportDatabaseBackupToGoogleDrive();
+        return {
+            success: true,
+            canceled: false,
+            fileName: uploaded.name || remoteDatabaseFileName,
+            modifiedTime: uploaded.modifiedTime || null,
+        };
+    } catch (error) {
+        if (isInsufficientScopeError(error)) {
+            throw new Error(buildGoogleDriveScopeErrorMessage());
+        }
+        throw error;
+    }
+});
+
+ipcMain.handle('import-database', async () => {
+    try {
+        const imported = await importDatabaseBackupFromGoogleDrive();
+        return {
+            success: true,
+            canceled: false,
+            fileName: imported.name || remoteDatabaseFileName,
+            modifiedTime: imported.modifiedTime || null,
+        };
+    } catch (error) {
+        if (isInsufficientScopeError(error)) {
+            throw new Error(buildGoogleDriveScopeErrorMessage());
+        }
+        throw error;
+    }
 });
 
 // ==========================================

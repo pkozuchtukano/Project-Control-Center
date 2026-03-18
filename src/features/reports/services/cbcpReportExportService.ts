@@ -36,6 +36,7 @@ export type CbcpReportData = {
 };
 
 const formatFileDate = (value: string) => (value || new Date().toISOString().split('T')[0]).replace(/-/g, '');
+const formatHours = (value: number) => value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const buildCbcpReportData = (
   orders: Order[],
@@ -157,7 +158,7 @@ export const exportCbcpReportToWord = async (project: Project, report: CbcpRepor
         row.orderDate,
         row.handoverDate,
         row.acceptanceDate,
-        `${row.totalHours}h`,
+        `${formatHours(row.totalHours)}h`,
       ].map((text, index) => new TableCell({
         children: [new Paragraph({
           children: [new TextRun({ text: text || '', size: 20 })],

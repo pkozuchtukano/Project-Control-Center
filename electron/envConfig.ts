@@ -34,6 +34,7 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
         youtrackToken: parsed.VITE_YOUTRACK_TOKEN || '',
         googleClientId: parsed.VITE_GOOGLE_CLIENT_ID || '',
         googleClientSecret: parsed.VITE_GOOGLE_CLIENT_SECRET || '',
+        googleDriveSharedFolderLink: parsed.GOOGLE_DRIVE_SHARED_FOLDER_LINK || parsed.VITE_GOOGLE_DRIVE_SHARED_FOLDER_LINK || '',
       };
     } catch {
       continue;
@@ -45,6 +46,7 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
     youtrackToken: '',
     googleClientId: '',
     googleClientSecret: '',
+    googleDriveSharedFolderLink: '',
   };
 };
 
