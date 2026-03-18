@@ -48,6 +48,9 @@
 - 2026-03-18 – Eksport raportu zarządczego do Word
   -- Dodano osobny eksport `Word` dla raportu zarządczego rozliczeń, dostępny z tego samego okna co eksport PDF.
   -- Dokument `.docx` zawiera podsumowanie projektu, KPI, statusy, komentarze zarządcze, zestawienia godzinowe oraz pełną listę zespołu, a dane finansowe są uwzględniane tylko wtedy, gdy były odsłonięte w raporcie.
+- 2026-03-18 – Eksport raportu zarządczego do Excel
+  -- Dodano osobny eksport `Excel` dla raportu zarządczego rozliczeń, dostępny obok eksportów PDF i Word.
+  -- Plik `.xlsx` zawiera arkusze z podsumowaniem, statusami, godzinami, pełną listą zespołu oraz sekcją wartości tylko wtedy, gdy dane finansowe są odsłonięte w raporcie.
 - 2026-03-18 – Rozwinięcie skrótów PO i PP w widokach oraz raportach
   -- W obszarze rozliczeń i raportów zastąpiono skróty `PO` i `PP` pełnymi nazwami: `protokół odbioru` oraz `protokół przekazania`, z dopasowaniem do kontekstu językowego.
   -- Interfejs i eksporty pokazują teraz jednoznaczne, pełne określenia zamiast skrótów, co poprawia czytelność dla odbiorców raportów.

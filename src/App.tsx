@@ -102,6 +102,7 @@ import {
   exportPmsReportToWord,
 } from './features/reports/services/pmsReportExportService';
 import { buildExecutiveSettlementReportData } from './features/reports/services/settlementExecutiveReportService';
+import { exportExecutiveSettlementReportToExcel } from './features/reports/services/settlementExecutiveExcelExportService';
 import { exportExecutiveSettlementReportToWord } from './features/reports/services/settlementExecutiveWordExportService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
@@ -1196,7 +1197,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/70 bg-white/90 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-white dark:border-emerald-900/50 dark:bg-slate-900/70 dark:text-emerald-300 dark:hover:bg-slate-900"
                     >
                       <Printer size={16} />
-                      Raport zarządczy PDF
+                      Raport zarządczy
                     </button>
                   </div>
                   <div className="w-full min-w-[220px] rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
@@ -2411,6 +2412,7 @@ const ExecutiveSettlementReportModal = ({
 }) => {
   const [reportDate, setReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingWord, setIsExportingWord] = useState(false);
   const [isPdfPasswordModalOpen, setIsPdfPasswordModalOpen] = useState(false);
   const [pdfPassword, setPdfPassword] = useState('');
@@ -2553,6 +2555,19 @@ const ExecutiveSettlementReportModal = ({
       alert(`Nie udało się zapisać raportu Word.\n${error?.message || 'Nieznany błąd.'}`);
     } finally {
       setIsExportingWord(false);
+    }
+  };
+
+  const handleExcelExport = async () => {
+    setIsExportingExcel(true);
+    try {
+      exportExecutiveSettlementReportToExcel(project, reportData, {
+        includeFinancialData: isFinancialDataVisible,
+      });
+    } catch (error: any) {
+      alert(`Nie udało się zapisać raportu Excel.\n${error?.message || 'Nieznany błąd.'}`);
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
@@ -2732,6 +2747,14 @@ const ExecutiveSettlementReportModal = ({
               title={isFinancialDataVisible ? 'Ukryj kwoty' : 'Pokaż kwoty'}
             >
               <DollarSign size={16} />
+            </button>
+            <button
+              onClick={() => void handleExcelExport()}
+              disabled={isExportingExcel}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+            >
+              <FileSpreadsheet size={16} />
+              {isExportingExcel ? 'Zapisywanie Excel...' : 'Export Excel'}
             </button>
             <button
               onClick={() => void handleWordExport()}
