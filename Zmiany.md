@@ -35,6 +35,23 @@
   -- W rejestrze zleceń dodano osobny raport `PMS` z tym samym zestawem filtrów i akcji eksportu co raport `CBCP`, dostępny z nowego przycisku w nagłówku widoku.
   -- Raport `PMS` rozbija zlecenie na wiersze `Produkty zlecenia`, scala pionowo komórki wspólne dla jednego zlecenia, pokazuje godziny i kwoty per produkt oraz sumy łączne w podglądzie wydruku, eksporcie Excel i eksporcie Word.
 
+## Rozliczenia
+- 2026-03-18 – Nowoczesne zestawienie rozliczeń umowy
+  -- W zakładce `Rozliczenia` zastąpiono placeholder rzeczywistym widokiem analitycznym z kartami, tabelą i blokiem podsumowania opartymi na danych projektu oraz zleceń.
+  -- Widok pokazuje automatycznie liczone wartości: `Umowa max godzin`, `Zakontraktowane`, `Rozliczone`, `Do rozliczenia` oraz `Pozostało w umowie`, a także rozbicie zleceń bez PO na `W trakcie` i `Oddane PP`.
+- 2026-03-18 – Kwoty i zyskowność w rozliczeniach
+  -- Rozszerzono zakładkę `Rozliczenia` o zestawienie wartości netto i brutto dla wszystkich kluczowych pozycji godzinowych oraz tabelę łączącą godziny z kwotami.
+  -- Dodano sekcję `Zyskowność projektu`, która pokazuje zakontraktowane godziny, rzeczywiście przepracowane godziny z YouTrack oraz zysk liczony jako różnica tych godzin, zarówno ilościowo, jak i wartościowo.
+- 2026-03-18 – Zestawienie osób w rozliczeniach
+  -- Do zakładki `Rozliczenia` dodano listę osób pracujących w projekcie z sumą ich zalogowanych roboczogodzin na podstawie danych z rejestru pracy YouTrack.
+  -- Każda osoba pokazuje łączną liczbę godzin oraz udział procentowy w całkowitej puli godzin przepracowanych w projekcie.
+- 2026-03-18 – Uporządkowanie układu rozliczeń
+  -- Kafelek `Wykorzystanie umowy` pokazuje teraz dodatkowo bezpośrednio liczbę godzin pozostałych lub przekroczonych względem limitu umowy.
+  -- Sekcję `Tabela rozliczeń` przebudowano z szerokiej tabeli na bardziej kompaktowe karty pozycji z wydzielonymi kwotami netto i brutto, aby widok nie rozciągał się nadmiernie w poziomie.
+- 2026-03-18 – Raport zarządczy PDF dla rozliczeń
+  -- Do zakładki `Rozliczenia` dodano osobny przycisk `Raport zarządczy PDF`, który otwiera widok przygotowany do eksportu `PDF / Drukuj`.
+  -- Raport pokazuje karty KPI, wykresy godzinowe i wartościowe, rozkład zleceń według statusu formalnego, strukturę pracy z YouTrack, zestawienie osób z zalogowanymi godzinami oraz automatyczne komentarze opisujące bieżący stan projektu.
+
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów
   -- Przepisano komponent statystyk rejestru pracy, aby tooltipy Recharts renderowały wyłącznie tekstowe etykiety zamiast obiektów oraz aby wykres kołowy jawnie używał pola `name` jako etykiety segmentu.

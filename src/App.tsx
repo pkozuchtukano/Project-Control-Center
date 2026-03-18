@@ -101,6 +101,7 @@ import {
   exportPmsReportToExcel,
   exportPmsReportToWord,
 } from './features/reports/services/pmsReportExportService';
+import { buildExecutiveSettlementReportData } from './features/reports/services/settlementExecutiveReportService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -615,6 +616,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes'>('dashboard');
+  const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const { orders } = useOrders(selectedProject?.id);
 
@@ -740,6 +742,103 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const progPct = youtrackTotal > 0 ? (youtrackHours['Programistyczne'] / youtrackTotal) * 100 : 0;
   const obsPct = youtrackTotal > 0 ? (youtrackHours['Obsługa projektu'] / youtrackTotal) * 100 : 0;
   const inPct = youtrackTotal > 0 ? (youtrackHours['Inne'] / youtrackTotal) * 100 : 0;
+  const inProgressOrders = orders.filter(order => !order.handoverDate && !order.acceptanceDate);
+  const handedOverPendingOrders = orders.filter(order => !!order.handoverDate && !order.acceptanceDate);
+  const pendingSettlementHours = contractedHours;
+  const contractedTotalHours = totalHoursUsed;
+  const remainingInContract = selectedProject.maxHours - contractedTotalHours;
+  const contractUsagePct = selectedProject.maxHours > 0
+    ? (contractedTotalHours / selectedProject.maxHours) * 100
+    : 0;
+  const contractedNetValue = contractedTotalHours * selectedProject.rateNetto;
+  const contractedGrossValue = contractedTotalHours * selectedProject.rateBrutto;
+  const settledNetValue = settledHours * selectedProject.rateNetto;
+  const settledGrossValue = settledHours * selectedProject.rateBrutto;
+  const pendingNetValue = pendingSettlementHours * selectedProject.rateNetto;
+  const pendingGrossValue = pendingSettlementHours * selectedProject.rateBrutto;
+  const remainingNetValue = remainingInContract * selectedProject.rateNetto;
+  const remainingGrossValue = remainingInContract * selectedProject.rateBrutto;
+  const workedNetValue = youtrackTotal * selectedProject.rateNetto;
+  const workedGrossValue = youtrackTotal * selectedProject.rateBrutto;
+  const profitabilityHours = contractedTotalHours - youtrackTotal;
+  const profitabilityNetValue = profitabilityHours * selectedProject.rateNetto;
+  const profitabilityGrossValue = profitabilityHours * selectedProject.rateBrutto;
+  const profitabilityPct = contractedTotalHours > 0 ? (profitabilityHours / contractedTotalHours) * 100 : 0;
+  const settlementRows = [
+    {
+      label: 'Umowa max godzin',
+      value: formatOrderHours(selectedProject.maxHours),
+      amountNet: formatCurrencyValue(selectedProject.maxHours * selectedProject.rateNetto),
+      amountGross: formatCurrencyValue(selectedProject.maxHours * selectedProject.rateBrutto),
+      note: 'Limit maksymalny zapisany w umowie dla projektu.',
+      tone: 'text-slate-700 dark:text-slate-200',
+    },
+    {
+      label: 'Zakontraktowane',
+      value: formatOrderHours(contractedTotalHours),
+      amountNet: formatCurrencyValue(contractedNetValue),
+      amountGross: formatCurrencyValue(contractedGrossValue),
+      note: 'Suma wszystkich godzin ze zleceń zapisanych w rejestrze.',
+      tone: 'text-indigo-700 dark:text-indigo-300',
+    },
+    {
+      label: 'Rozliczone',
+      value: formatOrderHours(settledHours),
+      amountNet: formatCurrencyValue(settledNetValue),
+      amountGross: formatCurrencyValue(settledGrossValue),
+      note: 'Zlecenia z uzupełnionym PO, czyli formalnie rozliczone.',
+      tone: 'text-emerald-700 dark:text-emerald-300',
+    },
+    {
+      label: 'Do rozliczenia',
+      value: formatOrderHours(pendingSettlementHours),
+      amountNet: formatCurrencyValue(pendingNetValue),
+      amountGross: formatCurrencyValue(pendingGrossValue),
+      note: 'Zlecenia bez PO: w trakcie albo po oddaniu PP.',
+      tone: 'text-amber-700 dark:text-amber-300',
+    },
+    {
+      label: 'Pozostało w umowie',
+      value: formatOrderHours(remainingInContract),
+      amountNet: formatCurrencyValue(remainingNetValue),
+      amountGross: formatCurrencyValue(remainingGrossValue),
+      note: remainingInContract >= 0
+        ? 'Pozostała pula godzin do wykorzystania w umowie.'
+        : 'Przekroczono maksymalny limit godzin w umowie.',
+      tone: remainingInContract >= 0
+        ? 'text-fuchsia-700 dark:text-fuchsia-300'
+        : 'text-red-700 dark:text-red-300',
+    },
+  ];
+  const profitabilityRows = [
+    {
+      label: 'Zakontraktowane godziny',
+      value: formatOrderHours(contractedTotalHours),
+      note: `Wartość netto ${formatCurrencyValue(contractedNetValue)} zł, brutto ${formatCurrencyValue(contractedGrossValue)} zł.`,
+      tone: 'text-indigo-700 dark:text-indigo-300',
+    },
+    {
+      label: 'Rzeczywiście przepracowane',
+      value: formatOrderHours(youtrackTotal),
+      note: `Na podstawie rejestru pracy YouTrack. Wartość netto ${formatCurrencyValue(workedNetValue)} zł, brutto ${formatCurrencyValue(workedGrossValue)} zł.`,
+      tone: 'text-violet-700 dark:text-violet-300',
+    },
+    {
+      label: 'Zysk na różnicy godzin',
+      value: formatOrderHours(profitabilityHours),
+      note: `Różnica zakontraktowane - przepracowane. Netto ${formatCurrencyValue(profitabilityNetValue)} zł, brutto ${formatCurrencyValue(profitabilityGrossValue)} zł.`,
+      tone: profitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+    },
+  ];
+  const authorHours = Object.entries(
+    workItems.reduce<Record<string, number>>((acc, item) => {
+      const authorName = item.authorName || 'Nieznana osoba';
+      acc[authorName] = (acc[authorName] || 0) + ((item.minutes || 0) / 60);
+      return acc;
+    }, {})
+  )
+    .map(([name, hours]) => ({ name, hours }))
+    .sort((a, b) => b.hours - a.hours);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
@@ -1058,12 +1157,193 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
         {activeTab === 'settlements' && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
-            <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-4">
-              <FileSpreadsheet size={28} className="text-emerald-400 dark:text-emerald-500" />
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="relative overflow-hidden rounded-3xl border border-emerald-100 dark:border-emerald-900/40 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_40%),linear-gradient(135deg,_#ffffff_0%,_#f8fafc_55%,_#ecfdf5_100%)] dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_35%),linear-gradient(135deg,_rgba(17,24,39,0.96)_0%,_rgba(15,23,42,0.98)_60%,_rgba(6,78,59,0.35)_100%)] p-6 shadow-sm">
+              <div className="absolute right-0 top-0 h-40 w-40 translate-x-10 -translate-y-10 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-500/10" />
+              <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 shadow-sm dark:bg-white/5 dark:text-emerald-300">
+                    <FileSpreadsheet size={14} />
+                    Rozliczenia projektu
+                  </div>
+                  <h3 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">Zestawienie kontraktu i rozliczeń</h3>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-300">
+                    Widok pokazuje realne wykorzystanie godzin z umowy: całość zakontraktowaną w zleceniach, część już rozliczoną oraz pozycje, które nadal czekają na PO.
+                  </p>
+                </div>
+                <div className="flex min-w-[220px] flex-col gap-3 lg:items-end">
+                  <button
+                    onClick={() => setIsExecutiveSettlementReportOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200/70 bg-white/90 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-white dark:border-emerald-900/50 dark:bg-slate-900/70 dark:text-emerald-300 dark:hover:bg-slate-900"
+                  >
+                    <Printer size={16} />
+                    Raport zarządczy PDF
+                  </button>
+                  <div className="w-full min-w-[220px] rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Wykorzystanie umowy</p>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-gray-900 dark:text-white">{contractUsagePct.toFixed(1)}%</span>
+                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">limitu max</span>
+                    </div>
+                    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/80">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${contractUsagePct > 100 ? 'bg-red-500' : contractUsagePct > 85 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${Math.min(100, Math.max(0, contractUsagePct))}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {formatOrderHours(contractedTotalHours)} h z {formatOrderHours(selectedProject.maxHours)} h
+                    </p>
+                    <div className={`mt-3 rounded-xl border px-3 py-2 ${remainingInContract >= 0 ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/40 dark:bg-emerald-900/20' : 'border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-900/20'}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Pozostało godzin</p>
+                      <p className={`mt-1 text-xl font-black ${remainingInContract >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {formatOrderHours(remainingInContract)} h
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Rozliczenia</h3>
-            <p className="text-gray-500 dark:text-gray-400 max-w-sm">Moduł fakturowania i rozliczeń finansowych projektu jest w przygotowaniu.</p>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {settlementRows.map((row) => (
+                <div key={row.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">{row.label}</p>
+                  <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
+                    {row.value}
+                    <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">h</span>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                      Netto: {row.amountNet} zł
+                    </p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                      Brutto: {row.amountGross} zł
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr]">
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800 overflow-hidden">
+                <div className="border-b border-gray-100 px-6 py-4 dark:border-gray-800">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Tabela rozliczeń</h4>
+                </div>
+                <div className="grid grid-cols-1 gap-4 p-4 sm:p-5">
+                  {settlementRows.map((row) => (
+                    <div key={row.label} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/30">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{row.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">{row.note}</p>
+                        </div>
+                        <div className="sm:text-right shrink-0">
+                          <p className={`text-2xl font-black ${row.tone}`}>{row.value} h</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Netto</p>
+                          <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{row.amountNet} zł</p>
+                        </div>
+                        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Brutto</p>
+                          <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">{row.amountGross} zł</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zyskowność projektu</h4>
+                  <div className="mt-4 space-y-4">
+                    {profitabilityRows.map((row) => (
+                      <div key={row.label} className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/40">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{row.label}</p>
+                          <p className={`text-xl font-black ${row.tone}`}>{row.value} h</p>
+                        </div>
+                        <p className="mt-2 text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`mt-5 rounded-2xl border p-4 ${profitabilityHours >= 0 ? 'border-emerald-100 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/20' : 'border-red-100 bg-red-50 dark:border-red-900/30 dark:bg-red-900/20'}`}>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Marża godzinowa</p>
+                    <p className={`mt-2 text-3xl font-black ${profitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                      {profitabilityPct.toFixed(1)}%
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                      {profitabilityHours >= 0
+                        ? 'Dodatnia różnica oznacza, że zakontraktowano więcej godzin niż rzeczywiście przepracowano, więc projekt utrzymuje dodatnią zyskowność godzinową.'
+                        : 'Ujemna różnica oznacza, że przepracowano więcej godzin niż zakontraktowano, więc projekt generuje stratę na godzinach.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Osoby pracujące w projekcie</h4>
+                  <div className="mt-5 space-y-4">
+                    {authorHours.length > 0 ? authorHours.map((author) => {
+                      const sharePct = youtrackTotal > 0 ? (author.hours / youtrackTotal) * 100 : 0;
+                      return (
+                        <div key={author.name} className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/40">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{author.name}</p>
+                            <p className="text-lg font-black text-slate-700 dark:text-slate-200">{formatOrderHours(author.hours)} h</p>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                            <div
+                              className="h-full rounded-full bg-sky-500 transition-all duration-700"
+                              style={{ width: `${Math.min(100, Math.max(0, sharePct))}%` }}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                            Udział w przepracowanych godzinach: {sharePct.toFixed(1)}%
+                          </p>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-gray-900/40 dark:text-gray-400">
+                        Brak zalogowanych godzin w rejestrze pracy dla tego projektu.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Status zleceń bez PO</h4>
+                  <div className="mt-5 grid grid-cols-2 gap-4">
+                    <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-900/20">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">W trakcie</p>
+                      <p className="mt-2 text-3xl font-black text-amber-800 dark:text-amber-200">{inProgressOrders.length}</p>
+                      <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Bez PP i bez PO</p>
+                    </div>
+                    <div className="rounded-2xl bg-sky-50 p-4 dark:bg-sky-900/20">
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Oddane PP</p>
+                      <p className="mt-2 text-3xl font-black text-sky-800 dark:text-sky-200">{handedOverPendingOrders.length}</p>
+                      <p className="mt-1 text-xs text-sky-700/80 dark:text-sky-300/80">Mają PP, nadal bez PO</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`rounded-2xl border p-6 shadow-sm ${remainingInContract >= 0 ? 'border-fuchsia-100 bg-fuchsia-50 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/20' : 'border-red-100 bg-red-50 dark:border-red-900/30 dark:bg-red-900/20'}`}>
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wniosek</h4>
+                  <p className={`mt-4 text-2xl font-black ${remainingInContract >= 0 ? 'text-fuchsia-700 dark:text-fuchsia-300' : 'text-red-700 dark:text-red-300'}`}>
+                    {remainingInContract >= 0 ? 'Umowa mieści się w limicie' : 'Umowa jest przekroczona'}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                    {remainingInContract >= 0
+                      ? `Po uwzględnieniu wszystkich zleceń w rejestrze pozostaje jeszcze ${formatOrderHours(remainingInContract)} h do wykorzystania w ramach umowy.`
+                      : `Suma zleceń przekracza limit umowny o ${formatOrderHours(Math.abs(remainingInContract))} h i wymaga korekty lub aneksu.`}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1094,6 +1374,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
       </div>
+
+      <ExecutiveSettlementReportModal
+        isOpen={isExecutiveSettlementReportOpen}
+        onClose={() => setIsExecutiveSettlementReportOpen(false)}
+        project={selectedProject}
+        orders={orders}
+        workItems={workItems}
+      />
     </div >
   );
 };
@@ -1343,6 +1631,8 @@ const buildOrderItemsFromTemplate = (template?: { names?: string[]; lastDate?: s
 };
 
 const formatOrderHours = (value: number) =>
+  value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
@@ -2036,6 +2326,385 @@ const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clien
           <AlertCircle size={12} /> {authError}
         </p>
       )}
+    </div>
+  );
+};
+
+const ExecutiveSettlementReportModal = ({
+  isOpen,
+  onClose,
+  project,
+  orders,
+  workItems,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  project: Project;
+  orders: Order[];
+  workItems: ReturnType<typeof useWorkRegistry>['workItems'];
+}) => {
+  const [reportDate, setReportDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setReportDate(format(new Date(), 'yyyy-MM-dd'));
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const reportData = buildExecutiveSettlementReportData({
+    project,
+    orders,
+    workItems,
+    reportDate,
+  });
+
+  const toneClasses: Record<string, string> = {
+    positive: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    risk: 'border-red-200 bg-red-50 text-red-900',
+    neutral: 'border-slate-200 bg-slate-50 text-slate-900',
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-100/95 text-slate-900 backdrop-blur-sm">
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 12mm; }
+          body { background: white !important; }
+          .no-print { display: none !important; }
+          .report-shell { max-width: none !important; padding: 0 !important; }
+          .report-page {
+            box-shadow: none !important;
+            margin: 0 0 10mm 0 !important;
+            break-after: page;
+            page-break-after: always;
+          }
+          .report-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .avoid-break {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .print-chart text {
+            fill: #475569 !important;
+            font-size: 11px !important;
+          }
+        }
+      `}</style>
+
+      <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur-sm">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Raport zarządczy PDF</p>
+            <h3 className="mt-1 text-lg font-black text-slate-900">{project.code} - rozliczenia, wykresy i komentarz zarządczy</h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+              Sporządzono:
+              <input
+                type="date"
+                value={reportDate}
+                onChange={(event) => setReportDate(event.target.value)}
+                onKeyDown={handleDateInputTabNavigation}
+                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500"
+              />
+            </label>
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              <Printer size={16} />
+              Export PDF / Drukuj
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Zamknij
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="report-shell mx-auto max-w-[1400px] space-y-6 p-5">
+        <section className="report-page overflow-hidden rounded-[28px] bg-white shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
+          <div className="relative overflow-hidden border-b border-slate-200 bg-[linear-gradient(135deg,_#0f172a_0%,_#1e293b_48%,_#0f766e_100%)] px-8 py-8 text-white">
+            <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-400/20 blur-3xl" />
+            <div className="absolute bottom-0 right-20 h-32 w-32 rounded-full bg-cyan-300/10 blur-2xl" />
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-4xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-100">
+                  <FileSpreadsheet size={14} />
+                  Raport dla zarządu
+                </div>
+                <h1 className="mt-4 text-3xl font-black tracking-tight">{project.name}</h1>
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-200">
+                  Raport pokazuje bieżący stan kontraktu, formalne rozliczenia zleceń, rzeczywiste roboczogodziny z YouTrack oraz syntetyczny komentarz o tym, co aktualnie dzieje się w projekcie.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm text-slate-100 md:min-w-[360px]">
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Kod projektu</p>
+                  <p className="mt-2 text-xl font-black">{project.code}</p>
+                </div>
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Umowa</p>
+                  <p className="mt-2 text-xl font-black">{project.contractNo || 'brak'}</p>
+                </div>
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Okres projektu</p>
+                  <p className="mt-2 text-sm font-semibold">{reportData.projectPeriodLabel}</p>
+                </div>
+                <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Stan na dzień</p>
+                  <p className="mt-2 text-sm font-semibold">{reportDate}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-8 px-8 py-8">
+            <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(135deg,_#f8fafc_0%,_#eef2ff_55%,_#ecfeff_100%)] p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="max-w-4xl">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Podsumowanie zarządcze</p>
+                  <h2 className="mt-2 text-2xl font-black text-slate-900">
+                    {reportData.remainingInContract >= 0 ? 'Projekt pozostaje w granicach umowy' : 'Projekt wymaga korekty limitu lub aneksu'}
+                  </h2>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{reportData.summaryText}</p>
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Wykorzystanie umowy</p>
+                  <div className="mt-2 flex items-end gap-2">
+                    <span className="text-4xl font-black text-slate-900">{reportData.contractUsagePct.toFixed(1)}%</span>
+                    <span className="pb-1 text-sm font-semibold text-slate-400">limitu</span>
+                  </div>
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className={`h-full rounded-full ${reportData.contractUsagePct > 100 ? 'bg-red-500' : reportData.contractUsagePct > 85 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${Math.min(100, Math.max(0, reportData.contractUsagePct))}%` }}
+                    />
+                  </div>
+                  <p className="mt-3 text-sm text-slate-500">
+                    {formatOrderHours(reportData.contractedTotalHours)} h z {formatOrderHours(project.maxHours)} h
+                  </p>
+                  <p className={`mt-2 text-sm font-bold ${reportData.remainingInContract >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                    {reportData.remainingInContract >= 0 ? 'Pozostało' : 'Przekroczenie'}: {formatOrderHours(Math.abs(reportData.remainingInContract))} h
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 xl:grid-cols-3">
+              {reportData.metrics.map((metric) => (
+                <div key={metric.label} className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{metric.label}</p>
+                  <div className="mt-3 text-3xl font-black" style={{ color: metric.accent }}>
+                    {formatOrderHours(metric.hours)}
+                    <span className="ml-1 text-sm font-semibold text-slate-400">h</span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Netto</p>
+                      <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.netValue)} zł</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Brutto</p>
+                      <p className="mt-1 font-bold text-slate-900">{formatCurrencyValue(metric.grossValue)} zł</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres godzin</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-900">Kontrakt, rozliczenia i praca zespołu</h3>
+                </div>
+                <div className="print-chart h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.hoursChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
+                        {reportData.hoursChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres wartości</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-900">Wartość kontraktu i bieżącej zyskowności</h3>
+                </div>
+                <div className="print-chart h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.valuesChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value) / 1000)}k`} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatCurrencyValue(Number(value || 0))} zł`, 'Netto']} />
+                      <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={56}>
+                        {reportData.valuesChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              {reportData.highlights.map((highlight) => (
+                <div key={highlight.title} className={`avoid-break rounded-[24px] border p-5 ${toneClasses[highlight.tone]}`}>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] opacity-70">Komentarz</p>
+                  <h3 className="mt-2 text-lg font-black">{highlight.title}</h3>
+                  <p className="mt-3 text-sm leading-7">{highlight.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="report-page overflow-hidden rounded-[28px] bg-white px-8 py-8 shadow-[0_18px_55px_rgba(15,23,42,0.14)]">
+          <div className="flex flex-col gap-3 border-b border-slate-200 pb-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">Strona operacyjna</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-900">Co realnie dzieje się w projekcie</h2>
+              <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">
+                Ta strona pokazuje, jak rozkłada się praca zespołu, które zlecenia są jeszcze poza formalnym rozliczeniem oraz jaka jest struktura zalogowanych roboczogodzin.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              {reportData.statusCards.map((statusCard) => (
+                <div key={statusCard.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{statusCard.label}</p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">{statusCard.count}</p>
+                  <p className="mt-1 text-sm font-semibold" style={{ color: statusCard.fill }}>{formatOrderHours(statusCard.hours)} h</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Status zleceń</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Godziny według etapu formalnego</h3>
+              </div>
+              <div className="print-chart h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={reportData.statusChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} angle={-12} textAnchor="end" height={46} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={60}>
+                      {reportData.statusChartData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Kategorie pracy</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Struktura godzin z YouTrack</h3>
+              </div>
+              <div className="print-chart h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={reportData.categoryChartData} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} interval={0} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                    <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                    <Bar dataKey="value" radius={[12, 12, 0, 0]} maxBarSize={70}>
+                      {reportData.categoryChartData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Zespół projektowy</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Najwięcej zalogowanych godzin</h3>
+              </div>
+              <div className="print-chart h-[320px]">
+                {reportData.teamChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={reportData.teamChartData} layout="vertical" margin={{ top: 10, right: 20, left: 30, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" opacity={0.45} />
+                      <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Number(value).toFixed(0)}h`} />
+                      <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={130} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                      <Tooltip formatter={(value: number | string | undefined) => [`${formatOrderHours(Number(value || 0))} h`, 'Godziny']} />
+                      <Bar dataKey="value" radius={[0, 12, 12, 0]} maxBarSize={28}>
+                        {reportData.teamChartData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm leading-6 text-slate-500">
+                    Brak zalogowanych godzin w YouTrack. Po synchronizacji rejestru pracy raport pokaże realne obciążenie zespołu.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Osoby i udziały</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900">Lista roboczogodzin zespołu</h3>
+              </div>
+              <div className="space-y-3">
+                {reportData.topContributors.length > 0 ? reportData.topContributors.map((contributor) => (
+                  <div key={contributor.name} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">{contributor.name}</p>
+                      <p className="text-lg font-black text-slate-900">{formatOrderHours(contributor.hours)} h</p>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-sky-500"
+                        style={{ width: `${Math.min(100, Math.max(0, contributor.sharePct))}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      Udział w całkowitej pracy: {contributor.sharePct.toFixed(1)}%
+                    </p>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm leading-6 text-slate-500">
+                    Brak danych o osobach pracujących w projekcie.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
 };
