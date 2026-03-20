@@ -91,24 +91,30 @@ export class GoogleDocsService {
     return trimmed;
   }
 
-  async getLatestDatabaseBackup(folderLinkOrId: string, fileName: string): Promise<DriveFileMetadata | null> {
+  private buildDatabaseBackupPattern(fileNamePrefix: string): RegExp {
+    const escapedPrefix = fileNamePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`^${escapedPrefix}(?:_\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2})?\\.db$`, 'i');
+  }
+
+  async getLatestDatabaseBackup(folderLinkOrId: string, fileNamePrefix: string): Promise<DriveFileMetadata | null> {
     if (!this.oauth2Client) throw new Error('Not authenticated');
 
     const folderId = this.extractDriveFolderId(folderLinkOrId);
     const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    const fileNamePattern = this.buildDatabaseBackupPattern(fileNamePrefix);
     const response = await drive.files.list({
-      q: `'${folderId}' in parents and name = '${fileName.replace(/'/g, "\\'")}' and trashed = false`,
+      q: `'${folderId}' in parents and name contains '${fileNamePrefix.replace(/'/g, "\\'")}' and trashed = false`,
       fields: 'files(id,name,modifiedTime,size)',
       orderBy: 'modifiedTime desc',
-      pageSize: 1,
+      pageSize: 20,
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
     });
 
-    const file = response.data.files?.[0];
+    const file = response.data.files?.find((entry) => fileNamePattern.test(entry.name || ''));
     return file ? {
       id: file.id || '',
-      name: file.name || fileName,
+      name: file.name || `${fileNamePrefix}.db`,
       modifiedTime: file.modifiedTime,
       size: file.size,
     } : null;
@@ -119,21 +125,6 @@ export class GoogleDocsService {
 
     const folderId = this.extractDriveFolderId(folderLinkOrId);
     const drive = google.drive({ version: 'v3', auth: this.oauth2Client });
-    const existingFile = await this.getLatestDatabaseBackup(folderId, fileName);
-
-    if (existingFile?.id) {
-      const updated = await drive.files.update({
-        fileId: existingFile.id,
-        media: {
-          mimeType: 'application/vnd.sqlite3',
-          body: createReadStream(localFilePath),
-        },
-        fields: 'id,name,modifiedTime,size',
-        supportsAllDrives: true,
-      });
-
-      return updated.data;
-    }
 
     const created = await drive.files.create({
       requestBody: {

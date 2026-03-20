@@ -6,7 +6,6 @@ import fs from 'fs/promises';
 import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
-import { encryptPDF } from '@pdfsmaller/pdf-encrypt-lite';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
 
@@ -23,7 +22,7 @@ const dbPath = isDev
     : path.join(executableDir, 'baza_danych.db');
 const dbWalPath = `${dbPath}-wal`;
 const dbShmPath = `${dbPath}-shm`;
-const remoteDatabaseFileName = 'pcc-baza_danych.db';
+const remoteDatabaseFileNamePrefix = 'pcc-baza_danych';
 const googleDriveSharedFolderLink = envSettings.googleDriveSharedFolderLink?.trim() || '';
 
 // Inicjalizacja SQLite
@@ -261,6 +260,14 @@ const removeFileIfExists = async (filePath: string) => {
         // ignore
     }
 };
+
+const formatBackupTimestamp = (date: Date) => {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+};
+
+const buildRemoteDatabaseBackupFileName = (date = new Date()) =>
+    `${remoteDatabaseFileNamePrefix}_${formatBackupTimestamp(date)}.db`;
 
 const getTimestampLabel = (date: Date) =>
     date.toLocaleString('pl-PL', {
@@ -858,10 +865,11 @@ const exportDatabaseBackupToGoogleDrive = async () => {
         throw new Error('Brak aktywnej autoryzacji Google. Zaloguj się ponownie w ustawieniach aplikacji.');
     }
 
-    const tempBackupPath = path.join(app.getPath('temp'), `${remoteDatabaseFileName}-${Date.now()}.db`);
+    const backupFileName = buildRemoteDatabaseBackupFileName(new Date());
+    const tempBackupPath = path.join(app.getPath('temp'), backupFileName);
     try {
         await createDatabaseSnapshot(tempBackupPath);
-        return await gDocsService.uploadDatabaseBackup(googleDriveSharedFolderLink, tempBackupPath, remoteDatabaseFileName);
+        return await gDocsService.uploadDatabaseBackup(googleDriveSharedFolderLink, tempBackupPath, backupFileName);
     } finally {
         await removeFileIfExists(tempBackupPath);
     }
@@ -891,12 +899,13 @@ const importDatabaseBackupFromGoogleDrive = async () => {
         throw new Error('Brak aktywnej autoryzacji Google. Zaloguj się ponownie w ustawieniach aplikacji.');
     }
 
-    const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileName);
+    const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileNamePrefix);
     if (!remoteFile?.id) {
         throw new Error('W udostępnionym folderze Google Drive nie znaleziono kopii bazy danych.');
     }
 
-    const tempImportPath = path.join(app.getPath('temp'), `${remoteDatabaseFileName}-import-${Date.now()}.db`);
+    const importFileName = remoteFile.name || buildRemoteDatabaseBackupFileName(new Date());
+    const tempImportPath = path.join(app.getPath('temp'), `${importFileName}-import-${Date.now()}`);
     try {
         await gDocsService.downloadDatabaseBackup(remoteFile.id, tempImportPath);
         await replaceLocalDatabaseFromFile(tempImportPath);
@@ -916,7 +925,7 @@ const maybeOfferRemoteDatabaseImport = async () => {
         const authStatus = await gDocsService.getAuthStatus();
         if (!authStatus.isAuthenticated) return;
 
-        const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileName);
+        const remoteFile = await gDocsService.getLatestDatabaseBackup(googleDriveSharedFolderLink, remoteDatabaseFileNamePrefix);
         if (!remoteFile?.id || !remoteFile.modifiedTime) return;
 
         const localTimestamp = await getLocalDatabaseTimestamp();
@@ -1119,7 +1128,7 @@ ipcMain.handle('export-database', async () => {
         return {
             success: true,
             canceled: false,
-            fileName: uploaded.name || remoteDatabaseFileName,
+            fileName: uploaded.name || buildRemoteDatabaseBackupFileName(new Date()),
             modifiedTime: uploaded.modifiedTime || null,
         };
     } catch (error) {
@@ -1136,7 +1145,7 @@ ipcMain.handle('import-database', async () => {
         return {
             success: true,
             canceled: false,
-            fileName: imported.name || remoteDatabaseFileName,
+            fileName: imported.name || buildRemoteDatabaseBackupFileName(new Date()),
             modifiedTime: imported.modifiedTime || null,
         };
     } catch (error) {
@@ -1178,13 +1187,21 @@ ipcMain.handle('export-pdf', async (_, options?: { defaultFileName?: string; pas
     });
 
     const password = options?.password;
-    const finalPdfBytes = password
-        ? await encryptPDF(
-            new Uint8Array(pdfBuffer),
-            password,
-            randomBytes(24).toString('hex'),
-        )
-        : new Uint8Array(pdfBuffer);
+    let finalPdfBytes = new Uint8Array(pdfBuffer);
+
+    if (password) {
+        try {
+            const { encryptPDF } = await import('@pdfsmaller/pdf-encrypt-lite');
+            finalPdfBytes = await encryptPDF(
+                new Uint8Array(pdfBuffer),
+                password,
+                randomBytes(24).toString('hex'),
+            );
+        } catch (error) {
+            console.error('Błąd ładowania modułu szyfrowania PDF:', error);
+            throw new Error('Nie udało się włączyć szyfrowania PDF. Moduł szyfrowania nie jest dostępny w tej instalacji aplikacji.');
+        }
+    }
 
     await fs.writeFile(saveResult.filePath, Buffer.from(finalPdfBytes));
 

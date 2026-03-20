@@ -51,6 +51,14 @@
 - 2026-03-18 – Eksport raportu zarządczego do Excel
   -- Dodano osobny eksport `Excel` dla raportu zarządczego rozliczeń, dostępny obok eksportów PDF i Word.
   -- Plik `.xlsx` zawiera arkusze z podsumowaniem, statusami, godzinami, pełną listą zespołu oraz sekcją wartości tylko wtedy, gdy dane finansowe są odsłonięte w raporcie.
+- 2026-03-20 – Korekta bundlingu Electron dla szyfrowania PDF
+  -- W konfiguracji `vite-plugin-electron` dodano pakiet `@pdfsmaller/pdf-encrypt-lite` do listy zewnętrznych zależności procesu głównego.
+  -- Build Electrona nie próbuje już bundlować tej biblioteki przez Rollup, co usuwa błąd rozwiązywania importu przy budowie aplikacji.
+  -- Dodatkowo import modułu szyfrowania PDF przeniesiono z ładowania startowego aplikacji do dynamicznego `import()` wykonywanego tylko wtedy, gdy użytkownik faktycznie zapisuje PDF z hasłem.
+  -- Brak modułu szyfrowania nie blokuje już uruchomienia całej aplikacji; w takim przypadku błąd pojawi się tylko przy próbie zapisania zaszyfrowanego PDF.
+- 2026-03-20 – Zwiększenie limitu pamięci dla builda
+  -- Skrypt `build` w `package.json` został uruchamiany z `NODE_OPTIONS=--max-old-space-size=8192` dla etapów `tsc`, `vite build` i `electron-builder`.
+  -- Budowanie aplikacji dostaje większy limit heap Node.js, co ogranicza błędy `JavaScript heap out of memory` przy dużym bundlu Electron i raportach eksportowych.
 - 2026-03-18 – Rozwinięcie skrótów PO i PP w widokach oraz raportach
   -- W obszarze rozliczeń i raportów zastąpiono skróty `PO` i `PP` pełnymi nazwami: `protokół odbioru` oraz `protokół przekazania`, z dopasowaniem do kontekstu językowego.
   -- Interfejs i eksporty pokazują teraz jednoznaczne, pełne określenia zamiast skrótów, co poprawia czytelność dla odbiorców raportów.
@@ -65,6 +73,9 @@
 - 2026-03-18 – Przełączenie ręcznego eksportu i importu bazy na Google Drive
   -- Zmieniono ręczne przyciski `Eksport bazy` i `Import bazy`, aby nie używały już lokalnych okien wyboru pliku, tylko bezpośrednio zapisywały i pobierały bazę z udostępnionego folderu Google Drive.
   -- Dodatkowo obsłużono błąd brakujących scope tokenu Google i aplikacja pokazuje teraz jasny komunikat o konieczności ponownego wylogowania i autoryzacji po dodaniu uprawnień Drive.
+- 2026-03-20 – Wersjonowane kopie bazy danych i import najnowszego backupu
+  -- Zmieniono nazewnictwo ręcznego i automatycznego eksportu bazy do Google Drive: każda kopia jest teraz zapisywana jako osobny plik z datą i godziną w nazwie, np. `pcc-baza_danych_2026-03-20_14-30-00.db`.
+  -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
 
 ## Rejestr zleceń
 - 2026-03-18 – Zapamiętywanie pozycji w tabeli wyceny kolejnego zlecenia

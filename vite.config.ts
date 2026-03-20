@@ -21,7 +21,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['fs/promises', 'path', 'url', 'fs', 'better-sqlite3']
+              external: ['fs/promises', 'path', 'url', 'fs', 'better-sqlite3', '@pdfsmaller/pdf-encrypt-lite']
             }
           }
         }
