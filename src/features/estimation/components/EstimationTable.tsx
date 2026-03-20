@@ -18,7 +18,7 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
   isBrutto,
   setIsBrutto
 }) => {
-  
+  const [activeHint, setActiveHint] = React.useState<{ itemId: string; field: 'baseHours' | 'finalHours' } | null>(null);
 
   const updateItem = (id: string, updates: Partial<EstimationItem>) => {
     setEstimation(prev => {
@@ -74,6 +74,40 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
 
   const totalHours = estimation.items.reduce((sum, item) => sum + item.finalHours, 0);
   const totalNetto = totalHours * project.rateNetto;
+  const expectedHours = typeof estimation.expectedHours === 'number' && Number.isFinite(estimation.expectedHours)
+    ? estimation.expectedHours
+    : null;
+  const getSuggestedFinalHours = (itemId: string) => {
+    if (expectedHours === null) return null;
+    const otherItemsTotal = estimation.items
+      .filter((item) => item.id !== itemId)
+      .reduce((sum, item) => sum + item.finalHours, 0);
+
+    return expectedHours - otherItemsTotal;
+  };
+  const getSuggestedBaseHours = (item: EstimationItem) => {
+    if (item.isOverridden || item.multiplier === 0) return null;
+    const suggestedFinal = getSuggestedFinalHours(item.id);
+    if (suggestedFinal === null) return null;
+    return suggestedFinal / item.multiplier;
+  };
+  const updateExpectedHours = (value: number) => {
+    setEstimation(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        expectedHours: value,
+      };
+    });
+  };
+  const renderHint = (value: number | null, label: string) => {
+    if (value === null) return null;
+    return (
+      <div className="pointer-events-none absolute left-full top-1/2 z-10 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-950/70 dark:text-indigo-200">
+        {label}: {value.toFixed(2)} h
+      </div>
+    );
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -111,12 +145,18 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
                 />
               </td>
               <td className="px-4 py-2">
-                <NumericCell
-                  value={item.baseHours}
-                  roundTo={0.5}
-                  onChange={val => updateItem(item.id, { baseHours: val })}
-                  className="w-full text-center"
-                />
+                <div className="relative">
+                  <NumericCell
+                    value={item.baseHours}
+                    roundTo={0.5}
+                    onFocusChange={(isFocused) => {
+                      setActiveHint(isFocused ? { itemId: item.id, field: 'baseHours' } : null);
+                    }}
+                    onChange={val => updateItem(item.id, { baseHours: val })}
+                    className="w-full text-center"
+                  />
+                  {activeHint?.itemId === item.id && activeHint.field === 'baseHours' && renderHint(getSuggestedBaseHours(item), 'Podpowiedź')}
+                </div>
               </td>
               <td className="px-4 py-2 text-center">
                  <NumericCell
@@ -127,18 +167,24 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
                 />
               </td>
               <td className={`px-4 py-2 text-center bg-indigo-50/20 dark:bg-indigo-900/5 relative group/item`}>
-                <NumericCell
-                  value={item.finalHours}
-                  isBold
-                  roundTo={0.5}
-                  onChange={val => {
-                    updateItem(item.id, { 
-                      isOverridden: true,
-                      finalHours: val
-                    });
-                  }}
-                  className={`w-full text-center ${item.isOverridden ? 'border-amber-200 dark:border-amber-900/50 text-amber-600 dark:text-amber-400' : 'border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}
-                />
+                <div className="relative">
+                  <NumericCell
+                    value={item.finalHours}
+                    isBold
+                    roundTo={0.5}
+                    onFocusChange={(isFocused) => {
+                      setActiveHint(isFocused ? { itemId: item.id, field: 'finalHours' } : null);
+                    }}
+                    onChange={val => {
+                      updateItem(item.id, { 
+                        isOverridden: true,
+                        finalHours: val
+                      });
+                    }}
+                    className={`w-full text-center ${item.isOverridden ? 'border-amber-200 dark:border-amber-900/50 text-amber-600 dark:text-amber-400' : 'border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}
+                  />
+                  {activeHint?.itemId === item.id && activeHint.field === 'finalHours' && renderHint(getSuggestedFinalHours(item.id), 'Podpowiedź')}
+                </div>
                 {item.isOverridden && (
                   <button 
                     onClick={() => updateItem(item.id, { isOverridden: false })}
@@ -178,6 +224,22 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
             </td>
             <td></td>
           </tr>
+          <tr>
+            <td colSpan={4} className="px-4 pb-4 text-right text-gray-500 uppercase text-xs tracking-wider">Oczekiwane</td>
+            <td className="px-4 pb-4 text-center">
+              <NumericCell
+                value={expectedHours ?? 0}
+                roundTo={0.5}
+                onChange={updateExpectedHours}
+                emptyWhenZero={expectedHours === null}
+                className="w-full text-center font-bold border-emerald-200 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400"
+              />
+            </td>
+            <td className="px-4 pb-4 text-right text-xs font-semibold text-gray-400 dark:text-gray-500">
+              {expectedHours !== null ? `Różnica: ${(totalHours - expectedHours).toFixed(2)} h` : 'Wpisz docelową sumę godzin'}
+            </td>
+            <td></td>
+          </tr>
         </tfoot>
       </table>
       <div className="p-4 border-t border-gray-100 dark:border-gray-800">
@@ -206,18 +268,27 @@ interface NumericCellProps {
   disabled?: boolean;
   isBold?: boolean;
   roundTo?: number;
+  emptyWhenZero?: boolean;
+  onFocusChange?: (isFocused: boolean) => void;
 }
 
-const NumericCell: React.FC<NumericCellProps> = ({ value, onChange, className = '', disabled = false, isBold = false, roundTo }) => {
-  const [localVal, setLocalVal] = React.useState(value.toFixed(2));
+const NumericCell: React.FC<NumericCellProps> = ({ value, onChange, className = '', disabled = false, isBold = false, roundTo, emptyWhenZero = false, onFocusChange }) => {
+  const formatDisplayValue = React.useCallback((nextValue: number) => {
+    if (emptyWhenZero && nextValue === 0) {
+      return '';
+    }
+
+    return nextValue.toFixed(2);
+  }, [emptyWhenZero]);
+  const [localVal, setLocalVal] = React.useState(formatDisplayValue(value));
   const [isFocused, setIsFocused] = React.useState(false);
 
   // Sync with value from parent when not focused
   React.useEffect(() => {
     if (!isFocused) {
-      setLocalVal(value.toFixed(2));
+      setLocalVal(formatDisplayValue(value));
     }
-  }, [value, isFocused]);
+  }, [value, isFocused, formatDisplayValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.target.value.replace(',', '.');
@@ -233,6 +304,7 @@ const NumericCell: React.FC<NumericCellProps> = ({ value, onChange, className = 
 
   const handleBlur = () => {
     setIsFocused(false);
+    onFocusChange?.(false);
     const parsed = parseFloat(localVal);
     let final = isNaN(parsed) ? 0 : parsed;
     
@@ -241,17 +313,18 @@ const NumericCell: React.FC<NumericCellProps> = ({ value, onChange, className = 
     }
 
     onChange(final);
-    setLocalVal(final.toFixed(2));
+    setLocalVal(formatDisplayValue(final));
   };
 
   return (
     <input
       type="text"
       inputMode="decimal"
-      value={isFocused ? localVal : value.toFixed(2)}
+      value={isFocused ? localVal : formatDisplayValue(value)}
       disabled={disabled}
       onFocus={(e) => {
         setIsFocused(true);
+        onFocusChange?.(true);
         e.target.select();
       }}
       onBlur={handleBlur}

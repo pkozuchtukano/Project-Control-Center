@@ -82,6 +82,7 @@ export type EmailTemplate = {
 export type Estimation = {
   projectId: string;
   items: EstimationItem[];
+  expectedHours?: number | null;
   scheduleMode: 'simple' | 'milestones';
   scheduleData: {
     simple: { start: string; end: string };

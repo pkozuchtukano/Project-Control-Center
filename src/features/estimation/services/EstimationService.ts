@@ -22,6 +22,7 @@ export const createDefaultEstimation = (projectId: string): Estimation => ({
     finalHours: 0,
     isOverridden: false
   })),
+  expectedHours: null,
   scheduleMode: 'simple',
   scheduleData: {
     simple: { start: '', end: '' },

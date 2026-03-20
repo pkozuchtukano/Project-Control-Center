@@ -88,6 +88,23 @@
   -- W rejestrze zleceń dodano osobny raport `PMS` z tym samym zestawem filtrów i akcji eksportu co raport `CBCP`, dostępny z nowego przycisku w nagłówku widoku.
   -- Raport `PMS` rozbija zlecenie na wiersze `Produkty zlecenia`, scala pionowo komórki wspólne dla jednego zlecenia, pokazuje godziny i kwoty per produkt oraz sumy łączne w podglądzie wydruku, eksporcie Excel i eksporcie Word.
 
+## Wycena
+- 2026-03-20 – Ręczna korekta pól Finał i cel godzinowy
+  -- Rozszerzono tabelę wyceny o pole `Oczekiwane` pod sumą `Finał`, w którym można wpisać docelową łączną liczbę godzin dla całej estymacji.
+  -- Podczas edycji aktywnego pola `Est. Zespół` lub `Finał` tabela pokazuje po prawej dynamiczną podpowiedź, jaką wartość wpisać w bieżącej pozycji, aby suma `Finał` osiągnęła wartość oczekiwaną.
+  -- Pola `Finał` pozostają liczone automatycznie z `Est. Zespół × Dod.`, ale nadal można je ręcznie nadpisywać; stan ręcznej korekty jest zachowany i nadal można wrócić do automatycznych obliczeń.
+- 2026-03-20 – Nowy układ eksportu wyceny do Excela
+  -- Eksport `Wyceny` do Excela przebudowano do układu zbliżonego do wzoru biznesowego: tabela wyceny jest po lewej stronie arkusza, a harmonogram po prawej.
+  -- Arkusz pokazuje kolumny `Lp.`, `Przedmiot wyceny`, `Liczba Godzin`, `Stawka za h` i `Kwota razem`, a pod tabelą dodaje wiersz `RAZEM`.
+  -- Eksport wykorzystuje rzeczywiste wartości `Finał` zapisane w wycenie, więc uwzględnia także ręczne korekty, a dla harmonogramu uproszczonego generuje analogiczną tabelę z datą rozpoczęcia i zakończenia.
+  -- Doprecyzowano podpis wiersza podsumowania w arkuszu, aby sekcja sumy była czytelniej oznaczona jako `RAZEM`.
+  -- Dodatkowo eksport zachowuje oryginalną numerację pozycji `Lp.` po odfiltrowaniu pustych wierszy oraz nie scala już komórek w wierszu `RAZEM:`, dzięki czemu układ odpowiada wzorowi z tabeli biznesowej.
+  -- Format kolumn godzinowych w eksporcie jest teraz dobierany per komórka: wartości całkowite dostają format `0`, a ułamkowe `0.##`, dzięki czemu Excel nie pokazuje już pustego separatora dziesiętnego przy liczbach całkowitych, zachowując pola jako liczbowe.
+  -- Sam eksport `Wyceny` został przepięty z `xlsx` na `exceljs`, aby arkusz wspierał rzeczywiste style komórek: czarne obramowania, wyróżniony wiersz nagłówka i czytelny wiersz `RAZEM:` zgodny z przekazanym wzorem.
+  -- Nazwa pliku eksportu `Wyceny` została zmieniona na format `kodProjektu_yyyymmddhhmm_kalkukacja zlecenia.xlsx`, aby kolejne eksporty były jednoznaczne czasowo i zgodne z przyjętym nazewnictwem biznesowym.
+  -- Harmonogram uproszczony jest teraz eksportowany po prawej stronie arkusza w formie zbliżonej do kroków milowych: jako dwa wiersze `Rozpoczęcie` i `Zakończenie`, z datami sformatowanymi do `dd.MM.yyyy`.
+  -- Eksport lewego bloku `Przedmiot wyceny` przestał odfiltrowywać pozycje z zerowym `Finał`, dzięki czemu arkusz odwzorowuje dokładnie te same pozycje i numerację, które użytkownik widzi w tabeli wyceny.
+
 ## Rozliczenia
 - 2026-03-18 – Nowoczesne zestawienie rozliczeń umowy
   -- W zakładce `Rozliczenia` zastąpiono placeholder rzeczywistym widokiem analitycznym z kartami, tabelą i blokiem podsumowania opartymi na danych projektu oraz zleceń.
