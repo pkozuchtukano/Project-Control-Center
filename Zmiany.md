@@ -124,6 +124,28 @@
   -- Zmieniono logikę liczenia statusów zleceń: brak wszystkich dat oznacza `Anulowane`, a `Do rozliczenia` obejmuje tylko zlecenia z uzupełnioną datą realizacji `od`, ale bez daty odbioru.
   -- Tę samą regułę zastosowano w zakładce `Rozliczenia` oraz w raporcie zarządczym PDF, aby liczniki, godziny i statusy były spójne w całej aplikacji.
   -- Status `Anulowane` nie jest pokazywany jako osobny główny kafelek KPI; pozostaje jedynie jako element logiki i w sekcji statusów zleceń.
+- 2026-03-20 – Wykres efektywności i trendu estymacji w rozliczeniach
+  -- Do zakładki `Rozliczenia` dodano wykres typu burn-up porównujący skumulowane estymaty godzin ze zleceń z rzeczywiście zalogowanymi godzinami z YouTrack dzień po dniu.
+  -- Estymaty są rozkładane liniowo pomiędzy datą rozpoczęcia i zakończenia zlecenia, a wykres pokazuje dodatkowo wskaźnik `Accuracy Index`, trend 30-dniowy, regresję liniową oraz kolorowe wypełnienie bufora lub przekroczenia względem planu.
+  -- Widok dostał filtry `Osoba` i `Kategoria pracy` dla danych rzeczywistych; obecny model danych nie zawiera niezależnego tagu projektu ani rozbicia estymat po osobie/kategorii, więc linia planu pozostaje projektowa.
+  -- Następnie uproszczono prezentację wykresu do w pełni polskiego układu z dwiema głównymi liniami narastającymi (`Godziny zleceń narastająco`, `Godziny zalogowane narastająco`), słupkami przyrostu godzin zleceń oraz osobną linią relacji `zlecenia / logi` i kierunku trendu.
+  -- Poprawiono parser dat dla linii godzin zalogowanych: wykres uwzględnia teraz pełne daty ISO z `Rejestru pracy`, a nie tylko pola w formacie `YYYY-MM-DD`, więc realne logi pracy wracają do serii `Godziny zalogowane narastająco`.
+  -- Ostatecznie rozdzielono analizę na dwa osobne wykresy: pierwszy pokazuje wyłącznie narastające godziny zleceń i godziny zalogowane wraz z przyrostami zleceń, a drugi prezentuje sam trend relacji `godziny zleceń / godziny zalogowane`, dzięki czemu skala trendu pozostaje czytelna.
+  -- Linia trendu relacji jest teraz liczona i rysowana wyłącznie do dnia bieżącego; przyszłe dni z harmonogramu zleceń mogą nadal pozostać na wykresie godzin, ale nie wydłużają już sztucznie wykresu trendu.
+  -- Naprawiono oś czasu obu wykresów: jako klucz punktu używana jest pełna data `yyyy-MM-dd`, a skrót `dd.MM` służy już tylko do wyświetlania etykiet, co eliminuje duplikaty dat i błędne tooltipy / aktywne punkty przy dłuższych zakresach.
+  -- Oś Y wykresu trendu przestała być sztucznie ograniczana do zakresu od `0`; domena jest teraz wyliczana dynamicznie z pełnego zestawu linii trendu, więc wartości ujemne i dodatnie są rysowane w całości.
+  -- Oba wykresy w `Rozliczeniach` startują teraz domyślnie z widokiem ostatnich sześciu miesięcy, mają szybkie przyciski `Ostatnie pół roku` i `Całość`, a użytkownik może dodatkowo powiększyć dowolny zakres przez przeciągnięcie myszą po wykresie.
+  -- Poprawiono kolejność hooków w `DashboardView`: zakresy wykresów po dodaniu zoomu są teraz liczone bez warunkowego `useMemo`, co usuwa błąd Reacta `Rendered more hooks than during the previous render`.
+  -- Doprecyzowano domyślny zakres `Ostatnie pół roku`: wykresy kończą się na dniu bieżącym i cofają dokładnie o sześć miesięcy wstecz, zamiast startować od ostatniej daty wynikającej z przyszłego harmonogramu zleceń.
+  -- Zmieniono regułę estymat zleceń na wykresie: do planu wchodzą tylko zlecenia mające co najmniej `Datę realizacji od`, a jeśli nie mają `Daty realizacji do`, ich plan jest rozciągany do końca umowy projektu, z fallbackiem do dnia bieżącego tylko wtedy, gdy projekt nie ma uzupełnionej daty końca.
+  -- Dla spójności z kartami rozliczeń wykresy korzystają teraz z pełniejszego wyznaczania osi czasu zlecenia: priorytet ma `Data realizacji od`, ale dla starszych lub częściowo uzupełnionych rekordów start może zostać wyznaczony z najwcześniejszej dostępnej daty pozycji, przekazania, odbioru, planowanego końca lub utworzenia rekordu.
+  -- Usunięto filtry `Osoba` i `Kategoria pracy` z wykresów zleceń, logów i trendu; w ich miejsce dodano wyłącznie sterowanie zakresem dat `od / do` oraz pozostawiono szybkie przyciski `Ostatnie pół roku` i `Całość`.
+  -- Uporządkowano układ sterowania zakresem: pola `Zakres od`, `Zakres do`, `Ostatnie pół roku` i `Całość` są teraz renderowane obok siebie w jednym rzędzie, zamiast w dwóch oddzielnych blokach.
+  -- Zawężono skalę osi Y wykresu trendu relacji do rzeczywistego minimum i maksimum danych, bez dodatkowego zapasu, dzięki czemu linie trendu są wyraźniejsze i lepiej wykorzystują wysokość wykresu.
+  -- Dodatkowo domena osi Y wykresu trendu jest teraz liczona dla aktualnie widocznego zakresu danych i ograniczana do bardziej biznesowo czytelnego maksimum `3x`, a linia `Kierunek trendu` jest oparta na wygładzonej serii trendu zamiast surowych skoków z początku projektu.
+  -- Przycisk `Całość` nie pokazuje już pełnej historii danych wykresu; zakres pełny jest teraz wyznaczany przez okres trwania umowy projektu (`dateFrom`–`dateTo`), z bezpiecznym fallbackiem do danych wykresu tylko wtedy, gdy daty umowy są niekompletne.
+  -- Połączono wykres `Narastająco: godziny zleceń vs. godziny zalogowane` oraz wykres `Trend: godziny zleceń do godzin zalogowanych` w jedną wspólną kartę `Rozliczeń`, z jednym zestawem filtrów zakresu czasu i dwoma wewnętrznymi panelami analitycznymi.
+  -- Podsumowanie relacji i komunikat `Brak danych trendu` korzystają teraz z ostatniego widocznego punktu, który rzeczywiście ma policzony trend, zamiast z końcowego punktu zakresu umowy, który dla przyszłych dni mógł mieć wartości `null`.
 
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów

@@ -64,7 +64,7 @@ declare global {
 
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Cell, CartesianGrid
+  Cell, CartesianGrid, ComposedChart, Line, Area, Legend, ReferenceArea
 } from 'recharts';
 import {
   LayoutDashboard, Plus, Briefcase,
@@ -620,6 +620,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
+  const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
+  const [burnUpVisibleRange, setBurnUpVisibleRange] = useState<{ start: string; end: string } | null>(null);
+  const [burnUpSelectionStart, setBurnUpSelectionStart] = useState<string | null>(null);
+  const [burnUpSelectionEnd, setBurnUpSelectionEnd] = useState<string | null>(null);
   const { orders } = useOrders(selectedProject?.id);
 
   useEffect(() => {
@@ -644,6 +648,13 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     if (typeof window === 'undefined' || !selectedProject) return;
     sessionStorage.setItem(`pcc_dashboard_active_tab:${selectedProject.id}`, activeTab);
   }, [activeTab, selectedProject]);
+
+  useEffect(() => {
+    setBurnUpRangeMode('halfYear');
+    setBurnUpVisibleRange(null);
+    setBurnUpSelectionStart(null);
+    setBurnUpSelectionEnd(null);
+  }, [selectedProject?.id]);
 
   if (!selectedProject || !calculations) {
     return (
@@ -847,6 +858,125 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   )
     .map(([name, hours]) => ({ name, hours }))
     .sort((a, b) => b.hours - a.hours);
+  const burnUpTrendData = buildBurnUpTrendData({
+    orders: orders.filter((order) => !isCancelledOrder(order)),
+    workItems,
+    contractEndDate: selectedProject.dateTo,
+  });
+  const lastBurnUpDate = burnUpTrendData.length > 0 ? burnUpTrendData[burnUpTrendData.length - 1].date : null;
+  const todayDateKey = getDateKey(new Date());
+  const latestVisibleBurnUpDate = lastBurnUpDate && lastBurnUpDate < todayDateKey ? lastBurnUpDate : todayDateKey;
+  const fullContractBurnUpRange = (() => {
+    const contractStart = parseCalendarDate(selectedProject.dateFrom);
+    const contractEnd = parseCalendarDate(selectedProject.dateTo);
+
+    if (contractStart && contractEnd) {
+      return normalizeDateRange(getDateKey(contractStart), getDateKey(contractEnd));
+    }
+
+    if (contractStart && latestVisibleBurnUpDate) {
+      return normalizeDateRange(getDateKey(contractStart), latestVisibleBurnUpDate);
+    }
+
+    if (lastBurnUpDate) {
+      const firstBurnUpDate = burnUpTrendData[0]?.date || lastBurnUpDate;
+      return normalizeDateRange(firstBurnUpDate, lastBurnUpDate);
+    }
+
+    return null;
+  })();
+  const lastHalfYearRange = (() => {
+    if (!latestVisibleBurnUpDate) return null;
+    const endDate = parseCalendarDate(latestVisibleBurnUpDate);
+    if (!endDate) return null;
+    const startDate = addMonths(endDate, -6);
+    return {
+      start: getDateKey(startDate),
+      end: latestVisibleBurnUpDate,
+    };
+  })();
+  const effectiveBurnUpRange = burnUpRangeMode === 'full'
+    ? fullContractBurnUpRange
+    : burnUpRangeMode === 'custom'
+      ? burnUpVisibleRange
+      : lastHalfYearRange;
+  const visibleBurnUpTrendData = (() => {
+    if (!effectiveBurnUpRange) return burnUpTrendData;
+    return burnUpTrendData.filter((point) => point.date >= effectiveBurnUpRange.start && point.date <= effectiveBurnUpRange.end);
+  })();
+  const latestVisibleBurnUpPoint = visibleBurnUpTrendData[visibleBurnUpTrendData.length - 1] || null;
+  const latestVisibleTrendPoint = [...visibleBurnUpTrendData]
+    .reverse()
+    .find((point) => point.trendRatio !== null || point.rollingTrendRatio !== null) || null;
+  const burnUpEstimateCeiling = latestVisibleBurnUpPoint?.cumulativeEstimate || 0;
+  const burnUpActualCeiling = latestVisibleBurnUpPoint?.cumulativeActual || 0;
+  const burnUpDeltaHours = latestVisibleBurnUpPoint?.deltaHours || 0;
+  const burnUpTrendRatio = latestVisibleTrendPoint?.trendRatio ?? null;
+  const burnUpRollingTrendRatio = latestVisibleTrendPoint?.rollingTrendRatio ?? null;
+  const burnUpTrendTone = burnUpDeltaHours >= 0
+    ? 'text-emerald-700 dark:text-emerald-300'
+    : 'text-red-700 dark:text-red-300';
+  const burnUpTrendBadgeTone = burnUpTrendRatio === null
+    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300'
+    : burnUpTrendRatio >= 1
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+  const burnUpTrendValues = visibleBurnUpTrendData.flatMap((point) => [
+    point.trendRatio,
+    point.rollingTrendRatio,
+    point.regressionTrendRatio,
+    1,
+  ]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const burnUpTrendMin = burnUpTrendValues.length > 0 ? Math.min(...burnUpTrendValues) : 0;
+  const burnUpTrendMax = burnUpTrendValues.length > 0 ? Math.max(...burnUpTrendValues) : 1;
+  const burnUpTrendDomain: [number, number] = [
+    burnUpTrendMin === burnUpTrendMax
+      ? burnUpTrendMin - 0.1
+      : Math.max(Math.floor(burnUpTrendMin * 10) / 10, -3),
+    burnUpTrendMin === burnUpTrendMax
+      ? burnUpTrendMax + 0.1
+      : Math.min(Math.ceil(burnUpTrendMax * 10) / 10, 3),
+  ];
+  const applyFullBurnUpRange = () => {
+    setBurnUpRangeMode('full');
+    setBurnUpVisibleRange(fullContractBurnUpRange);
+    setBurnUpSelectionStart(null);
+    setBurnUpSelectionEnd(null);
+  };
+  const applyLastHalfYearBurnUpRange = () => {
+    setBurnUpRangeMode('halfYear');
+    setBurnUpVisibleRange(lastHalfYearRange);
+    setBurnUpSelectionStart(null);
+    setBurnUpSelectionEnd(null);
+  };
+  const handleBurnUpMouseDown = (state: { activeLabel?: string | number } | undefined) => {
+    if (state?.activeLabel === undefined || state.activeLabel === null) return;
+    const nextLabel = String(state.activeLabel);
+    setBurnUpSelectionStart(nextLabel);
+    setBurnUpSelectionEnd(nextLabel);
+  };
+  const handleBurnUpMouseMove = (state: { activeLabel?: string | number } | undefined) => {
+    if (!burnUpSelectionStart || state?.activeLabel === undefined || state.activeLabel === null) return;
+    setBurnUpSelectionEnd(String(state.activeLabel));
+  };
+  const handleBurnUpMouseUp = () => {
+    if (!burnUpSelectionStart || !burnUpSelectionEnd) {
+      setBurnUpSelectionStart(null);
+      setBurnUpSelectionEnd(null);
+      return;
+    }
+
+    if (burnUpSelectionStart !== burnUpSelectionEnd) {
+      setBurnUpRangeMode('custom');
+      setBurnUpVisibleRange(normalizeDateRange(burnUpSelectionStart, burnUpSelectionEnd));
+    }
+
+    setBurnUpSelectionStart(null);
+    setBurnUpSelectionEnd(null);
+  };
+  const burnUpSelectionRange = burnUpSelectionStart && burnUpSelectionEnd
+    ? normalizeDateRange(burnUpSelectionStart, burnUpSelectionEnd)
+    : null;
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
@@ -1249,6 +1379,234 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-3xl">
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wykres zleceń, logów i trendu</h4>
+                  <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Narastająco: godziny zleceń vs. godziny zalogowane</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                    Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół. Zakres analizy ustawisz ręcznie polami dat lub szybkimi przyciskami dla ostatniego półrocza i pełnej historii projektu.
+                  </p>
+                </div>
+                <div className="flex min-w-[320px] flex-wrap items-end gap-3 lg:justify-end">
+                  <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                    Zakres od
+                    <input
+                      type="date"
+                      value={effectiveBurnUpRange?.start || ''}
+                      onChange={(event) => {
+                        const nextStart = event.target.value;
+                        if (!nextStart) return;
+                        setBurnUpRangeMode('custom');
+                        setBurnUpVisibleRange(normalizeDateRange(nextStart, effectiveBurnUpRange?.end || nextStart));
+                      }}
+                      className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                    />
+                  </label>
+                  <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                    Zakres do
+                    <input
+                      type="date"
+                      value={effectiveBurnUpRange?.end || ''}
+                      onChange={(event) => {
+                        const nextEnd = event.target.value;
+                        if (!nextEnd) return;
+                        setBurnUpRangeMode('custom');
+                        setBurnUpVisibleRange(normalizeDateRange(effectiveBurnUpRange?.start || nextEnd, nextEnd));
+                      }}
+                      className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                    />
+                  </label>
+                  <button
+                    onClick={applyLastHalfYearBurnUpRange}
+                    className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
+                      burnUpRangeMode === 'halfYear'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Ostatnie pół roku
+                  </button>
+                  <button
+                    onClick={applyFullBurnUpRange}
+                    className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
+                      burnUpRangeMode === 'full'
+                        ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                        : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    Całość
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                  Powiększ: przeciągnij myszą po wykresie, aby zaznaczyć zakres dat.
+                </p>
+              </div>
+
+              {visibleBurnUpTrendData.length > 0 ? (
+                <>
+                  <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-4">
+                    <div className="rounded-2xl bg-indigo-50 p-4 dark:bg-indigo-950/30">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Godziny zleceń narastająco</p>
+                      <p className="mt-2 text-2xl font-black text-indigo-700 dark:text-indigo-200">{formatOrderHours(burnUpEstimateCeiling)} h</p>
+                    </div>
+                    <div className="rounded-2xl bg-emerald-50 p-4 dark:bg-emerald-950/30">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-500 dark:text-emerald-300">Godziny zalogowane narastająco</p>
+                      <p className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-200">{formatOrderHours(burnUpActualCeiling)} h</p>
+                    </div>
+                    <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/60">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica godzin</p>
+                      <p className={`mt-2 text-2xl font-black ${burnUpTrendTone}`}>{formatOrderHours(burnUpDeltaHours)} h</p>
+                    </div>
+                    <div className={`rounded-2xl p-4 ${burnUpTrendBadgeTone}`}>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em]">Relacja zleceń do logów / trend 30 dni</p>
+                      <p className="mt-2 text-2xl font-black">
+                        {burnUpTrendRatio !== null ? burnUpTrendRatio.toFixed(2) : 'brak'}
+                        <span className="ml-2 text-sm font-semibold opacity-80">
+                          {burnUpRollingTrendRatio !== null ? `30d: ${burnUpRollingTrendRatio.toFixed(2)}` : '30d: brak'}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                    <div className="flex flex-col gap-2">
+                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Narastanie godzin</h4>
+                      <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                        Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół.
+                      </p>
+                    </div>
+                    <div className="mt-5 h-[420px] min-w-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart
+                          data={visibleBurnUpTrendData}
+                          margin={{ top: 16, right: 24, left: 8, bottom: 12 }}
+                          onMouseDown={handleBurnUpMouseDown}
+                          onMouseMove={handleBurnUpMouseMove}
+                          onMouseUp={handleBurnUpMouseUp}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                          <XAxis
+                            dataKey="date"
+                            minTickGap={28}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(value) => {
+                              const date = new Date(`${value}T00:00:00`);
+                              return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
+                            }}
+                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                          />
+                          <YAxis
+                            yAxisId="hours"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#64748b', fontSize: 11 }}
+                            tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                          />
+                          <Tooltip content={<BurnUpTrendTooltip />} />
+                          <Legend verticalAlign="top" height={42} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                          <Bar yAxisId="hours" dataKey="dailyEstimate" name="Przyrost godzin zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
+                          <Area yAxisId="hours" dataKey="favorableBase" stackId="planBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                          <Area yAxisId="hours" dataKey="favorableGap" stackId="planBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.22)" stroke="none" isAnimationActive={false} />
+                          <Area yAxisId="hours" dataKey="overrunBase" stackId="actualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                          <Area yAxisId="hours" dataKey="overrunGap" stackId="actualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.18)" stroke="none" isAnimationActive={false} />
+                          <Line yAxisId="hours" type="monotone" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
+                          <Line yAxisId="hours" type="monotone" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
+                          {burnUpSelectionRange && (
+                            <ReferenceArea
+                              yAxisId="hours"
+                              x1={burnUpSelectionRange.start}
+                              x2={burnUpSelectionRange.end}
+                              strokeOpacity={0}
+                              fill="rgba(79,70,229,0.14)"
+                            />
+                          )}
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="max-w-3xl">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Trend relacji</h4>
+                        <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Trend: godziny zleceń do godzin zalogowanych</h3>
+                        <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                          Ten wykres pokazuje wyłącznie relację między godzinami wynikającymi ze zleceń a godzinami rzeczywiście zalogowanymi w pracy. Wartość powyżej 1,0 oznacza zapas godzin w zleceniach, a wartość poniżej 1,0 oznacza niedoszacowanie względem realnie wykonanej pracy.
+                        </p>
+                      </div>
+                      <div className={`inline-flex rounded-2xl px-4 py-3 text-sm font-bold ${burnUpTrendBadgeTone}`}>
+                        {burnUpTrendRatio !== null ? `Bieżąca relacja: ${burnUpTrendRatio.toFixed(2)}` : 'Brak danych trendu'}
+                      </div>
+                    </div>
+
+                    <div className="mt-6 h-[320px] min-w-0">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart
+                          data={visibleBurnUpTrendData}
+                          margin={{ top: 16, right: 24, left: 8, bottom: 12 }}
+                          onMouseDown={handleBurnUpMouseDown}
+                          onMouseMove={handleBurnUpMouseMove}
+                          onMouseUp={handleBurnUpMouseUp}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                          <XAxis
+                            dataKey="date"
+                            minTickGap={28}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(value) => {
+                              const date = new Date(`${value}T00:00:00`);
+                              return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
+                            }}
+                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                          />
+                          <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            width={56}
+                            domain={burnUpTrendDomain}
+                            tick={{ fill: '#64748b', fontSize: 11 }}
+                            tickFormatter={(value) => `${Number(value).toFixed(1)}x`}
+                          />
+                          <Tooltip
+                            formatter={(value: number | string | undefined, name?: string) => {
+                              const numericValue = Number(value);
+                              return [Number.isFinite(numericValue) ? `${numericValue.toFixed(2)}x` : 'brak', name ?? 'Trend'];
+                            }}
+                            labelFormatter={(label) => {
+                              const date = new Date(`${label}T00:00:00`);
+                              return `Data: ${Number.isNaN(date.getTime()) ? label : format(date, 'dd.MM.yyyy')}`;
+                            }}
+                          />
+                          <Legend verticalAlign="top" height={38} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                          <Line type="monotone" dataKey="trendRatio" name="Relacja zleceń / logów" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} connectNulls />
+                          <Line type="monotone" dataKey="rollingTrendRatio" name="Trend 30 dni" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="6 4" dot={false} isAnimationActive={false} connectNulls />
+                          <Line type="monotone" dataKey="regressionTrendRatio" name="Kierunek trendu" stroke="#0f172a" strokeWidth={1.5} strokeDasharray="3 3" dot={false} isAnimationActive={false} connectNulls />
+                          <Line type="monotone" dataKey={() => 1} name="Punkt równowagi 1,0" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} legendType="plainline" />
+                          {burnUpSelectionRange && (
+                            <ReferenceArea
+                              x1={burnUpSelectionRange.start}
+                              x2={burnUpSelectionRange.end}
+                              strokeOpacity={0}
+                              fill="rgba(79,70,229,0.14)"
+                            />
+                          )}
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-6 rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-8 text-sm leading-7 text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                  Brak wystarczających danych do zbudowania wykresów zleceń, logów i trendu. Wymagane są zlecenia z datami i godzinami albo logi pracy z YouTrack.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr]">
@@ -1691,6 +2049,255 @@ const formatOrderHours = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const parseCalendarDate = (value?: string) => {
+  if (!value?.trim()) return null;
+  const normalizedValue = value.includes('T') ? value : `${value}T00:00:00`;
+  const date = new Date(normalizedValue);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const getDateKey = (date: Date) => format(date, 'yyyy-MM-dd');
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+};
+const addMonths = (date: Date, months: number) => {
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + months);
+  return nextDate;
+};
+const getDaysDiffInclusive = (start: Date, end: Date) =>
+  Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1);
+const getMinDate = (dates: Date[]) =>
+  dates.reduce((minDate, currentDate) => (currentDate.getTime() < minDate.getTime() ? currentDate : minDate));
+const getMaxDate = (dates: Date[]) =>
+  dates.reduce((maxDate, currentDate) => (currentDate.getTime() > maxDate.getTime() ? currentDate : maxDate));
+const normalizeDateRange = (start: string, end: string) =>
+  start <= end ? { start, end } : { start: end, end: start };
+const getOrderTimelineStartDate = (order: Order) => {
+  const itemDates = order.items
+    .map((item) => parseCalendarDate(item.date))
+    .filter((date): date is Date => Boolean(date));
+  const candidateDates = [
+    parseCalendarDate(order.scheduleFrom),
+    ...itemDates,
+    parseCalendarDate(order.handoverDate),
+    parseCalendarDate(order.acceptanceDate),
+    parseCalendarDate(order.scheduleTo),
+    parseCalendarDate(order.createdAt),
+  ].filter((date): date is Date => Boolean(date));
+
+  if (candidateDates.length === 0) {
+    return null;
+  }
+
+  return getMinDate(candidateDates);
+};
+const getOrderTimelineEndDate = (order: Order, fallbackEndDate: Date) =>
+  parseCalendarDate(order.scheduleTo)
+  || parseCalendarDate(order.acceptanceDate)
+  || parseCalendarDate(order.handoverDate)
+  || fallbackEndDate;
+
+type BurnUpTrendPoint = {
+  date: string;
+  shortLabel: string;
+  dailyEstimate: number;
+  dailyActual: number;
+  cumulativeEstimate: number;
+  cumulativeActual: number;
+  deltaHours: number;
+  deltaPct: number | null;
+  trendRatio: number | null;
+  rollingTrendRatio: number | null;
+  regressionTrendRatio: number | null;
+  favorableBase: number;
+  favorableGap: number;
+  overrunBase: number;
+  overrunGap: number;
+};
+
+const buildBurnUpTrendData = ({
+  orders,
+  workItems,
+  contractEndDate,
+}: {
+  orders: Order[];
+  workItems: Array<{ date: string; minutes: number }>;
+  contractEndDate?: string;
+}) => {
+  const today = parseCalendarDate(format(new Date(), 'yyyy-MM-dd')) || new Date();
+  const contractEnd = parseCalendarDate(contractEndDate) || today;
+  const relevantOrders = orders
+    .map((order) => {
+      const startDate = getOrderTimelineStartDate(order);
+      const endDate = getOrderTimelineEndDate(order, contractEnd);
+      const totalHours = getOrderHoursTotal(order);
+
+      if (!startDate || !endDate || totalHours <= 0) {
+        return null;
+      }
+
+      const normalizedEndDate = endDate.getTime() >= startDate.getTime() ? endDate : startDate;
+      return {
+        startDate,
+        endDate: normalizedEndDate,
+        totalHours,
+      };
+    })
+    .filter((order): order is { startDate: Date; endDate: Date; totalHours: number } => Boolean(order));
+
+  const actualEntries = workItems
+    .map((item) => ({
+      date: parseCalendarDate(item.date),
+      hours: (item.minutes || 0) / 60,
+    }))
+    .filter((entry): entry is { date: Date; hours: number } => Boolean(entry.date));
+
+  const boundaryDates = [
+    ...relevantOrders.flatMap((order) => [order.startDate, order.endDate]),
+    ...actualEntries.map((entry) => entry.date),
+  ];
+
+  if (boundaryDates.length === 0) {
+    return [] as BurnUpTrendPoint[];
+  }
+
+  const startDate = getMinDate(boundaryDates);
+  const endDate = getMaxDate([new Date(), ...boundaryDates]);
+  const dailyEstimateMap = new Map<string, number>();
+  const dailyActualMap = new Map<string, number>();
+
+  relevantOrders.forEach((order) => {
+    const durationDays = getDaysDiffInclusive(order.startDate, order.endDate);
+    const dailyEstimate = order.totalHours / durationDays;
+    for (let offset = 0; offset < durationDays; offset += 1) {
+      const dateKey = getDateKey(addDays(order.startDate, offset));
+      dailyEstimateMap.set(dateKey, (dailyEstimateMap.get(dateKey) || 0) + dailyEstimate);
+    }
+  });
+
+  actualEntries.forEach((entry) => {
+    const dateKey = getDateKey(entry.date);
+    dailyActualMap.set(dateKey, (dailyActualMap.get(dateKey) || 0) + entry.hours);
+  });
+
+  const points: BurnUpTrendPoint[] = [];
+  const rollingEstimateWindow: number[] = [];
+  const rollingActualWindow: number[] = [];
+  let cumulativeEstimate = 0;
+  let cumulativeActual = 0;
+
+  for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addDays(cursor, 1)) {
+    const dateKey = getDateKey(cursor);
+    const dailyEstimate = dailyEstimateMap.get(dateKey) || 0;
+    const dailyActual = dailyActualMap.get(dateKey) || 0;
+    const isAfterToday = cursor.getTime() > today.getTime();
+
+    cumulativeEstimate += dailyEstimate;
+    cumulativeActual += dailyActual;
+
+    rollingEstimateWindow.push(dailyEstimate);
+    rollingActualWindow.push(dailyActual);
+    if (rollingEstimateWindow.length > 30) rollingEstimateWindow.shift();
+    if (rollingActualWindow.length > 30) rollingActualWindow.shift();
+
+    const rollingEstimateAvg = rollingEstimateWindow.reduce((sum, value) => sum + value, 0) / rollingEstimateWindow.length;
+    const rollingActualAvg = rollingActualWindow.reduce((sum, value) => sum + value, 0) / rollingActualWindow.length;
+    const deltaHours = cumulativeEstimate - cumulativeActual;
+    const minBandBase = Math.min(cumulativeEstimate, cumulativeActual);
+
+    points.push({
+      date: dateKey,
+      shortLabel: format(cursor, 'dd.MM'),
+      dailyEstimate,
+      dailyActual,
+      cumulativeEstimate,
+      cumulativeActual,
+      deltaHours,
+      deltaPct: cumulativeActual > 0 ? (deltaHours / cumulativeActual) * 100 : null,
+      trendRatio: !isAfterToday && cumulativeActual > 0 ? cumulativeEstimate / cumulativeActual : null,
+      rollingTrendRatio: !isAfterToday && rollingActualAvg > 0 ? rollingEstimateAvg / rollingActualAvg : null,
+      regressionTrendRatio: null,
+      favorableBase: minBandBase,
+      favorableGap: Math.max(cumulativeEstimate - cumulativeActual, 0),
+      overrunBase: minBandBase,
+      overrunGap: Math.max(cumulativeActual - cumulativeEstimate, 0),
+    });
+  }
+
+  const regressionPoints = points
+    .map((point, index) => ({ x: index, y: point.rollingTrendRatio ?? point.trendRatio }))
+    .filter((point): point is { x: number; y: number } => typeof point.y === 'number' && Number.isFinite(point.y));
+
+  if (regressionPoints.length >= 2) {
+    const pointCount = regressionPoints.length;
+    const sumX = regressionPoints.reduce((sum, point) => sum + point.x, 0);
+    const sumY = regressionPoints.reduce((sum, point) => sum + point.y, 0);
+    const sumXY = regressionPoints.reduce((sum, point) => sum + point.x * point.y, 0);
+    const sumXX = regressionPoints.reduce((sum, point) => sum + point.x * point.x, 0);
+    const denominator = (pointCount * sumXX) - (sumX * sumX);
+
+    if (denominator !== 0) {
+      const slope = ((pointCount * sumXY) - (sumX * sumY)) / denominator;
+      const intercept = (sumY - (slope * sumX)) / pointCount;
+
+      points.forEach((point, index) => {
+        if (point.trendRatio === null && point.rollingTrendRatio === null) {
+          point.regressionTrendRatio = null;
+          return;
+        }
+
+        point.regressionTrendRatio = intercept + (slope * index);
+      });
+    }
+  }
+
+  return points;
+};
+
+const BurnUpTrendTooltip = ({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: BurnUpTrendPoint }>;
+  label?: string;
+}) => {
+  if (!active || !payload?.[0]) return null;
+
+  const point = payload[0].payload;
+
+  return (
+    <div className="max-w-[280px] rounded-2xl border border-gray-200 bg-white/95 p-4 text-sm shadow-xl dark:border-gray-700 dark:bg-gray-900/95">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+        {label ? format(new Date(`${label}T00:00:00`), 'dd.MM.yyyy') : '-'}
+      </p>
+      <div className="mt-3 space-y-2">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-gray-500 dark:text-gray-400">Godziny zleceń narastająco</span>
+          <span className="font-bold text-indigo-600 dark:text-indigo-300">{formatOrderHours(point.cumulativeEstimate)} h</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-gray-500 dark:text-gray-400">Godziny zalogowane narastająco</span>
+          <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatOrderHours(point.cumulativeActual)} h</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-gray-500 dark:text-gray-400">Przyrost zleceń w dniu</span>
+          <span className="font-bold text-sky-600 dark:text-sky-300">{formatOrderHours(point.dailyEstimate)} h</span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-gray-500 dark:text-gray-400">Delta</span>
+          <span className={`font-bold ${point.deltaHours >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
+            {formatOrderHours(point.deltaHours)} h{point.deltaPct !== null ? ` (${point.deltaPct.toFixed(1)}%)` : ''}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const removeFinancialSentences = (text: string) =>
   text
     .split(/(?<=[.!?])\s+/)
