@@ -33,6 +33,15 @@ export type Project = {
   stakeholders?: Stakeholder[];
 };
 
+export type ProjectLink = {
+  id: string;
+  projectId: string;
+  name: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type OrderItem = {
   id: string;
   name: string;

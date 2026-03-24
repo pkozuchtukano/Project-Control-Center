@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Settings as SettingsIcon, Plus, ChevronLeft, Loader2, Trash2, Edit2, Info } from 'lucide-react';
+import { LayoutDashboard, Settings as SettingsIcon, Plus, ChevronLeft, Trash2, Edit2 } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
 import type { DailyHub, DailySection } from '../../../types';
 import { DailyBoard } from './DailyBoard';

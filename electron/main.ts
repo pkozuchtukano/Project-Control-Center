@@ -73,6 +73,14 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS project_links (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS status_reports (
         id TEXT PRIMARY KEY,
         projectId TEXT NOT NULL,
@@ -181,6 +189,14 @@ const initializeDatabase = () => {
         CREATE TABLE IF NOT EXISTS meeting_notes (
             projectId TEXT PRIMARY KEY,
             data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS project_links (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS status_reports (
             id TEXT PRIMARY KEY,
@@ -1024,6 +1040,71 @@ ipcMain.handle('save-meeting-notes', async (_, { projectId, data }: { projectId:
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu notatek:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-project-links', async (_, projectId: string) => {
+    try {
+        const rows = db.prepare(`
+            SELECT id, projectId, name, url, createdAt, updatedAt
+            FROM project_links
+            WHERE projectId = ?
+            ORDER BY LOWER(name) ASC, createdAt ASC
+        `).all(projectId) as {
+            id: string;
+            projectId: string;
+            name: string;
+            url: string;
+            createdAt: string;
+            updatedAt: string;
+        }[];
+
+        return rows;
+    } catch (error) {
+        console.error('Błąd pobierania linków projektu:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-project-link', async (_, data: {
+    id: string;
+    projectId: string;
+    name: string;
+    url: string;
+    createdAt: string;
+    updatedAt: string;
+}) => {
+    try {
+        db.prepare(`
+            INSERT INTO project_links (id, projectId, name, url, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                url = excluded.url,
+                updatedAt = excluded.updatedAt
+        `).run(
+            data.id,
+            data.projectId,
+            data.name,
+            data.url,
+            data.createdAt,
+            data.updatedAt
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu linku projektu:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-project-link', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM project_links WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania linku projektu:', error);
         throw error;
     }
 });

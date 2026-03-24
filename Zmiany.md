@@ -87,6 +87,15 @@
 - 2026-03-18 – Dodanie raportu PMS
   -- W rejestrze zleceń dodano osobny raport `PMS` z tym samym zestawem filtrów i akcji eksportu co raport `CBCP`, dostępny z nowego przycisku w nagłówku widoku.
   -- Raport `PMS` rozbija zlecenie na wiersze `Produkty zlecenia`, scala pionowo komórki wspólne dla jednego zlecenia, pokazuje godziny i kwoty per produkt oraz sumy łączne w podglądzie wydruku, eksporcie Excel i eksporcie Word.
+- 2026-03-24 – Rozwijana lista linków w nagłówku rejestru zleceń
+  -- Dodano przed przyciskiem `Nowe Zlecenie` rozwijany przycisk `Linki`, który korzysta z istniejącej listy linków projektu i pozwala otwierać oraz edytować wpisy bez przechodzenia do dashboardu.
+  -- Nagłówek rejestru zleceń daje teraz szybki dostęp do skrótów projektowych w formie dropdownu, z licznikiem linków i możliwością dodania nowego wpisu z tego samego miejsca.
+- 2026-03-24 – Korekta fokusu formularza linków w rejestrze zleceń
+  -- Modal dodawania i edycji linków został przeniesiony do portalu renderowanego w `document.body`, a dropdown linków zamyka się automatycznie po otwarciu formularza.
+  -- Formularz linków w rejestrze zleceń nie dziedziczy już warstw i zdarzeń z nagłówka widoku, dzięki czemu pola `Nazwa` i `URL` przyjmują wpisywany tekst.
+- 2026-03-24 – Uproszczenie listy linków w rejestrze zleceń
+  -- Z listy rozwijanej `Linki` usunięto renderowanie pełnego adresu URL i pozostawiono wyłącznie nazwę wpisu.
+  -- Dropdown pokazuje teraz bardziej kompaktową listę skrótów, zachowując otwieranie linku po kliknięciu i osobną akcję edycji.
 
 ## Wycena
 - 2026-03-20 – Ręczna korekta pól Finał i cel godzinowy
@@ -171,3 +180,17 @@
 - 2026-03-18 – Normalizacja etykiet typu i statusu z YouTrack
   -- W `YouTrackTab` dodano odczyt etykiet `name` z obiektów statusu i typu zadania zwracanych przez YouTrack, zamiast bezpośredniego renderowania całych obiektów.
   -- Karty zadań renderują teraz poprawne nazwy statusów i typów, co eliminuje błąd Reacta `Objects are not valid as a React child`.
+
+## Linki projektu
+- 2026-03-24 – Indywidualna karta linków dla projektu
+  -- Dodano nową kartę `Linki` bezpośrednio w `Dashboardzie` projektu z listą zapisanych odnośników powiązanych z konkretnym `projectId`.
+  -- Każdy wpis pokazuje nazwę i adres URL, kliknięcie nazwy otwiera link w zewnętrznej przeglądarce, a po najechaniu pojawia się minimalistyczna ikona edycji.
+- 2026-03-24 – Dodawanie, edycja i usuwanie linków
+  -- Dodano przycisk `+` w prawym górnym rogu karty oraz modal pozwalający tworzyć i edytować linki z polami `Nazwa` i `URL`.
+  -- W oknie edycji dostępny jest także przycisk `Usuń`, a dane są zapisywane bezstratnie w nowej tabeli SQLite `project_links` udostępnionej przez IPC Electron.
+- 2026-03-24 – Przeniesienie karty linków do prawej kolumny dashboardu
+  -- Zmieniono układ górnej sekcji dashboardu tak, aby karta `Linki` była renderowana w prawej kolumnie obok kart `Postęp czasu realizacji` i `Wykorzystane vs Przepracowane`.
+  -- Na szerokich ekranach linki działają teraz jako boczny panel szybkiego dostępu, a na węższych układ pozostaje responsywny i karta wraca pod główną zawartość.
+- 2026-03-24 – Uproszczenie listy linków na karcie
+  -- W widoku karty `Linki` pozostawiono wyłącznie nazwę wpisu, bez renderowania adresu URL pod spodem.
+  -- Kliknięcie całego kafelka otwiera teraz link w przeglądarce, a ikona edycji nadal działa osobno i nie uruchamia przejścia.

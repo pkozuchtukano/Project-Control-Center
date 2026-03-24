@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment, 
-  Estimation, MeetingNoteData, OrderItem, EmailTemplate, StatusReport
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink
 } from './types';
 
 declare global {
@@ -32,6 +32,9 @@ declare global {
       saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       getMeetingNotes: (projectId: string) => Promise<any>;
       saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
+      getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
+      saveProjectLink: (data: ProjectLink) => Promise<{ success: boolean }>;
+      deleteProjectLink: (id: string) => Promise<{ success: boolean }>;
       getStatusReports: (projectId: string) => Promise<StatusReport[]>;
       saveStatusReport: (data: { projectId: string, data: StatusReport }) => Promise<{ success: boolean }>;
       deleteStatusReport: (id: string) => Promise<{ success: boolean }>;
@@ -70,7 +73,7 @@ import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
   Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
-  Layers, FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
+  FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
   CheckCircle, AlertCircle, Code
 } from 'lucide-react';
 
@@ -90,6 +93,7 @@ import { FileUp, FileDown } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
 import { DailyMain } from './features/daily/components/DailyMain';
+import { ProjectLinksDropdown, ProjectLinksMain } from './features/project-links/components/ProjectLinksMain';
 import { StatusMain } from './features/status/components/StatusMain';
 import {
   buildCbcpReportData,
@@ -107,6 +111,7 @@ import { exportExecutiveSettlementReportToWord } from './features/reports/servic
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
+export type { Project, Stakeholder, Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate };
 
 const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportDatabase, onImportDatabase, isDatabaseTransferPending, currentView, onViewChange }: {
   isDark: boolean,
@@ -617,7 +622,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
@@ -1060,75 +1065,83 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'dashboard' && (
           <>
-            {/* TIME PROGRESS */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-gray-900 dark:text-white">
-                  <Clock size={20} className="text-indigo-500" />
-                  <h3 className="font-bold sm:text-lg">Postęp czasu realizacji</h3>
-                </div>
-                <div className="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-full">
-                  {timeProgress}% upłynęło
-                </div>
-              </div>
-              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 mb-3 overflow-hidden">
-                <div
-                  className={`h-4 rounded-full transition-all duration-1000 ${timeProgress > 90 ? 'bg-rose-500' : timeProgress > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
-                  style={{ width: `${Math.min(100, timeProgress)}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 font-medium">
-                <span>Start: {selectedProject.dateFrom}</span>
-                {daysRemaining >= 0 ? <span>Pozostało dni: <strong className="text-gray-900 dark:text-gray-200">{daysRemaining}</strong></span> : <span className="text-red-500 font-bold">Po terminie od {-daysRemaining} dni</span>}
-                <span>Koniec: {selectedProject.dateTo}</span>
-              </div>
-            </div>
-
-            {/* HOURS COMPARISON PROGRESS */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
-              <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center gap-2 text-gray-900 dark:text-white">
-                  <Activity size={20} className="text-indigo-500" />
-                  <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
-                </div>
-                <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
-                  {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifferenceLabel}
-                </div>
-              </div>
-              <div className="space-y-5">
-                <div>
-                  <div className="flex justify-between text-sm mb-1.5 font-medium">
-                    <span className="text-gray-600 dark:text-gray-400">Wykorzystane (Rozliczone + Zakontraktowane)</span>
-                    <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2.4fr)_minmax(320px,0.9fr)] xl:items-stretch">
+              <div className="space-y-6">
+                {/* TIME PROGRESS */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                      <Clock size={20} className="text-indigo-500" />
+                      <h3 className="font-bold sm:text-lg">Postęp czasu realizacji</h3>
+                    </div>
+                    <div className="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-full">
+                      {timeProgress}% upłynęło
+                    </div>
                   </div>
-                  <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                    <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalHoursUsed / maxScale) * 100)}%` }}></div>
+                  <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 mb-3 overflow-hidden">
+                    <div
+                      className={`h-4 rounded-full transition-all duration-1000 ${timeProgress > 90 ? 'bg-rose-500' : timeProgress > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                      style={{ width: `${Math.min(100, timeProgress)}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 font-medium">
+                    <span>Start: {selectedProject.dateFrom}</span>
+                    {daysRemaining >= 0 ? <span>Pozostało dni: <strong className="text-gray-900 dark:text-gray-200">{daysRemaining}</strong></span> : <span className="text-red-500 font-bold">Po terminie od {-daysRemaining} dni</span>}
+                    <span>Koniec: {selectedProject.dateTo}</span>
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex justify-between text-sm mb-1.5 font-medium">
-                    <span className="text-gray-600 dark:text-gray-400">Przepracowane w YouTrack</span>
-                    <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
-                  </div>
-                  <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
-                    <div className="bg-violet-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${youtrackHours['Programistyczne'].toFixed(1)}h (${progPct.toFixed(0)}%)`}>
-                      {progPct > 5 ? `${progPct.toFixed(0)}%` : ''}
+                {/* HOURS COMPARISON PROGRESS */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+                  <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                      <Activity size={20} className="text-indigo-500" />
+                      <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
                     </div>
-                    <div className="bg-emerald-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${youtrackHours['Obsługa projektu'].toFixed(1)}h (${obsPct.toFixed(0)}%)`}>
-                      {obsPct > 5 ? `${obsPct.toFixed(0)}%` : ''}
-                    </div>
-                    <div className="bg-amber-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${youtrackHours['Inne'].toFixed(1)}h (${inPct.toFixed(0)}%)`}>
-                      {inPct > 5 ? `${inPct.toFixed(0)}%` : ''}
+                    <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
+                      {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifferenceLabel}
                     </div>
                   </div>
-                  
-                  <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne {progPct > 0 && `(${progPct.toFixed(0)}%)`}</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu {obsPct > 0 && `(${obsPct.toFixed(0)}%)`}</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne {inPct > 0 && `(${inPct.toFixed(0)}%)`}</div>
+                  <div className="space-y-5">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1.5 font-medium">
+                        <span className="text-gray-600 dark:text-gray-400">Wykorzystane (Rozliczone + Zakontraktowane)</span>
+                        <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                      </div>
+                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalHoursUsed / maxScale) * 100)}%` }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-sm mb-1.5 font-medium">
+                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w YouTrack</span>
+                        <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                      </div>
+                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                        <div className="bg-violet-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${youtrackHours['Programistyczne'].toFixed(1)}h (${progPct.toFixed(0)}%)`}>
+                          {progPct > 5 ? `${progPct.toFixed(0)}%` : ''}
+                        </div>
+                        <div className="bg-emerald-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${youtrackHours['Obsługa projektu'].toFixed(1)}h (${obsPct.toFixed(0)}%)`}>
+                          {obsPct > 5 ? `${obsPct.toFixed(0)}%` : ''}
+                        </div>
+                        <div className="bg-amber-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${youtrackHours['Inne'].toFixed(1)}h (${inPct.toFixed(0)}%)`}>
+                          {inPct > 5 ? `${inPct.toFixed(0)}%` : ''}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne {progPct > 0 && `(${progPct.toFixed(0)}%)`}</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu {obsPct > 0 && `(${obsPct.toFixed(0)}%)`}</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne {inPct > 0 && `(${inPct.toFixed(0)}%)`}</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="xl:min-h-full">
+                <ProjectLinksMain project={selectedProject} compact />
               </div>
             </div>
 
@@ -1881,6 +1894,7 @@ const OrdersRegistryView = () => {
           <button onClick={() => setIsPmsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
             <FileText size={16} /> Raport PMS
           </button>
+          <ProjectLinksDropdown project={selectedProject} />
           <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
             <Plus size={16} /> Nowe Zlecenie
           </button>
