@@ -6,6 +6,7 @@ import { ScheduleManager } from './ScheduleManager';
 import { EmailTemplateSection } from './EmailTemplateSection';
 import { createDefaultEstimation, formatEstimationToHTML, formatScheduleToHTML } from '../services/EstimationService';
 import { exportEstimationToExcel } from '../services/estimationExcelService';
+import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface EstimationMainProps {
   project: Project | null;
@@ -138,6 +139,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
           <p className="text-sm text-gray-500 dark:text-gray-400">Przygotuj ofertę dla projektu: {project.code}</p>
         </div>
         <div className="flex items-center gap-4">
+          <ProjectLinksDropdown project={project} visibleInTab="estimation" />
           <div className="flex flex-col items-end">
             <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider">
               {isSaving ? (

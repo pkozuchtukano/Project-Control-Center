@@ -10,17 +10,29 @@ interface ProjectLinksMainProps {
 
 interface ProjectLinksDropdownProps {
   project: Project;
+  visibleInTab?: string;
 }
 
 interface LinkModalProps {
   isOpen: boolean;
   projectId: string;
   linkToEdit: ProjectLink | null;
+  defaultVisibleInTabs?: string[];
   isSaving: boolean;
   onClose: () => void;
   onSave: (link: ProjectLink) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
+
+const LINK_TAB_OPTIONS = [
+  { id: 'orders', label: 'Rejestr zlecen' },
+  { id: 'work', label: 'Rejestr pracy' },
+  { id: 'settlements', label: 'Rozliczenia' },
+  { id: 'status', label: 'Status' },
+  { id: 'youtrack', label: 'YouTrack' },
+  { id: 'estimation', label: 'Wycena' },
+  { id: 'notes', label: 'Notatki' },
+] as const;
 
 const createLinkId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
@@ -45,10 +57,12 @@ const validateUrl = (value: string) => {
   }
 };
 
-const LinkModal = ({ isOpen, projectId, linkToEdit, isSaving, onClose, onSave, onDelete }: LinkModalProps) => {
+const LinkModal = ({ isOpen, projectId, linkToEdit, defaultVisibleInTabs = [], isSaving, onClose, onSave, onDelete }: LinkModalProps) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
+  const [visibleInTabs, setVisibleInTabs] = useState<string[]>([]);
   const [error, setError] = useState('');
+  const defaultVisibleInTabsKey = defaultVisibleInTabs.join('|');
 
   useEffect(() => {
     if (!isOpen) {
@@ -57,8 +71,9 @@ const LinkModal = ({ isOpen, projectId, linkToEdit, isSaving, onClose, onSave, o
 
     setName(linkToEdit?.name ?? '');
     setUrl(linkToEdit?.url ?? '');
+    setVisibleInTabs(linkToEdit?.visibleInTabs ?? defaultVisibleInTabs);
     setError('');
-  }, [isOpen, linkToEdit]);
+  }, [defaultVisibleInTabsKey, isOpen, linkToEdit]);
 
   if (!isOpen) {
     return null;
@@ -87,9 +102,18 @@ const LinkModal = ({ isOpen, projectId, linkToEdit, isSaving, onClose, onSave, o
       projectId,
       name: trimmedName,
       url: normalizedUrl,
+      visibleInTabs,
       createdAt: linkToEdit?.createdAt ?? timestamp,
       updatedAt: timestamp,
     });
+  };
+
+  const toggleTabVisibility = (tabId: string) => {
+    setVisibleInTabs((current) =>
+      current.includes(tabId)
+        ? current.filter((item) => item !== tabId)
+        : [...current, tabId]
+    );
   };
 
   const handleDelete = async () => {
@@ -157,6 +181,39 @@ const LinkModal = ({ isOpen, projectId, linkToEdit, isSaving, onClose, onSave, o
             />
           </div>
 
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+              Dodatkowo widoczne w zakladkach
+            </label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {LINK_TAB_OPTIONS.map((tab) => {
+                const isChecked = visibleInTabs.includes(tab.id);
+
+                return (
+                  <label
+                    key={tab.id}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                      isChecked
+                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-200'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleTabVisibility(tab.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>{tab.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Dashboard pokazuje wszystkie linki projektu. Tutaj wybierasz, w ktorych zakladkach link ma byc dodatkowo widoczny.
+            </p>
+          </div>
+
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
               {error}
@@ -204,25 +261,27 @@ const LinkModal = ({ isOpen, projectId, linkToEdit, isSaving, onClose, onSave, o
   return createPortal(modalContent, document.body);
 };
 
-const useProjectLinksState = (projectId: string) => {
+const useProjectLinksState = (projectId: string, visibleInTab?: string) => {
   const [links, setLinks] = useState<ProjectLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<ProjectLink | null>(null);
 
-  const sortedLinks = useMemo(
-    () =>
-      [...links].sort((first, second) => {
+  const sortedLinks = useMemo(() => {
+    const linksToSort = visibleInTab
+      ? links.filter((link) => (link.visibleInTabs || []).includes(visibleInTab))
+      : links;
+
+    return [...linksToSort].sort((first, second) => {
         const byName = first.name.localeCompare(second.name, 'pl', { sensitivity: 'base' });
         if (byName !== 0) {
           return byName;
         }
 
         return first.createdAt.localeCompare(second.createdAt);
-      }),
-    [links]
-  );
+      });
+  }, [links, visibleInTab]);
 
   const loadLinks = async () => {
     setIsLoading(true);
@@ -266,7 +325,25 @@ const useProjectLinksState = (projectId: string) => {
   const handleSave = async (link: ProjectLink) => {
     setIsSaving(true);
     try {
-      await window.electron?.saveProjectLink(link);
+      const normalizedUrl = normalizeUrl(link.url);
+      const duplicateLink = !editingLink
+        ? links.find((existingLink) => normalizeUrl(existingLink.url) === normalizedUrl)
+        : null;
+
+      const linkToSave = duplicateLink
+        ? {
+            ...duplicateLink,
+            visibleInTabs: Array.from(
+              new Set([...(duplicateLink.visibleInTabs || []), ...(link.visibleInTabs || [])])
+            ),
+            updatedAt: link.updatedAt,
+          }
+        : {
+            ...link,
+            url: normalizedUrl,
+          };
+
+      await window.electron?.saveProjectLink(linkToSave);
       await loadLinks();
       setIsModalOpen(false);
       setEditingLink(null);
@@ -307,7 +384,7 @@ const useProjectLinksState = (projectId: string) => {
   };
 };
 
-export const ProjectLinksDropdown = ({ project }: ProjectLinksDropdownProps) => {
+export const ProjectLinksDropdown = ({ project, visibleInTab }: ProjectLinksDropdownProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const {
     sortedLinks,
@@ -322,7 +399,7 @@ export const ProjectLinksDropdown = ({ project }: ProjectLinksDropdownProps) => 
     handleDelete,
     setIsModalOpen,
     setEditingLink,
-  } = useProjectLinksState(project.id);
+  } = useProjectLinksState(project.id, visibleInTab);
 
   useEffect(() => {
     if (isModalOpen) {
@@ -422,6 +499,7 @@ export const ProjectLinksDropdown = ({ project }: ProjectLinksDropdownProps) => 
         isOpen={isModalOpen}
         projectId={project.id}
         linkToEdit={editingLink}
+        defaultVisibleInTabs={visibleInTab ? [visibleInTab] : []}
         isSaving={isSaving}
         onClose={() => {
           if (!isSaving) {

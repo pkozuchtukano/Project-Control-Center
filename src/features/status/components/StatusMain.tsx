@@ -22,6 +22,7 @@ import { useProjectContext } from '../../../context/ProjectContext';
 import { Editor } from '../../meeting-notes/components/Editor';
 import { useStatusStories } from '../hooks/useStatusStories';
 import { buildStatusEditorHtml, buildStatusStoryHtml, escapeHtml, stripRichText } from '../utils/statusUtils';
+import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface StatusMainProps {
   project: Project;
@@ -669,8 +670,9 @@ export const StatusMain = ({ project }: StatusMainProps) => {
       <div className="space-y-6">
         <section ref={editorContainerRef} className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
           <div className="space-y-4">
-            <div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Spotkanie statusowe</h2>
+              <ProjectLinksDropdown project={project} visibleInTab="status" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[repeat(2,minmax(140px,180px))_minmax(260px,1fr)_auto_auto] gap-3 items-end">

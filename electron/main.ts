@@ -78,6 +78,7 @@ db.exec(`
         projectId TEXT NOT NULL,
         name TEXT NOT NULL,
         url TEXT NOT NULL,
+        visibleInTabs TEXT NOT NULL DEFAULT '[]',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
     );
@@ -123,6 +124,7 @@ const gDocsService = new GoogleDocsService(path.dirname(dbPath));
 // Migracja dla istniejących tabel
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
+try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -195,6 +197,7 @@ const initializeDatabase = () => {
             projectId TEXT NOT NULL,
             name TEXT NOT NULL,
             url TEXT NOT NULL,
+            visibleInTabs TEXT NOT NULL DEFAULT '[]',
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         );
@@ -245,6 +248,7 @@ const initializeDatabase = () => {
 
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
+    try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
     try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -1047,7 +1051,7 @@ ipcMain.handle('save-meeting-notes', async (_, { projectId, data }: { projectId:
 ipcMain.handle('get-project-links', async (_, projectId: string) => {
     try {
         const rows = db.prepare(`
-            SELECT id, projectId, name, url, createdAt, updatedAt
+            SELECT id, projectId, name, url, visibleInTabs, createdAt, updatedAt
             FROM project_links
             WHERE projectId = ?
             ORDER BY LOWER(name) ASC, createdAt ASC
@@ -1056,11 +1060,21 @@ ipcMain.handle('get-project-links', async (_, projectId: string) => {
             projectId: string;
             name: string;
             url: string;
+            visibleInTabs?: string;
             createdAt: string;
             updatedAt: string;
         }[];
 
-        return rows;
+        return rows.map((row) => ({
+            ...row,
+            visibleInTabs: (() => {
+                try {
+                    return JSON.parse(row.visibleInTabs || '[]');
+                } catch {
+                    return [];
+                }
+            })()
+        }));
     } catch (error) {
         console.error('Błąd pobierania linków projektu:', error);
         throw error;
@@ -1072,22 +1086,25 @@ ipcMain.handle('save-project-link', async (_, data: {
     projectId: string;
     name: string;
     url: string;
+    visibleInTabs?: string[];
     createdAt: string;
     updatedAt: string;
 }) => {
     try {
         db.prepare(`
-            INSERT INTO project_links (id, projectId, name, url, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO project_links (id, projectId, name, url, visibleInTabs, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 url = excluded.url,
+                visibleInTabs = excluded.visibleInTabs,
                 updatedAt = excluded.updatedAt
         `).run(
             data.id,
             data.projectId,
             data.name,
             data.url,
+            JSON.stringify(data.visibleInTabs || []),
             data.createdAt,
             data.updatedAt
         );

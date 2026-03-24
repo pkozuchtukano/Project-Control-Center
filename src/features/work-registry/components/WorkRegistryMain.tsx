@@ -9,6 +9,7 @@ import { useWorkRegistry } from '../hooks/useWorkRegistry';
 import { YouTrackTable } from './YouTrackTable';
 import { StatisticsView } from './StatisticsView';
 import { syncWorkItems, type SyncProgress } from '../services/youtrackSync';
+import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface Props {
     project: Project;
@@ -99,6 +100,7 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    <ProjectLinksDropdown project={project} visibleInTab="work" />
                     {syncProgress && syncProgress.status === 'syncing' ? (
                         <div className="flex flex-col items-end gap-1">
                             <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400">

@@ -38,6 +38,7 @@ export type ProjectLink = {
   projectId: string;
   name: string;
   url: string;
+  visibleInTabs?: string[];
   createdAt: string;
   updatedAt: string;
 };

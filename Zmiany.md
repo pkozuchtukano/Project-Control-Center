@@ -96,6 +96,27 @@
 - 2026-03-24 – Uproszczenie listy linków w rejestrze zleceń
   -- Z listy rozwijanej `Linki` usunięto renderowanie pełnego adresu URL i pozostawiono wyłącznie nazwę wpisu.
   -- Dropdown pokazuje teraz bardziej kompaktową listę skrótów, zachowując otwieranie linku po kliknięciu i osobną akcję edycji.
+- 2026-03-24 – Rozwijana lista raportów w rejestrze zleceń
+  -- Przyciski `Raport CBCP` i `Raport PMS` zastąpiono wspólną listą rozwijaną `Raporty` w nagłówku rejestru zleceń.
+  -- Widok nagłówka jest bardziej kompaktowy i spójny z mechaniką `Linki`, a otwieranie istniejących modali raportów pozostaje bez zmian.
+- 2026-03-24 – Ikonowe akcje importu i eksportu w rejestrze zleceń
+  -- Przyciski `Eksportuj` i `Importuj` w nagłówku rejestru zleceń uproszczono do samych ikon.
+  -- Akcje zachowują dotychczasowe działanie, a ich opis jest teraz przekazywany przez tooltipy `Eksport do Excel` oraz `Import z Excel`.
+- 2026-03-24 – Przeniesienie usuwania zlecenia do modala edycji
+  -- Usunięto akcję kasowania z wiersza tabeli rejestru zleceń i pozostawiono tam wyłącznie przejście do edycji formularza.
+  -- Przycisk `Usuń zlecenie` jest teraz dostępny w stopce modala edycji, dzięki czemu operacje na konkretnym zleceniu są skupione w jednym miejscu.
+- 2026-03-24 – Zakres widoczności linków projektu per zakładka
+  -- Model `project_links` rozszerzono bezstratnie o pole `visibleInTabs` z migracją ustawiającą domyślne `[]`, dzięki czemu istniejące linki pozostają widoczne w dashboardzie bez utraty danych.
+  -- Dashboard pokazuje pełną listę linków projektu, a dropdown `Linki` w `Rejestrze zlecen` filtruje tylko wpisy oznaczone dla zakładki `orders`; modal linku pozwala teraz wskazać, w których zakładkach link ma byc dodatkowo widoczny.
+- 2026-03-24 – Ochrona przed duplikacją linków przy dodawaniu z zakładek
+  -- Podczas tworzenia nowego linku poza dashboardem aplikacja sprawdza, czy w projekcie istnieje już wpis z tym samym adresem URL.
+  -- Zamiast tworzyć duplikat, system dopisuje bieżącą zakładkę do `visibleInTabs` istniejącego linku, dzięki czemu dashboard nie pokazuje zdublowanych pozycji.
+- 2026-03-24 – Wyświetlanie linków w zaznaczonych zakładkach projektu
+  -- Dropdown `Linki` został podpięty do zakładek `Rejestr pracy`, `Rozliczenia`, `Status`, `YouTrack`, `Wycena` i `Notatki`, a `Rejestr zlecen` nadal korzysta z filtrowania `orders`.
+  -- Zaznaczenie checkboxa zakresu w modalu linku ma teraz bezpośredni efekt w interfejsie, bo każda obsługiwana zakładka renderuje własny dropdown z linkami przypisanymi do swojego identyfikatora.
+- 2026-03-24 – Stabilizacja checkboxów zakresu linków w modalu
+  -- Poprawiono inicjalizację stanu `visibleInTabs` w modalu linków, aby nie była resetowana przy każdym renderze formularza.
+  -- Checkboxy zakresu widoczności w dashboardzie i pozostałych zakładkach zachowują teraz zaznaczenie podczas kliknięcia i mogą zostać poprawnie zapisane.
 
 ## Wycena
 - 2026-03-20 – Ręczna korekta pól Finał i cel godzinowy

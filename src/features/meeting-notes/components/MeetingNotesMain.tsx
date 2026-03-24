@@ -5,6 +5,7 @@ import { Editor } from './Editor';
 import { format } from 'date-fns';
 import { exportNoteToWord } from '../services/wordExportService';
 import { parseDateVariable } from '../../../utils/dateParsing';
+import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface MeetingNotesMainProps {
   project: Project;
@@ -328,6 +329,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
+          <ProjectLinksDropdown project={project} visibleInTab="notes" />
           <div className="flex flex-col items-end mr-2">
             <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
               {isSaving ? (

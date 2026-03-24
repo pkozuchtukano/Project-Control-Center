@@ -72,7 +72,7 @@ import {
 import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
-  Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
+  ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
   CheckCircle, AlertCircle, Code
 } from 'lucide-react';
@@ -1324,6 +1324,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
                 <div className="flex min-w-[220px] flex-col gap-3 lg:items-end">
                   <div className="flex items-center gap-3">
+                    <ProjectLinksDropdown project={selectedProject} visibleInTab="settlements" />
                     <button
                       onClick={() => setIsFinancialDataVisible(!isFinancialDataVisible)}
                       className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl border text-sm font-semibold shadow-sm transition ${
@@ -1802,6 +1803,7 @@ const OrdersRegistryView = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isPmsReportModalOpen, setIsPmsReportModalOpen] = useState(false);
+  const [isReportsExpanded, setIsReportsExpanded] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   if (!selectedProject) return null;
@@ -1823,6 +1825,20 @@ const OrdersRegistryView = () => {
       await addOrder(orderData);
     }
     setIsModalOpen(false);
+  };
+
+  const handleDeleteFromModal = async () => {
+    if (!editingOrder) {
+      return;
+    }
+
+    if (!window.confirm('Czy na pewno chcesz usunąć to zlecenie?')) {
+      return;
+    }
+
+    await deleteOrder(editingOrder.id);
+    setIsModalOpen(false);
+    setEditingOrder(null);
   };
 
   const handleExport = () => {
@@ -1873,28 +1889,67 @@ const OrdersRegistryView = () => {
           <button
             onClick={handleExport}
             disabled={orders.length === 0}
-            className="px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm disabled:opacity-50"
-            title="Eksportuj do Excel"
+            className="p-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm disabled:opacity-50"
+            title="Eksport do Excel"
+            aria-label="Eksport do Excel"
           >
             <FileDown size={18} />
-            <span className="hidden sm:inline">Eksportuj</span>
           </button>
 
-          <label className="px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm cursor-pointer">
+          <label
+            className="p-2.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm cursor-pointer"
+            title="Import z Excel"
+            aria-label="Import z Excel"
+          >
             <FileUp size={18} />
-            <span className="hidden sm:inline">Importuj</span>
             <input type="file" accept=".xlsx, .xls" onChange={handleImport} className="hidden" />
           </label>
 
           <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
 
-          <button onClick={() => setIsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
-            <FileText size={16} /> Raport CBCP
-          </button>
-          <button onClick={() => setIsPmsReportModalOpen(true)} className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm">
-            <FileText size={16} /> Raport PMS
-          </button>
-          <ProjectLinksDropdown project={selectedProject} />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsReportsExpanded((current) => !current)}
+              className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
+              aria-expanded={isReportsExpanded}
+              aria-haspopup="true"
+            >
+              <FileText size={16} />
+              <span>Raporty</span>
+              <ChevronDown size={16} className={`transition-transform ${isReportsExpanded ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isReportsExpanded && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <div className="p-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsReportsExpanded(false);
+                      setIsReportModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-indigo-300"
+                  >
+                    <FileText size={15} />
+                    <span>Raport CBCP</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsReportsExpanded(false);
+                      setIsPmsReportModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-gray-700 transition hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:text-indigo-300"
+                  >
+                    <FileText size={15} />
+                    <span>Raport PMS</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <ProjectLinksDropdown project={selectedProject} visibleInTab="orders" />
           <button onClick={handleOpenModal} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm">
             <Plus size={16} /> Nowe Zlecenie
           </button>
@@ -1961,9 +2016,6 @@ const OrdersRegistryView = () => {
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
                           <Edit2 size={16} />
                         </button>
-                        <button onClick={() => { if (window.confirm('Czy na pewno chcesz usunąć to zlecenie?')) deleteOrder(order.id) }} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition">
-                          <X size={16} />
-                        </button>
                       </td>
                     </tr>
                   )
@@ -1991,7 +2043,7 @@ const OrdersRegistryView = () => {
         )}
       </div>
 
-      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} onDelete={handleDeleteFromModal} />
       <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={selectedProject} orders={orders} />
       <ReportPmsModal isOpen={isPmsReportModalOpen} onClose={() => setIsPmsReportModalOpen(false)} project={selectedProject} orders={orders} />
     </div>
@@ -2319,7 +2371,7 @@ const removeFinancialSentences = (text: string) =>
     .join(' ')
     .trim();
 
-const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
+const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }: any) => {
   const [formData, setFormData] = useState<Omit<Order, 'id'>>({
     projectId: project?.id || '',
     orderNumber: '',
@@ -2602,13 +2654,26 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave }: any) => {
         </div>
 
         {/* MODAL FOOTER STATIC */}
-        <div className="px-6 py-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-b-2xl">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
-            Anuluj
-          </button>
-          <button type="submit" form="order-form" className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition">
-            Zapisz Zlecenie
-          </button>
+        <div className="px-6 py-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-b-2xl">
+          <div>
+            {orderToEdit && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition"
+              >
+                Usuń zlecenie
+              </button>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+              Anuluj
+            </button>
+            <button type="submit" form="order-form" className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition">
+              Zapisz Zlecenie
+            </button>
+          </div>
         </div>
 
       </div>

@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { RefreshCw, Loader2, AlertCircle, MessageSquare, Calendar, Clock, ChevronDown, X, ZoomIn, ZoomOut, FileDown, BrainCircuit, Plus, Trash2, Pencil, Code } from 'lucide-react';
 import { type ActivityItem, formatMinutesToDuration, fetchIssuesActivity } from '../services/youtrackApi';
 import { AuthenticatedImage } from './AuthenticatedImage';
+import { ProjectLinksDropdown } from '../features/project-links/components/ProjectLinksMain';
 
 const getIssueBadgeLabel = (value: unknown) => {
     if (typeof value === 'string') {
@@ -635,6 +636,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <ProjectLinksDropdown project={project} visibleInTab="youtrack" />
                     <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
                         <input type="checkbox" checked={useCache} onChange={() => setUseCache(!useCache)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                         Używaj cache
