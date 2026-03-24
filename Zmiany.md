@@ -215,3 +215,19 @@
 - 2026-03-24 – Uproszczenie listy linków na karcie
   -- W widoku karty `Linki` pozostawiono wyłącznie nazwę wpisu, bez renderowania adresu URL pod spodem.
   -- Kliknięcie całego kafelka otwiera teraz link w przeglądarce, a ikona edycji nadal działa osobno i nie uruchamia przejścia.
+## Status
+- 2026-03-24 – Tytuły zadań w źródłach statusu
+  -- W kartach `Źródła do statusu` rozszerzono prezentację relacji zadań tak, aby przy `Sub` i na liście `Subtaski` obok kodu YouTrack był widoczny również tytuł zadania.
+  -- Użytkownik może teraz szybciej rozpoznać, którego zadania dotyczy relacja, bez otwierania każdego wpisu osobno w YouTrack.
+- 2026-03-24 – Korekta rozpoznawania relacji parent i subtask w statusie
+  -- Poprawiono interpretację linków relacyjnych YouTrack przy budowaniu `Źródeł do statusu`, aby etykiety `Parent for` i `Subtask of` były rozpoznawane z właściwej perspektywy bieżącego zadania.
+  -- Zadania zbiorcze z podzadaniami nie są już błędnie oznaczane jako `Sub`, a lista źródeł pokazuje poprawny kierunek powiązań.
+- 2026-03-24 – Priorytet listy subtasków nad etykietą `Sub` w źródłach statusu
+  -- Render kafelków `Źródła do statusu` doprecyzowano tak, aby zadanie z wykrytymi własnymi podzadaniami było prezentowane jako parent, nawet jeśli heurystyka relacji zwróci też powiązanie nadrzędne.
+  -- Dzięki temu karta pokazuje listę `Subtaski` z klikalnym kodem YouTrack i tytułem zamiast mylącego nagłówka `Sub: ...` dla zadań zbiorczych.
+- 2026-03-24 – Oparcie relacji `Subtask` o kierunek linku z YouTrack
+  -- Zweryfikowano na rzeczywistych danych YouTrack, że dla typu linku `Subtask` kierunek `OUTWARD` oznacza parenta z listą dzieci, a `INWARD` oznacza subtask z parentem.
+  -- Mapowanie źródeł statusu korzysta teraz z tej reguły zamiast zgadywać semantykę po samej nazwie typu linku, co naprawia błędne przypadki `PMS-319` i `PMS-515`.
+- 2026-03-24 – Subtaski parenta jako osobne kolejne kafelki
+  -- Uproszczono render sekcji `Źródła do statusu`: parent nie pokazuje już w swoim wnętrzu listy `Subtaski`, a podzadania są prezentowane wyłącznie jako kolejne kafelki wynikające z posortowanej listy źródeł.
+  -- Dzięki temu pod parentem pojawiają się tylko te subtaski, które same miały aktywność w wybranym zakresie czasu, zgodnie z zasadą widoku statusu.

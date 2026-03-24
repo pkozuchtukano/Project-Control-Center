@@ -540,48 +540,52 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     const isRemoved = !!removedSourceIds[story.id];
     const isPresentInCanvas = issuesPresentInCanvas.has(story.issueReadableId);
     const childStories = options?.childStories || [];
+    const shouldRenderAsParent = childStories.length > 0;
 
     return (
       <article
         key={story.id}
         className={`relative rounded-xl px-3 py-2.5 transition-all ${
-          story.parentIssueReadableId
+          story.parentIssueReadableId && !shouldRenderAsParent
             ? 'border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20'
             : childStories.length
               ? 'border border-indigo-300 dark:border-indigo-700 bg-white/95 dark:bg-indigo-950/20 shadow-sm'
               : 'border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/20'
         } ${isIncluded ? 'opacity-45 saturate-50' : ''}`}
       >
-        {story.parentIssueReadableId && (
+        {story.parentIssueReadableId && !shouldRenderAsParent && (
           <div className="mb-2 text-[11px] font-bold text-amber-700 dark:text-amber-300">
             Sub:{' '}
-            <button
-              type="button"
-              onClick={() => {
-                const parentStory = sourceItems.find((item) => item.issueReadableId === story.parentIssueReadableId);
-                if (parentStory) {
-                  void openIssue(parentStory.issueUrl);
-                }
-              }}
-              className="underline decoration-dotted underline-offset-2"
-            >
-              {story.parentIssueReadableId}
-            </button>
-          </div>
-        )}
-        {!story.parentIssueReadableId && childStories.length > 0 && (
-          <div className="mb-2 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-            Subtaski:
-          </div>
-        )}
+            {(() => {
+              const parentStory = sourceItems.find((item) => item.issueReadableId === story.parentIssueReadableId);
+              const parentLabel = parentStory?.title?.trim()
+                ? `${story.parentIssueReadableId} - ${parentStory.title}`
+                : story.parentIssueReadableId;
 
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (parentStory) {
+                      void openIssue(parentStory.issueUrl);
+                    }
+                  }}
+                  className="text-left underline decoration-dotted underline-offset-2 whitespace-normal break-words"
+                  title={parentLabel}
+                >
+                  {parentLabel}
+                </button>
+              );
+            })()}
+          </div>
+        )}
         <div className="space-y-2">
           <div className="min-w-0">
             <button
               type="button"
               onClick={() => openIssue(story.issueUrl)}
               className={`text-[11px] font-black hover:underline inline-flex items-center gap-1 ${
-                story.parentIssueReadableId ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'
+                story.parentIssueReadableId && !shouldRenderAsParent ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'
               }`}
             >
               {story.issueReadableId}
@@ -595,21 +599,6 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             >
               {story.title}
             </button>
-            {!story.parentIssueReadableId && childStories.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {childStories.map((child) => (
-                  <button
-                    key={child.id}
-                    type="button"
-                    onClick={() => openIssue(child.issueUrl)}
-                    className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 underline decoration-dotted underline-offset-2"
-                    title={child.title}
-                  >
-                    {child.issueReadableId}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="flex items-center justify-end gap-2">

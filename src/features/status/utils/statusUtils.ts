@@ -52,57 +52,73 @@ const parentRelationPatterns = [
 ];
 
 const normalizeRelationLabel = (value?: string | null) => (value || '').trim().toLowerCase();
+const hasChildRelationSignal = (value: string) => childRelationPatterns.some(pattern => value.includes(pattern));
+const hasParentRelationSignal = (value: string) => parentRelationPatterns.some(pattern => value.includes(pattern));
 
-const getCurrentIssueRelationLabel = (link: NonNullable<IssueWithHistory['links']>[number]) => {
+const getRelationLabels = (link: NonNullable<IssueWithHistory['links']>[number]) => {
   const direction = normalizeRelationLabel(link.direction);
   const outwardName = normalizeRelationLabel(link.linkType?.outwardName);
   const inwardName = normalizeRelationLabel(link.linkType?.inwardName);
   const typeName = normalizeRelationLabel(link.linkType?.name);
 
+  // YouTrack zwraca direction z perspektywy relacji technicznej, a nie tekstu
+  // widocznego dla aktualnie oglądanego issue. Dla linków parent/subtask etykietę
+  // "bieżącego" issue trzeba więc odczytać z przeciwnej nazwy relacji.
   if (direction === 'outward') {
-    return outwardName || typeName || inwardName;
+    return {
+      currentIssueLabel: inwardName || outwardName || typeName,
+      oppositeIssueLabel: outwardName || typeName || inwardName,
+      outwardName,
+      inwardName,
+      typeName
+    };
   }
 
   if (direction === 'inward') {
-    return inwardName || typeName || outwardName;
+    return {
+      currentIssueLabel: outwardName || inwardName || typeName,
+      oppositeIssueLabel: inwardName || typeName || outwardName,
+      outwardName,
+      inwardName,
+      typeName
+    };
   }
 
-  return outwardName || inwardName || typeName;
+  return {
+    currentIssueLabel: outwardName || inwardName || typeName,
+    oppositeIssueLabel: inwardName || outwardName || typeName,
+    outwardName,
+    inwardName,
+    typeName
+  };
 };
 
 const getParentLink = (issue: IssueWithHistory) => {
   for (const link of issue.links || []) {
-    const directionBasedLabel = getCurrentIssueRelationLabel(link);
-    const outwardName = normalizeRelationLabel(link.linkType?.outwardName);
-    const inwardName = normalizeRelationLabel(link.linkType?.inwardName);
-    const typeName = normalizeRelationLabel(link.linkType?.name);
-    const fallbackLabel =
-      directionBasedLabel === outwardName
-        ? inwardName || typeName
-        : outwardName || typeName;
+    const direction = normalizeRelationLabel(link.direction);
+    const {
+      currentIssueLabel,
+      typeName
+    } = getRelationLabels(link);
     const linkedIssue = link.issues?.[0];
 
     if (!linkedIssue) continue;
 
-    const isChildByPrimaryLabel = childRelationPatterns.some(pattern => directionBasedLabel.includes(pattern));
-    const isParentByPrimaryLabel = parentRelationPatterns.some(pattern => directionBasedLabel.includes(pattern));
-    const isChildByFallbackLabel = childRelationPatterns.some(pattern => fallbackLabel.includes(pattern));
-    const isParentByFallbackLabel = parentRelationPatterns.some(pattern => fallbackLabel.includes(pattern));
+    // W realnym payloadzie YouTrack dla typu "Subtask" kierunek rozstrzyga semantykę:
+    // - OUTWARD  => bieżące issue jest parentem i lista `issues` to dzieci
+    // - INWARD   => bieżące issue jest subtaskiem, a `issues` zawiera parenta
+    if (typeName.includes('subtask')) {
+      if (direction === 'inward') {
+        return linkedIssue;
+      }
+      continue;
+    }
+
+    const isChildByPrimaryLabel = hasChildRelationSignal(currentIssueLabel);
+    const isParentByPrimaryLabel = hasParentRelationSignal(currentIssueLabel);
 
     if (isChildByPrimaryLabel && !isParentByPrimaryLabel) {
       return linkedIssue;
-    }
-
-    if (!isChildByPrimaryLabel && isParentByPrimaryLabel && isChildByFallbackLabel && !isParentByFallbackLabel) {
-      return linkedIssue;
-    }
-
-    if (!isChildByPrimaryLabel && !isParentByPrimaryLabel && isChildByFallbackLabel) {
-      return linkedIssue;
-    }
-
-    if (isParentByPrimaryLabel) {
-      continue;
     }
   }
 
@@ -112,16 +128,20 @@ const getParentLink = (issue: IssueWithHistory) => {
 const getChildLinks = (issue: IssueWithHistory) => {
   return (issue.links || [])
     .filter((link) => {
-      const directionBasedLabel = getCurrentIssueRelationLabel(link);
-      const outwardName = normalizeRelationLabel(link.linkType?.outwardName);
-      const inwardName = normalizeRelationLabel(link.linkType?.inwardName);
-      const typeName = normalizeRelationLabel(link.linkType?.name);
-      const labels = [directionBasedLabel, outwardName, inwardName, typeName].filter(Boolean);
+      const direction = normalizeRelationLabel(link.direction);
+      const { currentIssueLabel, oppositeIssueLabel, outwardName, inwardName, typeName } = getRelationLabels(link);
+      const labels = [currentIssueLabel, oppositeIssueLabel, outwardName, inwardName, typeName].filter(Boolean);
 
-      const hasParentSignal = labels.some(label => parentRelationPatterns.some(pattern => label.includes(pattern)));
-      const hasChildSignal = labels.some(label => childRelationPatterns.some(pattern => label.includes(pattern)));
+      if (typeName.includes('subtask')) {
+        return direction === 'outward';
+      }
 
-      return hasParentSignal || (typeName.includes('subtask') && !hasChildSignal);
+      const hasParentSignal = labels.some(label => hasParentRelationSignal(label));
+      const hasChildSignal = labels.some(label => hasChildRelationSignal(label));
+
+      const currentIssueActsAsParent = hasParentRelationSignal(currentIssueLabel) && !hasChildRelationSignal(currentIssueLabel);
+
+      return currentIssueActsAsParent || (typeName.includes('subtask') && hasParentSignal && !hasChildSignal);
     })
     .flatMap((link) => link.issues || [])
     .filter((linkedIssue, index, array) => array.findIndex(item => item.idReadable === linkedIssue.idReadable) === index);
