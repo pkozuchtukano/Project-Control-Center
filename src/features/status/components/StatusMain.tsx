@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Editor as TiptapEditor } from '@tiptap/react';
 import { format, subDays } from 'date-fns';
 import {
   AlertCircle,
@@ -7,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FilePlus2,
   ExternalLink,
   Eye,
   FileText,
@@ -71,6 +73,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
   const [activeRefreshAction, setActiveRefreshAction] = useState<'sources' | 'canvas' | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const editorApiRef = useRef<TiptapEditor | null>(null);
 
   const loadReports = async () => {
     setIsHistoryLoading(true);
@@ -354,8 +357,23 @@ export const StatusMain = ({ project }: StatusMainProps) => {
   };
 
   const appendHtmlToCanvas = (html: string) => {
+    const editor = editorApiRef.current;
+
+    if (editor) {
+      editor.chain().focus().insertContent(html).run();
+      setIsDirty(true);
+      return;
+    }
+
     setEditorContent(prev => `${prev}${html}`);
     setIsDirty(true);
+  };
+
+  const insertStoryIntoCanvas = (storyId: string) => {
+    const story = stories.find(item => item.id === storyId);
+    if (!story) return;
+
+    appendHtmlToCanvas(buildStatusStoryHtml(story));
   };
 
   const toggleIncludedSource = (sourceId: string) => {
@@ -602,6 +620,14 @@ export const StatusMain = ({ project }: StatusMainProps) => {
           </div>
 
           <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => insertStoryIntoCanvas(story.id)}
+              className="p-1.5 rounded-lg border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
+              title="Wstaw treść w miejscu kursora"
+            >
+              <FilePlus2 size={14} />
+            </button>
             <span
               className={`p-1.5 rounded-lg border ${
                 isPresentInCanvas
@@ -772,6 +798,9 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             onChange={(value) => {
               setEditorContent(value);
               setIsDirty(true);
+            }}
+            onEditorReady={(editor) => {
+              editorApiRef.current = editor;
             }}
             placeholder="Wprowadź narrację statusową dla klienta..."
             openLinksOnClick

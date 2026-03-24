@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
@@ -20,6 +20,7 @@ interface EditorProps {
   stakeholders?: { id: string, name: string }[];
   openLinksOnClick?: boolean;
   minHeight?: number;
+  onEditorReady?: (editor: TiptapEditor | null) => void;
 }
 
 const MenuButton = ({
@@ -56,7 +57,8 @@ export const Editor = ({
   placeholder = 'Zacznij pisać notatki...',
   stakeholders = [],
   openLinksOnClick = false,
-  minHeight = 380
+  minHeight = 380,
+  onEditorReady
 }: EditorProps) => {
   const editor = useEditor({
     extensions: [
@@ -96,6 +98,14 @@ export const Editor = ({
       editor.commands.setContent(content);
     }
   }, [content, editor]);
+
+  useEffect(() => {
+    onEditorReady?.(editor ?? null);
+
+    return () => {
+      onEditorReady?.(null);
+    };
+  }, [editor, onEditorReady]);
 
   if (!editor) {
     return null;
@@ -220,7 +230,15 @@ export const Editor = ({
         </MenuButton>
       </div>
 
-      <div className="p-4" style={{ minHeight: `${Math.max(minHeight + 20, 120)}px` }}>
+      <div
+        className="p-4 cursor-text"
+        style={{ minHeight: `${Math.max(minHeight + 20, 120)}px` }}
+        onMouseDown={(event) => {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest('.ProseMirror')) return;
+          editor.chain().focus().run();
+        }}
+      >
         <EditorContent editor={editor} className="prose dark:prose-invert max-w-none focus:outline-none" />
       </div>
 
@@ -245,6 +263,12 @@ export const Editor = ({
         .ProseMirror {
           min-height: ${minHeight}px;
           outline: none;
+          color: #111827;
+          caret-color: #4f46e5;
+        }
+        .dark .ProseMirror {
+          color: #f9fafb;
+          caret-color: #818cf8;
         }
       `}</style>
     </div>

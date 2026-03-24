@@ -325,12 +325,12 @@ export const buildStatusStories = (
 
 export const buildStatusStoryHtml = (story: StatusStory) => {
   const commentsHtml = story.comments.length
-    ? `<ul>${story.comments.map(comment => `<li><strong>${escapeHtml(comment.author)}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
-    : '<p>Brak komentarzy w wybranym zakresie.</p>';
+    ? `<ul style="margin:6px 0 0 18px;padding:0;">${story.comments.map(comment => `<li style="margin:0 0 4px 0;"><strong>${escapeHtml(comment.author)}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
+    : '<p style="margin:6px 0 0 0;">Brak komentarzy w wybranym zakresie.</p>';
   const technicalSummaryHtml = (story.technicalSummary || 'Brak dodatkowego opisu technicznego.')
     .split('\n')
     .filter(Boolean)
-    .map(line => `<p>${escapeHtml(line)}</p>`)
+    .map(line => `<p style="margin:0 0 4px 0;">${escapeHtml(line)}</p>`)
     .join('');
   const childTitles = (story.childIssues || [])
     .map((child) => child.title?.trim() || child.issueReadableId)
@@ -339,25 +339,25 @@ export const buildStatusStoryHtml = (story: StatusStory) => {
     story.parentIssueTitle || story.parentIssueReadableId
       ? `Subtask zadania: ${story.parentIssueTitle || story.parentIssueReadableId}.`
       : '',
-    childTitles.length ? `Powi?zane podzadania: ${childTitles.join(', ')}.` : ''
+    childTitles.length ? `Powiązane podzadania: ${childTitles.join(', ')}.` : ''
   ].filter(Boolean);
   const relationInfoHtml = relationInfoParts.length
-    ? `<p style="margin:0 0 12px 0;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,0.72);font-size:13px;color:#6b7280;"><strong>Powi?zania:</strong> ${escapeHtml(relationInfoParts.join(' '))}</p>`
+    ? `<p style="margin:0 0 6px 0;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.72);font-size:12px;line-height:1.45;color:#6b7280;"><strong>Powiązania:</strong> ${escapeHtml(relationInfoParts.join(' '))}</p>`
     : '';
   const sectionStyle = story.parentIssueReadableId
-    ? 'position: relative; margin: 0 0 18px 34px; padding: 18px 20px; border-left: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(255,251,235,0.95), rgba(255,255,255,0.95)); border-radius: 18px;'
-    : 'margin: 0 0 24px 0; padding: 22px 24px; border: 1px solid #dbeafe; background: linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.98)); border-radius: 22px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);';
+    ? 'position: relative; margin: 0 0 10px 18px; padding: 10px 12px; border-left: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(255,251,235,0.95), rgba(255,255,255,0.95)); border-radius: 12px;'
+    : 'margin: 0 0 12px 0; padding: 12px 14px; border: 1px solid #dbeafe; background: linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.98)); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);';
   const relationLineHtml = story.parentIssueReadableId
-    ? '<div style="position:absolute; left:-22px; top:-18px; width:18px; height:24px; border-left:2px solid #f59e0b; border-bottom:2px solid #f59e0b; border-bottom-left-radius:12px;"></div>'
+    ? '<div style="position:absolute; left:-16px; top:-10px; width:12px; height:16px; border-left:2px solid #f59e0b; border-bottom:2px solid #f59e0b; border-bottom-left-radius:8px;"></div>'
     : '';
 
   return `
     <section data-issue-id="${escapeHtml(story.issueReadableId)}" data-parent-issue-id="${escapeHtml(story.parentIssueReadableId || '')}" style="${sectionStyle}">
       ${relationLineHtml}
-      <h2><a href="${escapeHtml(story.issueUrl)}" target="_blank" rel="noreferrer">${escapeHtml(story.issueReadableId)}</a> ${escapeHtml(story.title)}</h2>
+      <h2 style="margin:0 0 6px 0;font-size:16px;line-height:1.35;"><a href="${escapeHtml(story.issueUrl)}" target="_blank" rel="noreferrer">${escapeHtml(story.issueReadableId)}</a> ${escapeHtml(story.title)}</h2>
       ${relationInfoHtml}
       ${technicalSummaryHtml}
-      ${story.dailyNote ? `<blockquote><p>${escapeHtml(story.dailyNote)}</p></blockquote>` : ''}
+      ${story.dailyNote ? `<blockquote style="margin:6px 0;padding-left:10px;border-left:3px solid #d1d5db;color:#6b7280;"><p style="margin:0;">${escapeHtml(story.dailyNote)}</p></blockquote>` : ''}
       ${commentsHtml}
     </section>
   `;
@@ -367,15 +367,14 @@ export const buildStatusEditorHtml = (
   projectCode: string,
   title: string,
   dateFrom: string,
-  dateTo: string,
-  stories: StatusStory[]
+  dateTo: string
 ) => {
   const dateLabel = `${format(new Date(`${dateFrom}T00:00:00`), 'dd.MM.yyyy')} - ${format(new Date(`${dateTo}T00:00:00`), 'dd.MM.yyyy')}`;
 
   return `
     <h1>${escapeHtml(title)}</h1>
     <p><strong>Projekt:</strong> ${escapeHtml(projectCode)}<br /><strong>Zakres:</strong> ${escapeHtml(dateLabel)}</p>
-    ${sortStatusStories(stories).map(buildStatusStoryHtml).join('') || '<p>Brak danych dla wybranego zakresu.</p>'}
+    <p></p>
   `;
 };
 

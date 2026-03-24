@@ -231,3 +231,12 @@
 - 2026-03-24 – Subtaski parenta jako osobne kolejne kafelki
   -- Uproszczono render sekcji `Źródła do statusu`: parent nie pokazuje już w swoim wnętrzu listy `Subtaski`, a podzadania są prezentowane wyłącznie jako kolejne kafelki wynikające z posortowanej listy źródeł.
   -- Dzięki temu pod parentem pojawiają się tylko te subtaski, które same miały aktywność w wybranym zakresie czasu, zgodnie z zasadą widoku statusu.
+- 2026-03-24 – Pusta kanwa statusu i ręczne wstawianie źródeł
+  -- Nowa treść statusu startuje teraz wyłącznie od nagłówka raportu, kodu projektu i zakresu dat, bez automatycznego dopisywania treści zadań poniżej.
+  -- W kafelkach `Źródła do statusu` dodano ikonę `Wstaw`, która umieszcza treść wybranego zadania dokładnie w aktualnym miejscu kursora edytora.
+- 2026-03-24 – Widoczny kursor i fokus po kliknięciu w edytor statusu
+  -- Uzupełniono style `ProseMirror` o jawny kolor tekstu i `caret-color` dla trybu jasnego oraz ciemnego.
+  -- Kliknięcie w pusty obszar roboczy edytora ustawia teraz fokus na treści, dzięki czemu kursor jest widoczny i można od razu wstawiać źródła w wybrane miejsce.
+- 2026-03-24 – Skondensowana treść wstawek statusu i poprawa polskich znaków
+  -- Szablon HTML wstawianych źródeł został uproszczony: zmniejszono odstępy, paddingi i marginesy nagłówków, sekcji, komentarzy oraz cytatów.
+  -- Poprawiono także uszkodzone literały tekstowe, dzięki czemu w treści statusu wyświetlają się poprawnie napisy `Powiązania` i `Powiązane podzadania`.
