@@ -324,13 +324,28 @@ export const buildStatusStories = (
 };
 
 export const buildStatusStoryHtml = (story: StatusStory) => {
+  const commentsForCanvas = [...story.comments].sort((a, b) => a.timestamp - b.timestamp);
   const commentsHtml = story.comments.length
-    ? `<ul style="margin:6px 0 0 18px;padding:0;">${story.comments.map(comment => `<li style="margin:0 0 4px 0;"><strong>${escapeHtml(comment.author)}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
+    ? `<ul style="margin:6px 0 0 18px;padding:0;">${commentsForCanvas.map(comment => `<li style="margin:0 0 4px 0;"><strong>${escapeHtml(comment.author)}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
     : '<p style="margin:6px 0 0 0;">Brak komentarzy w wybranym zakresie.</p>';
   const technicalSummaryHtml = (story.technicalSummary || 'Brak dodatkowego opisu technicznego.')
     .split('\n')
     .filter(Boolean)
-    .map(line => `<p style="margin:0 0 4px 0;">${escapeHtml(line)}</p>`)
+    .map((line) => {
+      if (/^Status:\s*Done$/i.test(line.trim())) {
+        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;">Zrobione</span></p>';
+      }
+
+      if (/^Status:\s*To Do$/i.test(line.trim())) {
+        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-weight:700;">Do zrobienia</span></p>';
+      }
+
+      if (/^Status:\s*In Progress$/i.test(line.trim())) {
+        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;">W trakcie pracy</span></p>';
+      }
+
+      return `<p style="margin:0 0 4px 0;">${escapeHtml(line)}</p>`;
+    })
     .join('');
   const childTitles = (story.childIssues || [])
     .map((child) => child.title?.trim() || child.issueReadableId)

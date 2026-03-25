@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Editor as TiptapEditor } from '@tiptap/react';
+import { useCallback } from 'react';
 import { format, subDays } from 'date-fns';
 import {
   AlertCircle,
@@ -22,8 +23,9 @@ import {
 import type { Project, StatusReport } from '../../../types';
 import { useProjectContext } from '../../../context/ProjectContext';
 import { Editor } from '../../meeting-notes/components/Editor';
+import { DailyIssueDetailsModal } from '../../daily/components/DailyIssueDetailsModal';
 import { useStatusStories } from '../hooks/useStatusStories';
-import { buildStatusEditorHtml, buildStatusStoryHtml, escapeHtml, stripRichText } from '../utils/statusUtils';
+import { buildStatusStoryHtml, escapeHtml, stripRichText } from '../utils/statusUtils';
 import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface StatusMainProps {
@@ -49,10 +51,12 @@ const createReportId = () =>
 
 const getStatusDraftKey = (projectId: string) => `status_canvas_draft_${projectId}`;
 const getStatusTitleKey = (projectId: string) => `status_title_${projectId}`;
+const getDefaultStatusDateFrom = (latestReport?: StatusReport) =>
+  latestReport?.dateTo || format(subDays(new Date(), 7), 'yyyy-MM-dd');
 
 export const StatusMain = ({ project }: StatusMainProps) => {
   const { settings } = useProjectContext();
-  const { stories, isLoading, error, refreshStories, setStories } = useStatusStories();
+  const { stories, issues, isLoading, error, refreshStories, setStories, setIssues } = useStatusStories();
   const [reports, setReports] = useState<StatusReport[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,22 +64,21 @@ export const StatusMain = ({ project }: StatusMainProps) => {
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [title, setTitle] = useState(buildDefaultTitle(project.code, format(new Date(), 'yyyy-MM-dd')));
   const [editorContent, setEditorContent] = useState('');
-  const [isDirty, setIsDirty] = useState(false);
+  const [, setIsDirty] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [activePreview, setActivePreview] = useState<StatusReport | null>(null);
+  const [activeIssueDetailsId, setActiveIssueDetailsId] = useState<string | null>(null);
   const [selectionText, setSelectionText] = useState('');
   const [isSourcesCollapsed, setIsSourcesCollapsed] = useState(false);
   const [includedSourceIds, setIncludedSourceIds] = useState<Record<string, boolean>>({});
   const [removedSourceIds, setRemovedSourceIds] = useState<Record<string, boolean>>({});
-  const [hasDraftRestored, setHasDraftRestored] = useState(false);
   const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [isDraftSaved, setIsDraftSaved] = useState(false);
-  const [activeRefreshAction, setActiveRefreshAction] = useState<'sources' | 'canvas' | null>(null);
+  const [activeRefreshAction, setActiveRefreshAction] = useState<'sources' | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorApiRef = useRef<TiptapEditor | null>(null);
 
-  const loadReports = async () => {
+  const loadReports = useCallback(async () => {
     setIsHistoryLoading(true);
     try {
       if (window.electron?.getStatusReports) {
@@ -95,16 +98,17 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     } finally {
       setIsHistoryLoading(false);
     }
-  };
+  }, [project.id]);
 
   useEffect(() => {
     setReports([]);
     setStories([]);
+    setIssues([]);
     setEditorContent('');
     setSelectionText('');
     setIsDirty(false);
     setIsInitialized(false);
-    setHasDraftRestored(false);
+    setActiveIssueDetailsId(null);
     setIsDraftSaving(false);
     setIsDraftSaved(false);
     setIsSourcesCollapsed(false);
@@ -117,7 +121,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     } catch {
       setIncludedSourceIds({});
     }
-  }, [project.id, project.code, setStories]);
+  }, [project.id, project.code, setIssues, setStories]);
 
   useEffect(() => {
     localStorage.setItem(`status_included_sources_${project.id}`, JSON.stringify(includedSourceIds));
@@ -133,7 +137,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
       const today = format(new Date(), 'yyyy-MM-dd');
       const latest = savedReports[0];
       const fallbackDateTo = today;
-      const fallbackDateFrom = latest?.dateTo || format(subDays(new Date(), 7), 'yyyy-MM-dd');
+      const fallbackDateFrom = getDefaultStatusDateFrom(latest);
       const savedTitle = localStorage.getItem(getStatusTitleKey(project.id));
       const fallbackTitle = savedTitle?.trim() || buildDefaultTitle(project.code, today);
 
@@ -141,17 +145,17 @@ export const StatusMain = ({ project }: StatusMainProps) => {
         const rawDraft = localStorage.getItem(getStatusDraftKey(project.id));
         if (rawDraft) {
           const draft = JSON.parse(rawDraft) as Partial<StatusDraft>;
-          const draftDateTo = draft.dateTo || fallbackDateTo;
-          const draftDateFrom = draft.dateFrom || fallbackDateFrom;
+          const shouldRefreshDraftTitle =
+            !draft.title?.trim() ||
+            draft.title.trim() === buildDefaultTitle(project.code, draft.dateTo || fallbackDateTo);
 
-          setDateTo(draftDateTo);
-          setDateFrom(draftDateFrom);
-          setTitle(draft.title?.trim() || buildDefaultTitle(project.code, draftDateTo));
+          setDateTo(fallbackDateTo);
+          setDateFrom(fallbackDateFrom);
+          setTitle(shouldRefreshDraftTitle ? buildDefaultTitle(project.code, fallbackDateTo) : draft.title.trim());
           setEditorContent(draft.editorContent || '');
           setRemovedSourceIds(draft.removedSourceIds || {});
           setIsDirty(!!draft.editorContent?.trim());
           setIsDraftSaved(!!draft.editorContent || !!draft.title);
-          setHasDraftRestored(true);
           setIsInitialized(true);
           return;
         }
@@ -170,7 +174,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     return () => {
       active = false;
     };
-  }, [project.id, project.code]);
+  }, [loadReports, project.id, project.code]);
 
   const loadSources = async () => refreshStories({
     project,
@@ -180,34 +184,9 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     youtrackToken: settings?.youtrackToken
   });
 
-  const regenerateCanvas = async (replaceExisting: boolean) => {
-    const fetchedStories = await loadSources();
-
-    if (!fetchedStories.length && !replaceExisting) {
-      return;
-    }
-
-    if (replaceExisting || !editorContent.trim()) {
-      const nextTitle = title.trim() || buildDefaultTitle(project.code, dateTo);
-      setEditorContent(buildStatusEditorHtml(project.code, nextTitle, dateFrom, dateTo, fetchedStories));
-      setRemovedSourceIds({});
-      setIsDirty(false);
-    }
-  };
-
   const refreshSourcesOnly = async () => {
     await loadSources();
   };
-
-  useEffect(() => {
-    if (isInitialized) {
-      if (hasDraftRestored) {
-        void refreshSourcesOnly();
-      } else {
-        void regenerateCanvas(true);
-      }
-    }
-  }, [hasDraftRestored, isInitialized]);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -267,19 +246,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     return () => document.removeEventListener('selectionchange', handleSelection);
   }, [activePreview]);
 
-  const handleManualRefresh = async () => {
-    if (isDirty && editorContent.trim() && !window.confirm('Odświeżenie nadpisze bieżącą kanwę. Kontynuować?')) {
-      return;
-    }
-    setActiveRefreshAction('canvas');
-    try {
-      await regenerateCanvas(true);
-    } finally {
-      setActiveRefreshAction(null);
-    }
-  };
-
-  const handleRefreshSourcesOnly = async () => {
+  const handleRefreshSources = async () => {
     setActiveRefreshAction('sources');
     try {
       await refreshSourcesOnly();
@@ -431,66 +398,6 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     }));
   };
 
-  const scrollToStoryInCanvas = (issueReadableId: string) => {
-    const editorRoot = editorContainerRef.current?.querySelector('.ProseMirror') as HTMLElement | null;
-    if (!editorRoot) return;
-
-    const escapedIssueId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(issueReadableId) : issueReadableId;
-    const section = editorRoot.querySelector(`section[data-issue-id="${escapedIssueId}"]`) as HTMLElement | null;
-
-    const highlightTarget = (element: HTMLElement) => {
-      const previousTransition = element.style.transition;
-      const previousBoxShadow = element.style.boxShadow;
-      const previousBackground = element.style.backgroundColor;
-
-      element.style.transition = 'box-shadow 180ms ease, background-color 180ms ease';
-      element.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.45)';
-      element.style.backgroundColor = 'rgba(224, 231, 255, 0.55)';
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-      window.setTimeout(() => {
-        element.style.boxShadow = previousBoxShadow;
-        element.style.backgroundColor = previousBackground;
-        element.style.transition = previousTransition;
-      }, 1800);
-    };
-
-    if (section) {
-      highlightTarget(section);
-      return;
-    }
-
-    const candidates = Array.from(
-      editorRoot.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, div')
-    ) as HTMLElement[];
-
-    const directMatch = candidates.find((element) => {
-      const text = element.textContent?.replace(/\s+/g, ' ').trim() || '';
-      return text.startsWith(issueReadableId) || text.includes(` ${issueReadableId} `) || text.includes(issueReadableId);
-    });
-
-    if (directMatch) {
-      highlightTarget(directMatch);
-      return;
-    }
-
-    const walker = document.createTreeWalker(editorRoot, NodeFilter.SHOW_TEXT);
-    let currentNode = walker.nextNode();
-
-    while (currentNode) {
-      const text = currentNode.textContent?.replace(/\s+/g, ' ').trim() || '';
-      if (text.includes(issueReadableId)) {
-        const parentElement = currentNode.parentElement?.closest('h1, h2, h3, h4, h5, h6, p, li, blockquote, div') as HTMLElement | null;
-        if (parentElement) {
-          highlightTarget(parentElement);
-          return;
-        }
-      }
-
-      currentNode = walker.nextNode();
-    }
-  };
-
   const sourceItems = useMemo(
     () => stories.map((story) => ({
       id: story.id,
@@ -547,6 +454,11 @@ export const StatusMain = ({ project }: StatusMainProps) => {
 
     return issueIds;
   }, [editorContent]);
+
+  const activeIssueDetails = useMemo(
+    () => issues.find((issue) => issue.id === activeIssueDetailsId || issue.idReadable === activeIssueDetailsId) || null,
+    [activeIssueDetailsId, issues]
+  );
 
   const renderSourceCard = (
     story: typeof sourceItems[number],
@@ -611,9 +523,9 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             </button>
             <button
               type="button"
-              onClick={() => scrollToStoryInCanvas(story.issueReadableId)}
-              className="text-left text-[12px] leading-4 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1 w-full hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-              title="Przewiń kanwę do tego zadania"
+              onClick={() => setActiveIssueDetailsId(story.issueId || story.issueReadableId)}
+              className="text-left text-[12px] leading-4 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+              title={story.title}
             >
               {story.title}
             </button>
@@ -681,9 +593,10 @@ export const StatusMain = ({ project }: StatusMainProps) => {
   };
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7.4fr)_minmax(300px,2.6fr)] gap-4 animate-in fade-in duration-300">
-      <div className="space-y-6">
-        <section ref={editorContainerRef} className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7.4fr)_minmax(300px,2.6fr)] gap-4">
+        <div className="space-y-6">
+        <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Spotkanie statusowe</h2>
@@ -703,7 +616,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
                     setDateFrom(e.target.value);
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </label>
               <label className="space-y-1">
@@ -725,7 +638,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
                     }
                     setIsDirty(true);
                   }}
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </label>
               <label className="space-y-1">
@@ -741,12 +654,12 @@ export const StatusMain = ({ project }: StatusMainProps) => {
               </label>
               <button
                 type="button"
-                onClick={handleManualRefresh}
+                onClick={handleRefreshSources}
                 disabled={isLoading}
-                title="Odśwież dane z YouTrack"
+                title="Odśwież źródła z YouTrack"
                 className="h-11 w-11 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
               >
-                {activeRefreshAction === 'canvas' ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                {activeRefreshAction === 'sources' ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
               </button>
               <button
                 type="button"
@@ -783,16 +696,16 @@ export const StatusMain = ({ project }: StatusMainProps) => {
                 {error}
               </span>
             )}
+            {!isLoading && !sourceItems.length && (
+              <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold inline-flex items-center gap-2">
+                <RotateCcw size={14} />
+                YouTrack nie odświeża się automatycznie po wejściu. Użyj przycisku odświeżania.
+              </span>
+            )}
           </div>
         </section>
 
         <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-          {isLoading && (
-            <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50/80 dark:border-sky-900/60 dark:bg-sky-950/40 px-4 py-3 text-sm text-sky-800 dark:text-sky-200 flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin shrink-0" />
-              <span>Trwa pobieranie danych. Kanwa zostanie zaktualizowana po zakończeniu synchronizacji.</span>
-            </div>
-          )}
           <Editor
             content={editorContent}
             onChange={(value) => {
@@ -807,11 +720,11 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             minHeight={520}
           />
         </section>
-      </div>
+        </div>
 
-      <aside className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800 sticky top-4 self-start max-h-[calc(100vh-2rem)] flex flex-col min-h-0">
-        <div className="min-h-0 overflow-y-auto pr-1 space-y-6">
-          <section>
+        <aside className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800 sticky top-4 self-start max-h-[calc(100vh-2rem)] flex flex-col min-h-0">
+          <div className="min-h-0 overflow-y-auto pr-1">
+            <section>
             <div className="flex items-start justify-between gap-3 mb-4">
               <button
                 type="button"
@@ -832,32 +745,11 @@ export const StatusMain = ({ project }: StatusMainProps) => {
                   {sourceItems.length}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={handleRefreshSourcesOnly}
-                disabled={isLoading}
-                title="Odśwież źródła"
-                className="h-10 w-10 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center shrink-0"
-              >
-                {activeRefreshAction === 'sources' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              </button>
             </div>
-
-            {isLoading && (
-              <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/80 dark:border-sky-900/60 dark:bg-sky-950/40 px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 inline-flex items-center gap-2">
-                <Loader2 size={13} className="animate-spin" />
-                Aktualizowanie źródeł...
-              </div>
-            )}
 
             {!isSourcesCollapsed && (
               <>
-                {isLoading && !sourceItems.length ? (
-                  <div className="py-10 flex flex-col items-center justify-center text-gray-500">
-                    <Loader2 className="animate-spin mb-3" />
-                    Ładowanie źródeł...
-                  </div>
-                ) : (
+                {!(isLoading && !sourceItems.length) && (
                   <div className="space-y-3">
                     {sourceItems.map((story) => renderSourceCard(story, { childStories: sourceChildrenMap.get(story.issueReadableId) || [] }))}
 
@@ -870,78 +762,83 @@ export const StatusMain = ({ project }: StatusMainProps) => {
                 )}
               </>
             )}
-          </section>
+            </section>
+          </div>
+        </aside>
+      </div>
 
-          <section>
-            <div className="flex items-center justify-between gap-3 mb-5">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Historia statusów</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Podgląd poprzednich spotkań i kopiowanie do bieżącej wersji.</p>
-              </div>
-              <span className="text-xs font-bold px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-                {reports.length}
-              </span>
-            </div>
+      <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between gap-3 mb-5">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Historia statusów</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Podgląd poprzednich spotkań i kopiowanie do bieżącej wersji.</p>
+          </div>
+          <span className="text-xs font-bold px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+            {reports.length}
+          </span>
+        </div>
 
-            {isHistoryLoading ? (
-              <div className="py-12 flex flex-col items-center justify-center text-gray-500">
-                <Loader2 className="animate-spin mb-3" />
-                Ładowanie historii...
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {reports.map((report) => (
-                  <div key={report.id} className="group relative rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50/80 dark:bg-gray-900/40">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-white truncate">{report.title}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{report.dateFrom} {'->'} {report.dateTo}</p>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActivePreview(report);
-                            setSelectionText('');
-                          }}
-                          className="p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
-                          title="Podgląd"
-                        >
-                          <Eye size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteReport(report.id)}
-                          className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
-                          title="Usuń"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
+        {isHistoryLoading ? (
+          <div className="py-12 flex flex-col items-center justify-center text-gray-500">
+            <Loader2 className="animate-spin mb-3" />
+            Ładowanie historii...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {reports.map((report) => (
+              <div key={report.id} className="relative rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50/80 dark:bg-gray-900/40">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-semibold text-gray-900 dark:text-white truncate">{report.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{report.dateFrom} {'->'} {report.dateTo}</p>
+                    <p className="pt-2 text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
                       {stripRichText(report.content).slice(0, 160) || 'Brak treści podglądu.'}
                     </p>
-                    <div className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity absolute right-full top-3 mr-3 hidden xl:block w-80 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-4 z-20">
-                      <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500 mb-2">Podgląd</p>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                        {stripRichText(report.content).slice(0, 260) || 'Brak treści.'}
-                      </p>
-                    </div>
                   </div>
-                ))}
+                  <div className="flex items-center gap-1 shrink-0 self-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActivePreview(report);
+                        setSelectionText('');
+                      }}
+                      className="p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
+                      title="Podgląd"
+                    >
+                      <Eye size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteReport(report.id)}
+                      className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
+                      title="Usuń"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
 
-                {!reports.length && (
-                  <div className="py-10 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
-                    <FileText className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Brak zapisanych raportów statusowych.</p>
-                  </div>
-                )}
+            {!reports.length && (
+              <div className="py-10 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
+                <FileText className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">Brak zapisanych raportów statusowych.</p>
               </div>
             )}
-          </section>
-        </div>
-      </aside>
+          </div>
+        )}
+      </section>
+
+      {activeIssueDetails && (
+        <DailyIssueDetailsModal
+          issue={activeIssueDetails}
+          isOpen={!!activeIssueDetails}
+          onClose={() => setActiveIssueDetailsId(null)}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
+      )}
 
       {activePreview && (
         <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">

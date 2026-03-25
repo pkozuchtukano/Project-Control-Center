@@ -216,6 +216,48 @@
   -- W widoku karty `Linki` pozostawiono wyłącznie nazwę wpisu, bez renderowania adresu URL pod spodem.
   -- Kliknięcie całego kafelka otwiera teraz link w przeglądarce, a ikona edycji nadal działa osobno i nie uruchamia przejścia.
 ## Status
+- 2026-03-25 – Wyrównanie kart historii statusów
+  -- Układ pojedynczego wpisu w sekcji `Historia statusów` został przebudowany tak, aby treść i ikonki akcji były ustawione w czytelnych kolumnach.
+  -- Karty historii nie zostawiają już dużej pustej przestrzeni po prawej stronie i lepiej wykorzystują szerokość sekcji.
+- 2026-03-25 – Usunięcie dużego tooltipa z historii statusów
+  -- Z kart `Historia statusów` usunięto hoverowy podgląd, który pojawiał się nad wpisem i zasłaniał ikonki akcji.
+  -- Podgląd szczegółów archiwalnego statusu pozostaje dostępny po kliknięciu ikony oka, bez kolizji z przyciskami.
+- 2026-03-25 – Tłumaczenie statusu `In Progress` w kanwie
+  -- W treści zadania wstawianego do kanwy linia `Status: In Progress` jest teraz renderowana jako etykieta `W trakcie pracy`.
+  -- Kanwa pokazuje status realizacji po polsku, w spójnej formie z pozostałymi oznaczeniami statusów.
+- 2026-03-25 – Tłumaczenie statusu `To Do` w kanwie
+  -- W treści zadania wstawianego do kanwy linia `Status: To Do` jest teraz renderowana jako etykieta `Do zrobienia`.
+  -- Kanwa pokazuje status startowy zadania po polsku, spójnie z pozostałymi opisami w widoku statusu.
+- 2026-03-25 – Zielone oznaczenie statusu `Done` w kanwie
+  -- W treści zadania wstawianego do kanwy linia `Status: Done` jest teraz renderowana jako zielona etykieta `Zrobione`.
+  -- Kanwa pokazuje zakończone zadania w bardziej czytelnej, wizualnie wyróżnionej formie.
+- 2026-03-25 – Chronologiczne komentarze po wstawieniu zadania do kanwy
+  -- Przy budowaniu treści zadania wstawianego do kanwy komentarze są teraz układane od najstarszego do najnowszego.
+  -- Kanwa pokazuje przebieg rozmowy i aktywności w kolejności czasowej, co ułatwia czytanie historii zadania.
+- 2026-03-25 – Szczegóły zadania po kliknięciu tytułu źródła
+  -- Kliknięcie tytułu zadania w sekcji `Źródła do statusu` otwiera teraz modal ze szczegółami zgłoszenia, taki sam jak w widoku `Daily`.
+  -- Widok statusu korzysta przy tym z pełnych danych `IssueWithHistory`, dzięki czemu w modalu dostępne są opis, metadane i historia aktywności zadania.
+- 2026-03-25 – Usunięcie przewijania kanwy po kliknięciu tytułu źródła
+  -- Tytuł zadania w sekcji `Źródła do statusu` przestał działać jako akcja przewijania do odpowiadającego fragmentu kanwy.
+  -- Lista źródeł zachowuje tylko operacje edycji i wstawiania, bez dodatkowego skoku widoku podczas kliknięcia w nazwę zadania.
+- 2026-03-25 – Jeden przycisk odświeżania źródeł w statusie
+  -- Główny przycisk odświeżania w zakładce `Status` został uproszczony i odświeża teraz wyłącznie listę źródeł z YouTrack.
+  -- Usunięto dodatkowy przycisk `Odśwież źródła` z panelu bocznego, aby nie dublować tej samej akcji w interfejsie.
+- 2026-03-25 – Historia statusów jako osobna karta
+  -- Sekcja `Historia statusów` została przeniesiona z bocznego panelu do oddzielnej karty pod głównym widokiem statusu.
+  -- Bieżące źródła i archiwalne raporty są teraz wizualnie rozdzielone, co poprawia czytelność i ułatwia pracę na aktualnym statusie.
+- 2026-03-25 – Automatyczne ustawianie zakresu dat po wejściu do statusu
+  -- Po otwarciu zakładki `Status` pole `Data do` ustawia się zawsze na bieżący dzień, a `Data od` pobiera datę końca ostatniego zapisanego statusu z historii.
+  -- Jeśli historia statusów jest jeszcze pusta, zakres startowy ustawia się automatycznie na ostatnie 7 dni, co przyspiesza przygotowanie kolejnego raportu.
+- 2026-03-25 – Uproszczenie komunikatów ładowania w statusie
+  -- W zakładce `Status` usunięto powielone banery i panele informujące o trwającym pobieraniu danych.
+  -- Podczas synchronizacji widok pokazuje teraz tylko jeden tekstowy komunikat o aktualizacji, co upraszcza interfejs i zmniejsza szum wizualny.
+- 2026-03-25 – Jasne ikony kalendarza w ciemnym motywie
+  -- Pola daty w zakładce `Status` dostały ustawienie `color-scheme` zgodne z aktywnym motywem aplikacji.
+  -- Ikony wyboru daty pozostają teraz czytelne w ciemnym widoku i nie zlewają się z tłem.
+- 2026-03-25 – Ręczne odświeżanie YouTrack w zakładce status
+  -- Po wejściu do zakładki `Status` aplikacja nie uruchamia już automatycznie pobierania danych z YouTrack ani przebudowy kanwy.
+  -- Źródła statusu są teraz odświeżane wyłącznie ręcznie z przycisku, co eliminuje niechcianą synchronizację zaraz po otwarciu widoku.
 - 2026-03-24 – Tytuły zadań w źródłach statusu
   -- W kartach `Źródła do statusu` rozszerzono prezentację relacji zadań tak, aby przy `Sub` i na liście `Subtaski` obok kodu YouTrack był widoczny również tytuł zadania.
   -- Użytkownik może teraz szybciej rozpoznać, którego zadania dotyczy relacja, bez otwierania każdego wpisu osobno w YouTrack.

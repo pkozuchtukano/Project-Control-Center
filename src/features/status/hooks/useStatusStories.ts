@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Project, StatusStory } from '../../../types';
-import { fetchIssuesActivity } from '../../../services/youtrackApi';
+import { fetchIssuesActivity, type IssueWithHistory } from '../../../services/youtrackApi';
 import { buildStatusStories } from '../utils/statusUtils';
 
 interface StatusStoriesParams {
@@ -13,6 +13,7 @@ interface StatusStoriesParams {
 
 export const useStatusStories = () => {
   const [stories, setStories] = useState<StatusStory[]>([]);
+  const [issues, setIssues] = useState<IssueWithHistory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,8 @@ export const useStatusStories = () => {
   }: StatusStoriesParams) => {
     if (!youtrackBaseUrl || !youtrackToken) {
       setError('Brak konfiguracji YouTrack. Uzupełnij URL i token w ustawieniach.');
+      setIssues([]);
+      setStories([]);
       return [];
     }
 
@@ -33,7 +36,7 @@ export const useStatusStories = () => {
 
     try {
       const query = project.youtrackQuery || project.code;
-      const issues = await fetchIssuesActivity(
+      const fetchedIssues = await fetchIssuesActivity(
         youtrackBaseUrl,
         youtrackToken,
         query,
@@ -50,18 +53,21 @@ export const useStatusStories = () => {
         : {};
 
       const mappedStories = buildStatusStories(
-        issues,
+        fetchedIssues,
         (dailyComments || {}) as Record<string, string>,
         youtrackBaseUrl,
         dateFrom,
         dateTo
       );
 
+      setIssues(fetchedIssues);
       setStories(mappedStories);
       return mappedStories;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Status stories refresh failed:', err);
-      setError(err?.message || 'Nie udało się pobrać danych statusu.');
+      setError(err instanceof Error ? err.message : 'Nie udało się pobrać danych statusu.');
+      setIssues([]);
+      setStories([]);
       return [];
     } finally {
       setIsLoading(false);
@@ -70,9 +76,11 @@ export const useStatusStories = () => {
 
   return {
     stories,
+    issues,
     isLoading,
     error,
     refreshStories,
-    setStories
+    setStories,
+    setIssues
   };
 };
