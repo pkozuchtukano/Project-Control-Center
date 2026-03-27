@@ -205,6 +205,25 @@
 - 2026-03-27 – Zawężenie osi Y do widocznych danych na trendach
   -- Dla wykresów `Narastanie godzin` i `Trend relacji` domeny osi Y są teraz liczone z aktualnie widocznego zakresu danych, z minimalnym technicznym marginesem zamiast szerokiego zapasu.
   -- Linie wypełniają większą część wysokości wykresu, a puste obszary bez danych nie zabierają już miejsca i nie osłabiają czytelności trendu.
+  - 2026-03-27 – Oś godzin bez wymuszania zera na trendach
+  - 2026-03-27 – Karta Metryka sukcesu dla rozliczeń projektu
+    -- Do zakładki `Rozliczenia` dodano nową kartę `Metryka sukcesu` z sekcjami `ANALIZA`, `WSKAŹNIKI`, `WIZUALIZACJA` i `STRATEGIA MARŻY`, liczonymi bezpośrednio z godzin zleceń oraz logów YouTrack.
+    -- Karta pokazuje KPI `Hourly Burn Rate`, `Expected Margin Index (EMI)` i `Bug-to-Task Ratio`, prognozę marży na koniec projektu, pokrycie danych typami zadań oraz wykres porównujący sprzedane, zalogowane i prognozowane godziny wobec limitu kosztowego dla celu marżowego.
+    -- Przełącznik z ikoną dolara steruje również tą kartą: po odsłonięciu finansów wskaźniki i wizualizacja pokazują kwoty `brutto (netto)` wynikające z tych samych godzin i stawek projektu.
+  - 2026-03-27 – Wspólny zakres dat dla części analitycznej rozliczeń
+    -- Filtry `Zakres od`, `Zakres do`, `Ostatnie pół roku` i `Całość` przeniesiono do karty `Metryka sukcesu`, aby stały się głównym punktem sterowania analizą w zakładce `Rozliczenia`.
+    -- Ten sam zakres dat steruje teraz wszystkimi sekcjami poniżej karty filtrów: KPI, wykresami trendu, dolną tabelą rozliczeń, zyskownością, listą osób i statusami zleceń, podczas gdy kafelki odnoszące się do całej umowy zachowują wartości globalne.
+  - 2026-03-27 – Uproszczenie KPI Metryki sukcesu do relacji zlecenia vs logi
+    -- W karcie `Metryka sukcesu` usunięto zależność od typów zadań YouTrack i zastąpiono wskaźnik `Bug-to-Task Ratio` prostą relacją `Order-to-Log Ratio`.
+    -- KPI i opisy biznesowe w tej karcie bazują teraz wyłącznie na porównaniu godzin zakontraktowanych w zleceniach z godzinami rzeczywiście zalogowanymi, zgodnie z logiką rozliczeń projektu.
+  - 2026-03-27 – Spójne filtrowanie zakontraktowanych godzin w Metryce sukcesu
+    -- Zakres dat w analitycznej części `Rozliczeń` został poprawiony tak, aby do godzin `zakontraktowanych` trafiały także zlecenia identyfikowane po innych datach niż samo `Data realizacji od`.
+    -- `Metryka sukcesu` i sekcje filtrowane poniżej korzystają teraz z pełniejszego zakresu osi czasu zlecenia, dzięki czemu wartości `zakontraktowane` pozostają spójne z głównymi kafelkami rozliczeń.
+  - 2026-03-27 – Proporcjonalne liczenie godzin zakontraktowanych w filtrowanym okresie
+    -- Na zweryfikowanych danych `CBCP` potwierdzono, że pozycje zleceń często nie mają własnej daty `item.date`, więc filtrowanie po samych datach pozycji zwracało błędne `0 h`, a filtrowanie całym zleceniem zawyżało wyniki.
+    -- Dla części analitycznej `Rozliczeń` godziny `zakontraktowane` są teraz rozkładane proporcjonalnie po zakresie dat zlecenia, jeśli pozycje nie mają własnych dat, dzięki czemu zmiana filtra realnie zmienia wynik w `Metryce sukcesu` i sekcjach zależnych.
+  -- Usunięto sztuczne ograniczenie dolnej granicy osi Y do `0` dla godzin na wykresach `Narastanie godzin` i `Trend relacji`.
+  -- Oś godzin wykorzystuje teraz rzeczywiste minimum i maksimum widocznych linii z niewielkim marginesem, dzięki czemu przebiegi nie są już spłaszczane przez pustą przestrzeń poniżej danych.
 - 2026-03-27 – Numery zleceń w tooltipie wykresu narastania
   -- Rozszerzono dane wykresu `Narastanie godzin` o listę numerów zleceń budujących dzienny przyrost godzin zleceń.
   -- Po najechaniu na wykres tooltip pokazuje teraz numery zleceń przypisanych do danego dnia i słupka przyrostu, co ułatwia identyfikację źródła wzrostu godzin.
@@ -216,9 +235,12 @@
 - 2026-03-18 – Stabilizacja statystyk i wykresów
   -- Przepisano komponent statystyk rejestru pracy, aby tooltipy Recharts renderowały wyłącznie tekstowe etykiety zamiast obiektów oraz aby wykres kołowy jawnie używał pola `name` jako etykiety segmentu.
   -- Dodano zabezpieczenia dla pustych zakresów dat i kontenerów wykresów (`min-w-0`, minimalne wysokości, warunkowe renderowanie wykresów), dzięki czemu widok nie wywołuje błędu Reacta o renderowaniu obiektu ani ostrzeżeń Recharts o szerokości/wysokości `-1`.
-- 2026-03-18 – Normalizacja etykiet typu i statusu z YouTrack
-  -- W `YouTrackTab` dodano odczyt etykiet `name` z obiektów statusu i typu zadania zwracanych przez YouTrack, zamiast bezpośredniego renderowania całych obiektów.
-  -- Karty zadań renderują teraz poprawne nazwy statusów i typów, co eliminuje błąd Reacta `Objects are not valid as a React child`.
+  - 2026-03-18 – Normalizacja etykiet typu i statusu z YouTrack
+    -- W `YouTrackTab` dodano odczyt etykiet `name` z obiektów statusu i typu zadania zwracanych przez YouTrack, zamiast bezpośredniego renderowania całych obiektów.
+    -- Karty zadań renderują teraz poprawne nazwy statusów i typów, co eliminuje błąd Reacta `Objects are not valid as a React child`.
+  - 2026-03-27 – Zapisywanie typu zadania w logach YouTrack
+    -- Model `work_items` rozszerzono bezstratnie o pole `issueType` z migracją `ALTER TABLE`, a synchronizacja YouTrack zapisuje teraz przy każdym logu także typ zadania (`Bug`, `Task`, `Epic` itd.).
+    -- Rozliczenia mogą dzięki temu liczyć `Bug-to-Task Ratio` na podstawie rzeczywistych typów zadań z YouTrack, bez ręcznego mapowania i bez utraty dotychczasowych danych w bazie.
 
 ## Linki projektu
 - 2026-03-24 – Indywidualna karta linków dla projektu

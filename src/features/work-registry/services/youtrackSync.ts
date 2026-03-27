@@ -90,6 +90,7 @@ export const syncWorkItems = async (
                 issueId: log.issueId,
                 issueReadableId: log.issueReadableId,
                 issueSummary: log.issueSummary,
+                issueType: log.issueType || null,
                 author: log.authorLogin || log.authorName || 'Unknown',
                 authorName: log.authorName || 'Unknown',
                 date: new Date(log.date).toISOString(),

@@ -57,6 +57,7 @@ db.exec(`
         issueId TEXT,
         issueReadableId TEXT,
         issueSummary TEXT,
+        issueType TEXT,
         author TEXT,
         authorName TEXT,
         date TEXT,
@@ -124,6 +125,7 @@ const gDocsService = new GoogleDocsService(path.dirname(dbPath));
 // Migracja dla istniejących tabel
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch (e) { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
@@ -176,6 +178,7 @@ const initializeDatabase = () => {
             issueId TEXT,
             issueReadableId TEXT,
             issueSummary TEXT,
+            issueType TEXT,
             author TEXT,
             authorName TEXT,
             date TEXT,
@@ -248,6 +251,7 @@ const initializeDatabase = () => {
 
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
     try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
+    try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch { }
     try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
     try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
@@ -660,12 +664,13 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
     try {
         const transaction = db.transaction(() => {
             const stmt = db.prepare(`
-                INSERT INTO work_items (id, issueId, issueReadableId, issueSummary, author, authorName, date, minutes, description, lastModified, projectId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO work_items (id, issueId, issueReadableId, issueSummary, issueType, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET 
                     issueId = excluded.issueId,
                     issueReadableId = excluded.issueReadableId,
                     issueSummary = excluded.issueSummary,
+                    issueType = excluded.issueType,
                     author = excluded.author,
                     authorName = excluded.authorName,
                     date = excluded.date,
@@ -680,6 +685,7 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
                     item.issueId,
                     item.issueReadableId,
                     item.issueSummary,
+                    item.issueType || null,
                     item.author,
                     item.authorName,
                     item.date,
@@ -702,8 +708,8 @@ ipcMain.handle('import-work-items', async (_, { items, projectId }: { items: any
     try {
         const transaction = db.transaction(() => {
             const stmt = db.prepare(`
-                INSERT OR IGNORE INTO work_items (id, issueId, issueReadableId, issueSummary, author, authorName, date, minutes, description, lastModified, projectId)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO work_items (id, issueId, issueReadableId, issueSummary, issueType, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
             for (const item of items) {
                 stmt.run(
@@ -711,6 +717,7 @@ ipcMain.handle('import-work-items', async (_, { items, projectId }: { items: any
                     item.issueId,
                     item.issueReadableId,
                     item.issueSummary,
+                    item.issueType || null,
                     item.author,
                     item.authorName,
                     item.date,

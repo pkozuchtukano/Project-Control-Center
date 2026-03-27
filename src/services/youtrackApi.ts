@@ -89,6 +89,7 @@ export interface WorkLogItem {
     issueId: string;
     issueReadableId: string;
     issueSummary: string;
+    issueType?: string;
     date: number; // timestamp
     durationMinutes: number;
     durationPresentation: string;
@@ -480,7 +481,7 @@ export const fetchProjectWorkLogs = async (
     while (true) {
         const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
             query,
-            fields: 'id,idReadable,summary',
+            fields: 'id,idReadable,summary,customFields(name,value(name,presentation))',
             $top: PAGE_SIZE,
             $skip: skip
         });
@@ -498,6 +499,16 @@ export const fetchProjectWorkLogs = async (
     // --- Krok 2: Dla każdego zadania pobierz WSZYSTKIE logi czasu (z paginacją) ---
     const timePromises = allIssues.map(async (issue) => {
         try {
+            let issueType = '';
+            if (Array.isArray(issue.customFields)) {
+                const typeField = issue.customFields.find((field: any) => {
+                    const fieldName = String(field?.name || '').toLowerCase();
+                    return fieldName === 'type' || fieldName === 'typ';
+                });
+                const typeValue = typeField?.value;
+                issueType = typeValue?.name || typeValue?.presentation || '';
+            }
+
             const allWorkItems: any[] = [];
             let wiSkip = 0;
 
@@ -527,6 +538,7 @@ export const fetchProjectWorkLogs = async (
                         issueId: issue.id,
                         issueReadableId: issue.idReadable,
                         issueSummary: issue.summary,
+                        issueType,
                         date: wi.date,
                         durationMinutes: wi.duration?.minutes || 0,
                         durationPresentation: wi.duration?.presentation || '',

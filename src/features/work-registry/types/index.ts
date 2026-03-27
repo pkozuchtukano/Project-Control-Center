@@ -3,6 +3,7 @@ export interface WorkItem {
     issueId: string;
     issueReadableId: string;
     issueSummary: string;
+    issueType?: string | null;
     author: string;
     authorName: string;
     date: string; // ISO string
