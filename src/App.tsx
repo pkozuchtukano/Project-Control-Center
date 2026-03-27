@@ -67,7 +67,7 @@ declare global {
 
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Cell, CartesianGrid, ComposedChart, Line, Area, Legend, ReferenceArea
+  Cell, CartesianGrid, ComposedChart, Line, Area, Legend, ReferenceArea, ReferenceLine
 } from 'recharts';
 import {
   LayoutDashboard, Plus, Briefcase,
@@ -909,6 +909,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     if (!effectiveBurnUpRange) return burnUpTrendData;
     return burnUpTrendData.filter((point) => point.date >= effectiveBurnUpRange.start && point.date <= effectiveBurnUpRange.end);
   })();
+  const firstVisibleBurnUpPoint = visibleBurnUpTrendData[0] || null;
   const latestVisibleBurnUpPoint = visibleBurnUpTrendData[visibleBurnUpTrendData.length - 1] || null;
   const latestVisibleTrendPoint = [...visibleBurnUpTrendData]
     .reverse()
@@ -916,32 +917,40 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const burnUpEstimateCeiling = latestVisibleBurnUpPoint?.cumulativeEstimate || 0;
   const burnUpActualCeiling = latestVisibleBurnUpPoint?.cumulativeActual || 0;
   const burnUpDeltaHours = latestVisibleBurnUpPoint?.deltaHours || 0;
+  const burnUpMarginChange = firstVisibleBurnUpPoint && latestVisibleBurnUpPoint
+    ? latestVisibleBurnUpPoint.deltaHours - firstVisibleBurnUpPoint.deltaHours
+    : null;
   const burnUpTrendRatio = latestVisibleTrendPoint?.trendRatio ?? null;
   const burnUpRollingTrendRatio = latestVisibleTrendPoint?.rollingTrendRatio ?? null;
   const burnUpTrendTone = burnUpDeltaHours >= 0
     ? 'text-emerald-700 dark:text-emerald-300'
     : 'text-red-700 dark:text-red-300';
+  const burnUpMarginChangeTone = burnUpMarginChange === null
+    ? 'text-slate-600 dark:text-slate-300'
+    : burnUpMarginChange > 0
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : burnUpMarginChange < 0
+        ? 'text-red-700 dark:text-red-300'
+        : 'text-slate-600 dark:text-slate-300';
+  const burnUpMarginDirectionLabel = burnUpMarginChange === null
+    ? 'Brak zmiany marży'
+    : burnUpMarginChange > 0
+      ? 'Marża rośnie'
+      : burnUpMarginChange < 0
+        ? 'Marża maleje'
+        : 'Marża stabilna';
   const burnUpTrendBadgeTone = burnUpTrendRatio === null
     ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300'
     : burnUpTrendRatio >= 1
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
       : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
-  const burnUpTrendValues = visibleBurnUpTrendData.flatMap((point) => [
-    point.trendRatio,
-    point.rollingTrendRatio,
-    point.regressionTrendRatio,
-    1,
-  ]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  const burnUpTrendMin = burnUpTrendValues.length > 0 ? Math.min(...burnUpTrendValues) : 0;
-  const burnUpTrendMax = burnUpTrendValues.length > 0 ? Math.max(...burnUpTrendValues) : 1;
-  const burnUpTrendDomain: [number, number] = [
-    burnUpTrendMin === burnUpTrendMax
-      ? burnUpTrendMin - 0.1
-      : Math.max(Math.floor(burnUpTrendMin * 10) / 10, -3),
-    burnUpTrendMin === burnUpTrendMax
-      ? burnUpTrendMax + 0.1
-      : Math.min(Math.ceil(burnUpTrendMax * 10) / 10, 3),
-  ];
+  const burnUpMarginValues = visibleBurnUpTrendData.flatMap((point) => [point.deltaHours, 0]);
+  const burnUpMarginMin = burnUpMarginValues.length > 0 ? Math.min(...burnUpMarginValues) : 0;
+  const burnUpMarginMax = burnUpMarginValues.length > 0 ? Math.max(...burnUpMarginValues) : 0;
+  const burnUpMarginPadding = Math.max(Math.abs(burnUpMarginMin), Math.abs(burnUpMarginMax), 8) * 0.12;
+  const burnUpMarginDomain: [number, number] = burnUpMarginMin === burnUpMarginMax
+    ? [burnUpMarginMin - 8, burnUpMarginMax + 8]
+    : [burnUpMarginMin - burnUpMarginPadding, burnUpMarginMax + burnUpMarginPadding];
   const applyFullBurnUpRange = () => {
     setBurnUpRangeMode('full');
     setBurnUpVisibleRange(fullContractBurnUpRange);
@@ -1487,13 +1496,13 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                     </div>
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex flex-col gap-2">
-                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Narastanie godzin</h4>
-                      <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
-                        Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół.
-                      </p>
-                    </div>
+                    <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                      <div className="flex flex-col gap-2">
+                        <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Narastanie godzin</h4>
+                        <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                          Linie są pokazane schodkowo, żeby było widać dyskretne przyrosty: zlecenia budują plan godzin w czasie, a logi z YouTrack pokazują rzeczywiste narastanie przepracowanych godzin.
+                        </p>
+                      </div>
                     <div className="mt-5 h-[420px] min-w-0">
                       <ResponsiveContainer width="100%" height="100%">
                         <ComposedChart
@@ -1529,8 +1538,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           <Area yAxisId="hours" dataKey="favorableGap" stackId="planBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.22)" stroke="none" isAnimationActive={false} />
                           <Area yAxisId="hours" dataKey="overrunBase" stackId="actualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
                           <Area yAxisId="hours" dataKey="overrunGap" stackId="actualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.18)" stroke="none" isAnimationActive={false} />
-                          <Line yAxisId="hours" type="monotone" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
-                          <Line yAxisId="hours" type="monotone" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
+                          <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
+                          <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
                           {burnUpSelectionRange && (
                             <ReferenceArea
                               yAxisId="hours"
@@ -1545,67 +1554,90 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                     </div>
                   </div>
 
-                  <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                      <div className="max-w-3xl">
-                        <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Trend relacji</h4>
-                        <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Trend: godziny zleceń do godzin zalogowanych</h3>
-                        <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                          Ten wykres pokazuje wyłącznie relację między godzinami wynikającymi ze zleceń a godzinami rzeczywiście zalogowanymi w pracy. Wartość powyżej 1,0 oznacza zapas godzin w zleceniach, a wartość poniżej 1,0 oznacza niedoszacowanie względem realnie wykonanej pracy.
-                        </p>
+                    <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="max-w-3xl">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Trend relacji</h4>
+                          <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Trend relacji i marży godzinowej</h3>
+                          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                            Schodkowe linie pokazują narastająco godziny zleceń i logów, a osobna linia marży godzinowej pokazuje, czy bufor między nimi rośnie, czy maleje w czasie. Im wyżej nad zerem przebiega marża, tym większy zapas godzin w zleceniach.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className={`inline-flex rounded-2xl px-4 py-3 text-sm font-bold ${burnUpTrendBadgeTone}`}>
+                            {burnUpTrendRatio !== null ? `Bieżąca relacja: ${burnUpTrendRatio.toFixed(2)}` : 'Brak danych trendu'}
+                          </div>
+                          <div className="rounded-2xl bg-white px-4 py-3 text-sm shadow-sm dark:bg-gray-900/80">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Zmiana marży w zakresie</p>
+                            <p className={`mt-1 text-base font-black ${burnUpMarginChangeTone}`}>
+                              {burnUpMarginChange !== null ? `${burnUpMarginChange > 0 ? '+' : ''}${formatOrderHours(burnUpMarginChange)} h` : 'brak'}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{burnUpMarginDirectionLabel}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div className={`inline-flex rounded-2xl px-4 py-3 text-sm font-bold ${burnUpTrendBadgeTone}`}>
-                        {burnUpTrendRatio !== null ? `Bieżąca relacja: ${burnUpTrendRatio.toFixed(2)}` : 'Brak danych trendu'}
-                      </div>
-                    </div>
 
-                    <div className="mt-6 h-[320px] min-w-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart
-                          data={visibleBurnUpTrendData}
+                      <div className="mt-6 h-[360px] min-w-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart
+                            data={visibleBurnUpTrendData}
                           margin={{ top: 16, right: 24, left: 8, bottom: 12 }}
                           onMouseDown={handleBurnUpMouseDown}
                           onMouseMove={handleBurnUpMouseMove}
                           onMouseUp={handleBurnUpMouseUp}
                         >
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
-                          <XAxis
-                            dataKey="date"
-                            minTickGap={28}
+                            <XAxis
+                              dataKey="date"
+                              minTickGap={28}
                             axisLine={false}
                             tickLine={false}
                             tickFormatter={(value) => {
                               const date = new Date(`${value}T00:00:00`);
                               return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
-                            }}
-                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
-                          />
-                          <YAxis
-                            axisLine={false}
-                            tickLine={false}
-                            width={56}
-                            domain={burnUpTrendDomain}
-                            tick={{ fill: '#64748b', fontSize: 11 }}
-                            tickFormatter={(value) => `${Number(value).toFixed(1)}x`}
-                          />
-                          <Tooltip
-                            formatter={(value: number | string | undefined, name?: string) => {
-                              const numericValue = Number(value);
-                              return [Number.isFinite(numericValue) ? `${numericValue.toFixed(2)}x` : 'brak', name ?? 'Trend'];
-                            }}
-                            labelFormatter={(label) => {
-                              const date = new Date(`${label}T00:00:00`);
-                              return `Data: ${Number.isNaN(date.getTime()) ? label : format(date, 'dd.MM.yyyy')}`;
-                            }}
-                          />
-                          <Legend verticalAlign="top" height={38} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
-                          <Line type="monotone" dataKey="trendRatio" name="Relacja zleceń / logów" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} connectNulls />
-                          <Line type="monotone" dataKey="rollingTrendRatio" name="Trend 30 dni" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="6 4" dot={false} isAnimationActive={false} connectNulls />
-                          <Line type="monotone" dataKey="regressionTrendRatio" name="Kierunek trendu" stroke="#0f172a" strokeWidth={1.5} strokeDasharray="3 3" dot={false} isAnimationActive={false} connectNulls />
-                          <Line type="monotone" dataKey={() => 1} name="Punkt równowagi 1,0" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} legendType="plainline" />
-                          {burnUpSelectionRange && (
-                            <ReferenceArea
-                              x1={burnUpSelectionRange.start}
+                              }}
+                              tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                            />
+                            <YAxis
+                              yAxisId="hours"
+                              axisLine={false}
+                              tickLine={false}
+                              width={56}
+                              tick={{ fill: '#64748b', fontSize: 11 }}
+                              tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                            />
+                            <YAxis
+                              yAxisId="margin"
+                              orientation="right"
+                              axisLine={false}
+                              tickLine={false}
+                              width={72}
+                              domain={burnUpMarginDomain}
+                              tick={{ fill: '#64748b', fontSize: 11 }}
+                              tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                            />
+                            <Tooltip
+                              formatter={(value: number | string | undefined, name?: string) => {
+                                const numericValue = Number(value);
+                                return [Number.isFinite(numericValue) ? `${formatOrderHours(numericValue)} h` : 'brak', name ?? 'Trend'];
+                              }}
+                              labelFormatter={(label) => {
+                                const date = new Date(`${label}T00:00:00`);
+                                return `Data: ${Number.isNaN(date.getTime()) ? label : format(date, 'dd.MM.yyyy')}`;
+                              }}
+                            />
+                            <Legend verticalAlign="top" height={38} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                            <Area yAxisId="hours" dataKey="favorableBase" stackId="trendPlanBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                            <Area yAxisId="hours" dataKey="favorableGap" stackId="trendPlanBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.18)" stroke="none" isAnimationActive={false} />
+                            <Area yAxisId="hours" dataKey="overrunBase" stackId="trendActualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                            <Area yAxisId="hours" dataKey="overrunGap" stackId="trendActualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.16)" stroke="none" isAnimationActive={false} />
+                            <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
+                            <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
+                            <ReferenceLine yAxisId="margin" y={0} stroke="#94a3b8" strokeDasharray="4 4" ifOverflow="extendDomain" />
+                            <Line yAxisId="margin" type="monotone" dataKey="deltaHours" name="Marża godzinowa (zlecenia - logi)" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                            {burnUpSelectionRange && (
+                              <ReferenceArea
+                                x1={burnUpSelectionRange.start}
                               x2={burnUpSelectionRange.end}
                               strokeOpacity={0}
                               fill="rgba(79,70,229,0.14)"
@@ -2140,25 +2172,8 @@ const getMaxDate = (dates: Date[]) =>
   dates.reduce((maxDate, currentDate) => (currentDate.getTime() > maxDate.getTime() ? currentDate : maxDate));
 const normalizeDateRange = (start: string, end: string) =>
   start <= end ? { start, end } : { start: end, end: start };
-const getOrderTimelineStartDate = (order: Order) => {
-  const itemDates = order.items
-    .map((item) => parseCalendarDate(item.date))
-    .filter((date): date is Date => Boolean(date));
-  const candidateDates = [
-    parseCalendarDate(order.scheduleFrom),
-    ...itemDates,
-    parseCalendarDate(order.handoverDate),
-    parseCalendarDate(order.acceptanceDate),
-    parseCalendarDate(order.scheduleTo),
-    parseCalendarDate(order.createdAt),
-  ].filter((date): date is Date => Boolean(date));
-
-  if (candidateDates.length === 0) {
-    return null;
-  }
-
-  return getMinDate(candidateDates);
-};
+const getOrderTimelineStartDate = (order: Order) =>
+  parseCalendarDate(order.scheduleFrom);
 const getOrderTimelineEndDate = (order: Order, fallbackEndDate: Date) =>
   parseCalendarDate(order.scheduleTo)
   || parseCalendarDate(order.acceptanceDate)
@@ -2193,11 +2208,10 @@ const buildBurnUpTrendData = ({
   contractEndDate?: string;
 }) => {
   const today = parseCalendarDate(format(new Date(), 'yyyy-MM-dd')) || new Date();
-  const contractEnd = parseCalendarDate(contractEndDate) || today;
   const relevantOrders = orders
     .map((order) => {
       const startDate = getOrderTimelineStartDate(order);
-      const endDate = getOrderTimelineEndDate(order, contractEnd);
+      const endDate = getOrderTimelineEndDate(order, today);
       const totalHours = getOrderHoursTotal(order);
 
       if (!startDate || !endDate || totalHours <= 0) {

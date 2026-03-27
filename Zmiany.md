@@ -193,6 +193,15 @@
   -- Przycisk `Całość` nie pokazuje już pełnej historii danych wykresu; zakres pełny jest teraz wyznaczany przez okres trwania umowy projektu (`dateFrom`–`dateTo`), z bezpiecznym fallbackiem do danych wykresu tylko wtedy, gdy daty umowy są niekompletne.
   -- Połączono wykres `Narastająco: godziny zleceń vs. godziny zalogowane` oraz wykres `Trend: godziny zleceń do godzin zalogowanych` w jedną wspólną kartę `Rozliczeń`, z jednym zestawem filtrów zakresu czasu i dwoma wewnętrznymi panelami analitycznymi.
   -- Podsumowanie relacji i komunikat `Brak danych trendu` korzystają teraz z ostatniego widocznego punktu, który rzeczywiście ma policzony trend, zamiast z końcowego punktu zakresu umowy, który dla przyszłych dni mógł mieć wartości `null`.
+- 2026-03-27 – Schodkowy trend relacji i marży godzinowej
+  -- W sekcji `Rozliczenia` przebudowano wizualizację wykresów: narastające godziny zleceń i logów są teraz rysowane liniami schodkowymi, aby pokazać rzeczywiste, dyskretne przyrosty w czasie.
+  -- Wykres `Trend relacji` pokazuje teraz jednocześnie narastające godziny zleceń, narastające logi z YouTrack oraz linię `Marża godzinowa (zlecenia - logi)` z osią odniesienia `0 h`, dzięki czemu widać, czy bufor godzinowy rośnie czy maleje w wybranym zakresie.
+- 2026-03-27 – Włączenie wszystkich zleceń z datą realizacji od do trendów
+  -- Uproszczono kwalifikację zleceń do wykresów `Narastanie godzin` i `Trend relacji`: oś czasu zlecenia startuje już wyłącznie z pola `Data realizacji od`, bez fallbacku do dat pozycji, przekazania, odbioru ani utworzenia rekordu.
+  -- Oba wykresy biorą teraz pod uwagę wszystkie zlecenia, które mają uzupełnioną co najmniej `Datę realizacji od`; brak pozostałych dat nie wyklucza już zlecenia z analizy.
+- 2026-03-27 – Uwzględnienie pełnych godzin `do rozliczenia` na trendach
+  -- Dla wykresów `Narastanie godzin` i `Trend relacji` zmieniono domyślne domknięcie osi czasu zlecenia bez `Daty realizacji do`, `Daty przekazania` i `Daty odbioru`: zamiast końca umowy projektowej używany jest teraz dzień bieżący.
+  -- Zlecenia z zakontraktowanymi godzinami, które pozostają w statusie `Do rozliczenia`, są dzięki temu w całości uwzględniane na wykresach jako godziny narastające do dnia dzisiejszego.
 
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów
