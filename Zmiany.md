@@ -202,6 +202,15 @@
 - 2026-03-27 – Uwzględnienie pełnych godzin `do rozliczenia` na trendach
   -- Dla wykresów `Narastanie godzin` i `Trend relacji` zmieniono domyślne domknięcie osi czasu zlecenia bez `Daty realizacji do`, `Daty przekazania` i `Daty odbioru`: zamiast końca umowy projektowej używany jest teraz dzień bieżący.
   -- Zlecenia z zakontraktowanymi godzinami, które pozostają w statusie `Do rozliczenia`, są dzięki temu w całości uwzględniane na wykresach jako godziny narastające do dnia dzisiejszego.
+- 2026-03-27 – Zawężenie osi Y do widocznych danych na trendach
+  -- Dla wykresów `Narastanie godzin` i `Trend relacji` domeny osi Y są teraz liczone z aktualnie widocznego zakresu danych, z minimalnym technicznym marginesem zamiast szerokiego zapasu.
+  -- Linie wypełniają większą część wysokości wykresu, a puste obszary bez danych nie zabierają już miejsca i nie osłabiają czytelności trendu.
+- 2026-03-27 – Numery zleceń w tooltipie wykresu narastania
+  -- Rozszerzono dane wykresu `Narastanie godzin` o listę numerów zleceń budujących dzienny przyrost godzin zleceń.
+  -- Po najechaniu na wykres tooltip pokazuje teraz numery zleceń przypisanych do danego dnia i słupka przyrostu, co ułatwia identyfikację źródła wzrostu godzin.
+- 2026-03-27 – Normalizacja niespójnych dat zleceń na wykresach
+  -- Dla wykresów `Narastanie godzin` i `Trend relacji` dodano bezpieczną normalizację rekordów, w których `Data realizacji od` jest późniejsza niż dostępne daty końcowe (`do`, `przekazania`, `odbioru`).
+  -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
 - 2026-03-18 – Stabilizacja statystyk i wykresów

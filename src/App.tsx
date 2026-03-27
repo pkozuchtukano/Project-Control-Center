@@ -944,13 +944,28 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     : burnUpTrendRatio >= 1
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
       : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
-  const burnUpMarginValues = visibleBurnUpTrendData.flatMap((point) => [point.deltaHours, 0]);
+  const burnUpHoursValues = visibleBurnUpTrendData.flatMap((point) => [
+    point.cumulativeEstimate,
+    point.cumulativeActual,
+  ]);
+  const burnUpHoursMin = burnUpHoursValues.length > 0 ? Math.min(...burnUpHoursValues) : 0;
+  const burnUpHoursMax = burnUpHoursValues.length > 0 ? Math.max(...burnUpHoursValues) : 0;
+  const burnUpHoursPadding = burnUpHoursMin === burnUpHoursMax
+    ? Math.max(Math.abs(burnUpHoursMax) * 0.03, 1)
+    : Math.max((burnUpHoursMax - burnUpHoursMin) * 0.04, 0.5);
+  const burnUpHoursDomain: [number, number] = burnUpHoursMin === burnUpHoursMax
+    ? [Math.max(0, burnUpHoursMin - burnUpHoursPadding), burnUpHoursMax + burnUpHoursPadding]
+    : [Math.max(0, burnUpHoursMin - burnUpHoursPadding), burnUpHoursMax + burnUpHoursPadding];
+  const burnUpMarginValues = visibleBurnUpTrendData.map((point) => point.deltaHours);
   const burnUpMarginMin = burnUpMarginValues.length > 0 ? Math.min(...burnUpMarginValues) : 0;
   const burnUpMarginMax = burnUpMarginValues.length > 0 ? Math.max(...burnUpMarginValues) : 0;
-  const burnUpMarginPadding = Math.max(Math.abs(burnUpMarginMin), Math.abs(burnUpMarginMax), 8) * 0.12;
+  const burnUpMarginPadding = burnUpMarginMin === burnUpMarginMax
+    ? Math.max(Math.abs(burnUpMarginMax) * 0.03, 1)
+    : Math.max((burnUpMarginMax - burnUpMarginMin) * 0.04, 0.5);
   const burnUpMarginDomain: [number, number] = burnUpMarginMin === burnUpMarginMax
-    ? [burnUpMarginMin - 8, burnUpMarginMax + 8]
+    ? [burnUpMarginMin - burnUpMarginPadding, burnUpMarginMax + burnUpMarginPadding]
     : [burnUpMarginMin - burnUpMarginPadding, burnUpMarginMax + burnUpMarginPadding];
+  const shouldShowBurnUpMarginZeroLine = burnUpMarginDomain[0] <= 0 && burnUpMarginDomain[1] >= 0;
   const applyFullBurnUpRange = () => {
     setBurnUpRangeMode('full');
     setBurnUpVisibleRange(fullContractBurnUpRange);
@@ -1528,12 +1543,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             yAxisId="hours"
                             axisLine={false}
                             tickLine={false}
+                            domain={burnUpHoursDomain}
                             tick={{ fill: '#64748b', fontSize: 11 }}
                             tickFormatter={(value) => `${Math.round(Number(value))}h`}
                           />
+                          <YAxis yAxisId="increments" hide />
                           <Tooltip content={<BurnUpTrendTooltip />} />
                           <Legend verticalAlign="top" height={42} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
-                          <Bar yAxisId="hours" dataKey="dailyEstimate" name="Przyrost godzin zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
+                          <Bar yAxisId="increments" dataKey="dailyEstimate" name="Przyrost godzin zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
                           <Area yAxisId="hours" dataKey="favorableBase" stackId="planBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
                           <Area yAxisId="hours" dataKey="favorableGap" stackId="planBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.22)" stroke="none" isAnimationActive={false} />
                           <Area yAxisId="hours" dataKey="overrunBase" stackId="actualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
@@ -1603,6 +1620,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               axisLine={false}
                               tickLine={false}
                               width={56}
+                              domain={burnUpHoursDomain}
                               tick={{ fill: '#64748b', fontSize: 11 }}
                               tickFormatter={(value) => `${Math.round(Number(value))}h`}
                             />
@@ -1633,7 +1651,9 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             <Area yAxisId="hours" dataKey="overrunGap" stackId="trendActualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.16)" stroke="none" isAnimationActive={false} />
                             <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
                             <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
-                            <ReferenceLine yAxisId="margin" y={0} stroke="#94a3b8" strokeDasharray="4 4" ifOverflow="extendDomain" />
+                            {shouldShowBurnUpMarginZeroLine && (
+                              <ReferenceLine yAxisId="margin" y={0} stroke="#94a3b8" strokeDasharray="4 4" />
+                            )}
                             <Line yAxisId="margin" type="monotone" dataKey="deltaHours" name="Marża godzinowa (zlecenia - logi)" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
                             {burnUpSelectionRange && (
                               <ReferenceArea
@@ -2172,18 +2192,48 @@ const getMaxDate = (dates: Date[]) =>
   dates.reduce((maxDate, currentDate) => (currentDate.getTime() > maxDate.getTime() ? currentDate : maxDate));
 const normalizeDateRange = (start: string, end: string) =>
   start <= end ? { start, end } : { start: end, end: start };
-const getOrderTimelineStartDate = (order: Order) =>
-  parseCalendarDate(order.scheduleFrom);
 const getOrderTimelineEndDate = (order: Order, fallbackEndDate: Date) =>
   parseCalendarDate(order.scheduleTo)
   || parseCalendarDate(order.acceptanceDate)
   || parseCalendarDate(order.handoverDate)
   || fallbackEndDate;
+const getOrderTimelineRange = (order: Order, fallbackEndDate: Date) => {
+  const scheduleFrom = parseCalendarDate(order.scheduleFrom);
+  const candidateEndDates = [
+    parseCalendarDate(order.scheduleTo),
+    parseCalendarDate(order.acceptanceDate),
+    parseCalendarDate(order.handoverDate),
+  ].filter((date): date is Date => Boolean(date));
+  const fallbackEnd = candidateEndDates[0] || fallbackEndDate;
+  const computedEnd = getOrderTimelineEndDate(order, fallbackEnd);
+
+  if (!scheduleFrom || !computedEnd) {
+    return null;
+  }
+
+  if (scheduleFrom.getTime() <= computedEnd.getTime()) {
+    return {
+      startDate: scheduleFrom,
+      endDate: computedEnd,
+    };
+  }
+
+  const normalizedStartDate = candidateEndDates.length > 0
+    ? getMinDate([...candidateEndDates, scheduleFrom])
+    : scheduleFrom;
+  const normalizedEndDate = getMaxDate([scheduleFrom, computedEnd]);
+
+  return {
+    startDate: normalizedStartDate,
+    endDate: normalizedEndDate,
+  };
+};
 
 type BurnUpTrendPoint = {
   date: string;
   shortLabel: string;
   dailyEstimate: number;
+  dailyEstimateOrderNumbers: string[];
   dailyActual: number;
   cumulativeEstimate: number;
   cumulativeActual: number;
@@ -2210,22 +2260,21 @@ const buildBurnUpTrendData = ({
   const today = parseCalendarDate(format(new Date(), 'yyyy-MM-dd')) || new Date();
   const relevantOrders = orders
     .map((order) => {
-      const startDate = getOrderTimelineStartDate(order);
-      const endDate = getOrderTimelineEndDate(order, today);
+      const timelineRange = getOrderTimelineRange(order, today);
       const totalHours = getOrderHoursTotal(order);
 
-      if (!startDate || !endDate || totalHours <= 0) {
+      if (!timelineRange || totalHours <= 0) {
         return null;
       }
 
-      const normalizedEndDate = endDate.getTime() >= startDate.getTime() ? endDate : startDate;
       return {
-        startDate,
-        endDate: normalizedEndDate,
+        orderNumber: order.orderNumber,
+        startDate: timelineRange.startDate,
+        endDate: timelineRange.endDate,
         totalHours,
       };
     })
-    .filter((order): order is { startDate: Date; endDate: Date; totalHours: number } => Boolean(order));
+    .filter((order): order is { orderNumber: string; startDate: Date; endDate: Date; totalHours: number } => Boolean(order));
 
   const actualEntries = workItems
     .map((item) => ({
@@ -2246,6 +2295,7 @@ const buildBurnUpTrendData = ({
   const startDate = getMinDate(boundaryDates);
   const endDate = getMaxDate([new Date(), ...boundaryDates]);
   const dailyEstimateMap = new Map<string, number>();
+  const dailyEstimateOrderNumbersMap = new Map<string, Set<string>>();
   const dailyActualMap = new Map<string, number>();
 
   relevantOrders.forEach((order) => {
@@ -2254,6 +2304,9 @@ const buildBurnUpTrendData = ({
     for (let offset = 0; offset < durationDays; offset += 1) {
       const dateKey = getDateKey(addDays(order.startDate, offset));
       dailyEstimateMap.set(dateKey, (dailyEstimateMap.get(dateKey) || 0) + dailyEstimate);
+      const existingOrderNumbers = dailyEstimateOrderNumbersMap.get(dateKey) || new Set<string>();
+      existingOrderNumbers.add(order.orderNumber);
+      dailyEstimateOrderNumbersMap.set(dateKey, existingOrderNumbers);
     }
   });
 
@@ -2271,6 +2324,7 @@ const buildBurnUpTrendData = ({
   for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addDays(cursor, 1)) {
     const dateKey = getDateKey(cursor);
     const dailyEstimate = dailyEstimateMap.get(dateKey) || 0;
+    const dailyEstimateOrderNumbers = Array.from(dailyEstimateOrderNumbersMap.get(dateKey) || []).sort((a, b) => a.localeCompare(b, 'pl'));
     const dailyActual = dailyActualMap.get(dateKey) || 0;
     const isAfterToday = cursor.getTime() > today.getTime();
 
@@ -2291,6 +2345,7 @@ const buildBurnUpTrendData = ({
       date: dateKey,
       shortLabel: format(cursor, 'dd.MM'),
       dailyEstimate,
+      dailyEstimateOrderNumbers,
       dailyActual,
       cumulativeEstimate,
       cumulativeActual,
@@ -2367,6 +2422,14 @@ const BurnUpTrendTooltip = ({
           <span className="text-gray-500 dark:text-gray-400">Przyrost zleceń w dniu</span>
           <span className="font-bold text-sky-600 dark:text-sky-300">{formatOrderHours(point.dailyEstimate)} h</span>
         </div>
+        {point.dailyEstimateOrderNumbers.length > 0 && (
+          <div className="rounded-xl bg-sky-50 px-3 py-2 dark:bg-sky-950/30">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">Zlecenia w przyroście</p>
+            <p className="mt-1 text-xs font-semibold leading-5 text-sky-800 dark:text-sky-200">
+              {point.dailyEstimateOrderNumbers.join(', ')}
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4">
           <span className="text-gray-500 dark:text-gray-400">Delta</span>
           <span className={`font-bold ${point.deltaHours >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}`}>
