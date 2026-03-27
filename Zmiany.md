@@ -282,3 +282,7 @@
 - 2026-03-24 – Skondensowana treść wstawek statusu i poprawa polskich znaków
   -- Szablon HTML wstawianych źródeł został uproszczony: zmniejszono odstępy, paddingi i marginesy nagłówków, sekcji, komentarzy oraz cytatów.
   -- Poprawiono także uszkodzone literały tekstowe, dzięki czemu w treści statusu wyświetlają się poprawnie napisy `Powiązania` i `Powiązane podzadania`.
+## Notatki ze spotkań
+- 2026-03-26 – Odświeżanie parametrów daty przy wejściu do notatek
+  -- W module notatek dodano odświeżanie zmiennych szablonu rozpoznawanych jako daty, takich jak `{{data}}`, `{{data+3d}}` i `{{data-1w}}`, już podczas otwierania widoku projektu.
+  -- Po wejściu do zakładki `Notatki` pola dat nie zachowują już poprzednio zapisanej wartości z wcześniejszego dnia, tylko ustawiają się na bieżącą datę wynikającą z tokenu.

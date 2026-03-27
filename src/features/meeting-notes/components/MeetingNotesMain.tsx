@@ -11,6 +11,35 @@ interface MeetingNotesMainProps {
   project: Project;
 }
 
+const extractTemplateVariables = (meetingNoteData: MeetingNoteData) => {
+  const emailTemplate = meetingNoteData.emailTemplate || { to: '', cc: '', subject: '', body: '' };
+  const text = `${meetingNoteData.titleTemplate} ${meetingNoteData.content} ${emailTemplate.to} ${emailTemplate.cc} ${emailTemplate.subject} ${emailTemplate.body}`;
+  const matches = Array.from(text.matchAll(/\{\{([^}]+)\}\}/g));
+  const variables = new Set<string>();
+
+  for (const match of matches) {
+    variables.add(match[1]);
+  }
+
+  return Array.from(variables);
+};
+
+const applyCurrentDateVariables = (meetingNoteData: MeetingNoteData): MeetingNoteData => {
+  const refreshedVariables = { ...(meetingNoteData.variables || {}) };
+
+  extractTemplateVariables(meetingNoteData).forEach((variableName) => {
+    const parsedDate = parseDateVariable(variableName);
+    if (parsedDate) {
+      refreshedVariables[variableName] = parsedDate;
+    }
+  });
+
+  return {
+    ...meetingNoteData,
+    variables: refreshedVariables
+  };
+};
+
 export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
   const [data, setData] = useState<MeetingNoteData>({
     projectId: project.id,
@@ -39,13 +68,13 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
           const savedData = await window.electron.getMeetingNotes(project.id);
           if (savedData) {
             const merged = mergeStakeholders(project.stakeholders || [], savedData.stakeholders || []);
-            setData({
+            setData(applyCurrentDateVariables({
               ...savedData,
               stakeholders: merged
-            });
+            }));
           } else {
             // Initial state from project
-            setData(prev => ({
+            setData(prev => applyCurrentDateVariables({
               ...prev,
               stakeholders: (project.stakeholders || []).map(s => ({ ...s, isPresent: true }))
             }));
@@ -118,15 +147,8 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
 
   // Template Logic
   const detectedVariables = useMemo(() => {
-    const e = data.emailTemplate || { to: '', cc: '', subject: '', body: '' };
-    const text = `${data.titleTemplate} ${data.content} ${e.to} ${e.cc} ${e.subject} ${e.body}`;
-    const matches = Array.from(text.matchAll(/\{\{([^}]+)\}\}/g));
-    const vars = new Set<string>();
-    for (const match of matches) {
-      vars.add(match[1]);
-    }
-    return Array.from(vars);
-  }, [data.titleTemplate, data.content, data.emailTemplate]);
+    return extractTemplateVariables(data);
+  }, [data]);
 
   const updateVariable = (name: string, value: string) => {
     setData(prev => ({
@@ -164,7 +186,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     if (changed) {
       setData(prev => ({ ...prev, variables: newVars }));
     }
-  }, [detectedVariables]);
+  }, [detectedVariables, data.variables]);
 
   // Auto-save logic
   const handleSave = useCallback(async (currentData: MeetingNoteData) => {
@@ -298,7 +320,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const updateEmailTemplate = (updates: any) => {
+  const updateEmailTemplate = (updates: Partial<NonNullable<MeetingNoteData['emailTemplate']>>) => {
     setData(prev => ({
       ...prev,
       emailTemplate: {
