@@ -2315,7 +2315,7 @@ const OrdersRegistryView = () => {
                   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
                   const total = totalHours * selectedProject.rateNetto;
                   return (
-                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                    <tr key={order.id} className={`${getOrderRegistryRowClassName(order)} transition`}>
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">{order.orderNumber}</td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
                         <div className="flex items-center gap-2">
@@ -2454,6 +2454,34 @@ const parseCalendarDate = (value?: string) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 const getDateKey = (date: Date) => format(date, 'yyyy-MM-dd');
+const getComparableDateKey = (value?: string) => {
+  const date = parseCalendarDate(value);
+  return date ? getDateKey(date) : null;
+};
+const getOrderRegistryRowClassName = (order: Order) => {
+  const todayKey = getDateKey(new Date());
+  const scheduleToKey = getComparableDateKey(order.scheduleTo);
+  const handoverDateKey = getComparableDateKey(order.handoverDate);
+  const acceptanceDateKey = getComparableDateKey(order.acceptanceDate);
+
+  if (handoverDateKey === todayKey && !acceptanceDateKey) {
+    return 'bg-amber-50/80 dark:bg-amber-950/20 hover:bg-amber-100/80 dark:hover:bg-amber-950/30';
+  }
+
+  if (handoverDateKey && handoverDateKey < todayKey && !acceptanceDateKey) {
+    return 'bg-sky-50/80 dark:bg-sky-950/20 hover:bg-sky-100/80 dark:hover:bg-sky-950/30';
+  }
+
+  if (scheduleToKey && scheduleToKey < todayKey && !handoverDateKey) {
+    return 'bg-red-50/80 dark:bg-red-950/20 hover:bg-red-100/80 dark:hover:bg-red-950/30';
+  }
+
+  if (scheduleToKey && scheduleToKey > todayKey) {
+    return 'bg-emerald-50/80 dark:bg-emerald-950/20 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/30';
+  }
+
+  return 'hover:bg-gray-50 dark:hover:bg-gray-800/50';
+};
 const addDays = (date: Date, days: number) => {
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + days);

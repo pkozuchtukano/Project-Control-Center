@@ -78,6 +78,9 @@
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
 
 ## Rejestr zleceń
+- 2026-03-30 – Kolorowe oznaczenia statusu terminów w rejestrze zleceń
+  -- Dodano automatyczne kolorowanie całych wierszy w tabeli `Rejestr Zleceń` na podstawie pól `Data do`, `Data przekazania` i `Data odbioru`.
+  -- Wiersze są teraz oznaczane na zielono dla zleceń z terminem końcowym po dzisiejszej dacie, na pomarańczowo dla zleceń przekazanych dzisiaj bez odbioru, na czerwono dla zleceń po terminie bez przekazania oraz na niebiesko dla zleceń przekazanych wcześniej bez odbioru.
 - 2026-03-18 – Zapamiętywanie pozycji w tabeli wyceny kolejnego zlecenia
   -- Formularz zlecenia zapisuje per projekt w bazie SQLite nazwy pozycji z tabeli `Wycena (Produkty zlecenia)` oraz ostatnią używaną datę wykonania.
   -- Przy tworzeniu kolejnego zlecenia nazwy pozycji są podstawiane automatycznie z bazy, godziny startują od `0`, a data wykonania jest ustawiana na ostatnią zapamiętaną datę z poprzedniego zestawienia.
