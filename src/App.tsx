@@ -1064,6 +1064,120 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const pendingGrossValue = pendingSettlementHours * selectedProject.rateBrutto;
   const remainingNetValue = remainingInContract * selectedProject.rateNetto;
   const remainingGrossValue = remainingInContract * selectedProject.rateBrutto;
+  const workedOrdersNetValue = youtrackTotal * selectedProject.rateNetto;
+  const workedOrdersGrossValue = youtrackTotal * selectedProject.rateBrutto;
+  const maintenanceContractGrossValue = maintenanceEntries.reduce((sum, entry) => sum + (entry.grossAmount || 0), 0);
+  const maintenanceWorkedNetValue = maintenanceWorkedHours * selectedProject.rateNetto;
+  const maintenanceWorkedGrossValue = maintenanceWorkedHours * selectedProject.rateBrutto;
+  const maintenanceDifferenceNetValue = maintenanceDifferenceHours * selectedProject.rateNetto;
+  const maintenanceDifferenceGrossValue = maintenanceDifferenceHours * selectedProject.rateBrutto;
+  const totalProjectAvailableNetValue = contractedNetValue + maintenanceContractNetValue;
+  const totalProjectAvailableGrossValue = contractedGrossValue + maintenanceContractGrossValue;
+  const totalProjectWorkedNetValue = totalProjectWorkedHours * selectedProject.rateNetto;
+  const totalProjectWorkedGrossValue = totalProjectWorkedHours * selectedProject.rateBrutto;
+  const totalProjectDifferenceNetValue = totalProjectDifferenceHours * selectedProject.rateNetto;
+  const totalProjectDifferenceGrossValue = totalProjectDifferenceHours * selectedProject.rateBrutto;
+  const maintenanceDashboardSections = selectedProject.hasMaintenance ? [
+    {
+      key: 'orders',
+      title: 'Zlecenia',
+      subtitle: 'Część projektowa rozliczana standardowo przez rejestr zleceń.',
+      headerValue: `${formatOrderHours(totalHoursUsed)} h`,
+      headerNote: `${formatOrderHours(settledHours)} h rozliczone · ${formatOrderHours(contractedHours)} h zakontraktowane`,
+      tone: 'border-sky-100 bg-sky-50/70 dark:border-sky-900/40 dark:bg-sky-950/20',
+      accent: 'text-sky-700 dark:text-sky-300',
+      titleClassName: 'text-sky-800 dark:text-sky-200',
+      items: [
+        {
+          label: 'Wykorzystane',
+          hours: totalHoursUsed,
+          note: 'Rozliczone + zakontraktowane w zleceniach.',
+          amountNet: contractedNetValue,
+          amountGross: contractedGrossValue,
+        },
+        {
+          label: 'Przepracowane',
+          hours: youtrackTotal,
+          note: 'Logi YouTrack bez pozycji oznaczonych jako utrzymanie.',
+          amountNet: workedOrdersNetValue,
+          amountGross: workedOrdersGrossValue,
+        },
+        {
+          label: hoursDifference >= 0 ? 'Różnica' : 'Nadwyżka pracy',
+          hours: Math.abs(hoursDifference),
+          note: hoursDifferenceLabel,
+          amountNet: Math.abs(hoursDifferenceNet),
+          amountGross: Math.abs(hoursDifferenceGross),
+        },
+      ],
+    },
+    {
+      key: 'maintenance',
+      title: 'Utrzymanie',
+      subtitle: 'Abonament i praca rozliczana w ramach wpisów utrzymaniowych.',
+      headerValue: `${formatOrderHours(maintenanceAvailableHours)} h`,
+      headerNote: `${maintenanceEntries.length} mies. · ${formatOrderHours(maintenanceWorkedHours)} h wykorzystane`,
+      tone: 'border-fuchsia-100 bg-fuchsia-50/70 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20',
+      accent: 'text-fuchsia-700 dark:text-fuchsia-300',
+      titleClassName: 'text-fuchsia-800 dark:text-fuchsia-200',
+      items: [
+        {
+          label: 'Do wykorzystania',
+          hours: maintenanceAvailableHours,
+          note: 'Pula godzin wynikająca z wpisów utrzymania.',
+          amountNet: maintenanceContractNetValue,
+          amountGross: maintenanceContractGrossValue,
+        },
+        {
+          label: 'Przepracowane',
+          hours: maintenanceWorkedHours,
+          note: 'Logi oznaczone w rejestrze pracy jako utrzymanie.',
+          amountNet: maintenanceWorkedNetValue,
+          amountGross: maintenanceWorkedGrossValue,
+        },
+        {
+          label: maintenanceDifferenceHours >= 0 ? 'Pozostało' : 'Przekroczono',
+          hours: Math.abs(maintenanceDifferenceHours),
+          note: maintenanceDifferenceHours >= 0 ? 'Godziny, które można jeszcze wykorzystać w ramach utrzymania.' : 'Praca przekroczyła obecną pulę utrzymania.',
+          amountNet: Math.abs(maintenanceDifferenceNetValue),
+          amountGross: Math.abs(maintenanceDifferenceGrossValue),
+        },
+      ],
+    },
+    {
+      key: 'total',
+      title: 'Razem',
+      subtitle: 'Łączne ujęcie zleceń i utrzymania dla całego projektu.',
+      headerValue: `${formatOrderHours(totalProjectAvailableHours)} h`,
+      headerNote: `${formatOrderHours(totalProjectWorkedHours)} h przepracowane łącznie`,
+      tone: 'border-emerald-100 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+      accent: 'text-emerald-700 dark:text-emerald-300',
+      titleClassName: 'text-emerald-800 dark:text-emerald-200',
+      items: [
+        {
+          label: 'Do wykorzystania',
+          hours: totalProjectAvailableHours,
+          note: 'Zlecenia + pula wynikająca z utrzymania.',
+          amountNet: totalProjectAvailableNetValue,
+          amountGross: totalProjectAvailableGrossValue,
+        },
+        {
+          label: 'Przepracowane',
+          hours: totalProjectWorkedHours,
+          note: 'Całość pracy zleceń i utrzymania według YouTrack.',
+          amountNet: totalProjectWorkedNetValue,
+          amountGross: totalProjectWorkedGrossValue,
+        },
+        {
+          label: totalProjectDifferenceHours >= 0 ? 'Pozostało' : 'Przekroczono',
+          hours: Math.abs(totalProjectDifferenceHours),
+          note: totalProjectDifferenceHours >= 0 ? 'Zapas godzin na poziomie całego projektu.' : 'Łączna praca przekroczyła dostępną pulę projektu.',
+          amountNet: Math.abs(totalProjectDifferenceNetValue),
+          amountGross: Math.abs(totalProjectDifferenceGrossValue),
+        },
+      ],
+    },
+  ] : [];
   const settlementRows = [
     {
       label: 'Umowa max godzin',
@@ -1740,6 +1854,58 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             Maksymalny możliwy zysk przy obecnej historii: {Number.isFinite(bestCaseFinalProfitPct) ? `${bestCaseFinalProfitPct.toFixed(1)}%` : '∞'}.
                           </p>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedProject.hasMaintenance && (
+                    <div className="col-span-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-gray-900 dark:text-white text-sm uppercase tracking-wider">Podział projektu</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Zlecenia, utrzymanie i łączny obraz projektu.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                        {maintenanceDashboardSections.map((section) => (
+                          <div key={section.key} className={`rounded-2xl border p-5 ${section.tone}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className={`inline-flex rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-black uppercase tracking-[0.26em] shadow-sm dark:border-white/10 dark:bg-white/10 ${section.titleClassName}`}>{section.title}</p>
+                                <h5 className="mt-2 text-xl font-black text-gray-900 dark:text-white">{section.headerValue}</h5>
+                                <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{section.headerNote}</p>
+                              </div>
+                              <div className={`mt-1 h-3 w-3 rounded-full shadow-sm ${section.accent === 'text-sky-700 dark:text-sky-300' ? 'bg-sky-500' : section.accent === 'text-fuchsia-700 dark:text-fuchsia-300' ? 'bg-fuchsia-500' : 'bg-emerald-500'}`}></div>
+                            </div>
+                            <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{section.subtitle}</p>
+
+                            <div className="mt-5 space-y-3">
+                              {section.items.map((item) => (
+                                <div key={`${section.key}-${item.label}`} className="rounded-xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm dark:border-white/10 dark:bg-gray-900/30">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{item.label}</p>
+                                    <p className="text-lg font-black text-gray-900 dark:text-white">
+                                      {formatOrderHours(item.hours)} <span className="text-sm font-medium text-gray-500 dark:text-gray-400">h</span>
+                                    </p>
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{item.note}</p>
+                                  {isFinancialDataVisible && (
+                                    <div className="mt-3 grid grid-cols-2 gap-3">
+                                      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Netto</p>
+                                        <p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{formatCurrencyValue(item.amountNet)} zł</p>
+                                      </div>
+                                      <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Brutto</p>
+                                        <p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{formatCurrencyValue(item.amountGross)} zł</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

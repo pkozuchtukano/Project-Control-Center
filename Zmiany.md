@@ -360,3 +360,9 @@
 - 2026-04-01 – Doprecyzowanie tytułu karty rozliczenia godzin
   -- Zmieniono nagłówek karty dashboardu z `Wykorzystane vs Przepracowane` na `Zlecenia vs Praca`, aby lepiej odpowiadał zakresowi prezentowanych danych.
   -- Projekty z aktywnym utrzymaniem pokazują teraz wariant tytułu `Utrzymanie, Zlecenia vs Praca`, który sygnalizuje rozszerzony podział rozliczenia.
+- 2026-04-01 – Sekcje `Zlecenia`, `Utrzymanie` i `Razem` w informacjach dashboardu
+  -- W bloku `Wszystkie informacje` dla projektów z utrzymaniem dodano trzy osobne kafle podsumowujące część zleceń, część utrzymaniową oraz łączny obraz projektu.
+  -- Każda sekcja pokazuje podstawowe wartości godzinowe, a po użyciu ikony dolara ujawnia także odpowiadające im kwoty netto i brutto, zgodnie z dotychczasowym mechanizmem ukrywania danych finansowych.
+- 2026-04-01 – Mocniejsze wyróżnienie nagłówków sekcji projektu
+  -- W kaflach `Zlecenia`, `Utrzymanie` i `Razem` wzmocniono wizualnie same nagłówki sekcji, aby były czytelniejsze na pierwszy rzut oka.
+  -- Usunięto dodatkowe etykiety `Sekcja`, dzięki czemu nagłówek kafla jest prostszy i mniej zaśmiecony wizualnie.
