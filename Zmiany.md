@@ -348,3 +348,15 @@
 - 2026-04-01 – Oznaczanie zadań w rejestrze pracy jako utrzymanie
   -- W `Rejestrze pracy` dla projektów z aktywnym utrzymaniem dodano checkbox `Utrzymanie` przy zadaniu YouTrack, zapisywany per `issueId`.
   -- Flaga jest przechowywana w tabeli SQLite `issue_maintenance_flags`, dzięki czemu oznaczenie pozostaje zachowane także po kolejnych synchronizacjach logów czasu.
+- 2026-04-01 – Rozdzielenie zleceń i utrzymania w karcie wykorzystania godzin
+  -- W dashboardzie projektów z aktywnym utrzymaniem karta `Wykorzystane vs Przepracowane` liczy teraz główną część porównania tylko dla zleceń, czyli bez logów oznaczonych jako `Utrzymanie`.
+  -- Pod głównym porównaniem dodano osobne paski dla puli utrzymania (`do wykorzystania` i `wykorzystano`) oraz dla całego projektu (`zlecenia + utrzymanie`), gdzie pula utrzymania jest przeliczana z sumy kwot netto utrzymania i stawki godzinowej netto projektu.
+- 2026-04-01 – Liczba godzin obok procentów w karcie wykorzystania
+  -- W karcie `Wykorzystane vs Przepracowane` ujednolicono prezentację udziałów kategorii tak, aby przy każdym pokazywanym procencie była również widoczna odpowiadająca mu liczba godzin.
+  -- Zmiana objęła legendy kategorii, podpowiedzi segmentów oraz główny badge różnicy godzin, dzięki czemu dashboard pokazuje jednocześnie udział procentowy i wartość bezwzględną.
+- 2026-04-01 – Usunięcie tekstu ze środka pasków kategorii
+  -- W segmentowanych słupkach karty `Wykorzystane vs Przepracowane` usunięto napisy renderowane bezpośrednio na paskach.
+  -- Informacje procentowe i godzinowe pozostają dostępne w legendach pod wykresami oraz w podpowiedziach po najechaniu, co upraszcza widok i poprawia czytelność.
+- 2026-04-01 – Doprecyzowanie tytułu karty rozliczenia godzin
+  -- Zmieniono nagłówek karty dashboardu z `Wykorzystane vs Przepracowane` na `Zlecenia vs Praca`, aby lepiej odpowiadał zakresowi prezentowanych danych.
+  -- Projekty z aktywnym utrzymaniem pokazują teraz wariant tytułu `Utrzymanie, Zlecenia vs Praca`, który sygnalizuje rozszerzony podział rozliczenia.

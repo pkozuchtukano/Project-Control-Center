@@ -832,6 +832,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
+  const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'maintenance' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
@@ -871,6 +872,36 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     setBurnUpSelectionEnd(null);
   }, [selectedProject?.id]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMaintenanceEntries = async () => {
+      if (!selectedProject?.hasMaintenance || typeof window === 'undefined' || !window.electron || typeof window.electron.getMaintenanceEntries !== 'function') {
+        if (isMounted) {
+          setMaintenanceEntries([]);
+        }
+        return;
+      }
+
+      try {
+        const result = await window.electron.getMaintenanceEntries(selectedProject.id);
+        if (isMounted) {
+          setMaintenanceEntries(result);
+        }
+      } catch {
+        if (isMounted) {
+          setMaintenanceEntries([]);
+        }
+      }
+    };
+
+    void loadMaintenanceEntries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedProject?.id, selectedProject?.hasMaintenance]);
+
   if (!selectedProject || !calculations) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/50 dark:bg-gray-900/50">
@@ -904,14 +935,22 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     { name: 'Max', Godziny: selectedProject.maxHours, fill: '#818cf8' }
   ];
 
-  // Calculate YouTrack hours by category
+  const nonMaintenanceWorkItems = workItems.filter((item) => !item.isMaintenance);
+  const maintenanceWorkItems = workItems.filter((item) => item.isMaintenance);
+
+  // Calculate YouTrack hours by category for order work only
   const youtrackHours: Record<string, number> = {
     'Programistyczne': 0,
     'Obsługa projektu': 0,
     'Inne': 0
   };
+  const maintenanceHoursByCategory: Record<string, number> = {
+    'Programistyczne': 0,
+    'Obsługa projektu': 0,
+    'Inne': 0
+  };
   
-  workItems?.forEach(item => {
+  nonMaintenanceWorkItems.forEach(item => {
     const cat = item.category || 'Inne';
     if (youtrackHours[cat] !== undefined) {
       youtrackHours[cat] += (item.minutes || 0) / 60;
@@ -920,8 +959,37 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     }
   });
 
+  maintenanceWorkItems.forEach(item => {
+    const cat = item.category || 'Inne';
+    if (maintenanceHoursByCategory[cat] !== undefined) {
+      maintenanceHoursByCategory[cat] += (item.minutes || 0) / 60;
+    } else {
+      maintenanceHoursByCategory[cat] = (item.minutes || 0) / 60;
+    }
+  });
+
   const youtrackTotal = youtrackHours['Programistyczne'] + youtrackHours['Obsługa projektu'] + youtrackHours['Inne'];
-  const maxScale = Math.max(selectedProject.maxHours || 1, totalHoursUsed, youtrackTotal);
+  const maintenanceWorkedHours = maintenanceWorkItems.reduce((sum, item) => sum + (item.minutes || 0) / 60, 0);
+  const totalProjectHoursByCategory: Record<string, number> = {
+    'Programistyczne': youtrackHours['Programistyczne'] + maintenanceHoursByCategory['Programistyczne'],
+    'Obsługa projektu': youtrackHours['Obsługa projektu'] + maintenanceHoursByCategory['Obsługa projektu'],
+    'Inne': youtrackHours['Inne'] + maintenanceHoursByCategory['Inne'],
+  };
+  const maintenanceContractNetValue = maintenanceEntries.reduce((sum, entry) => sum + (entry.netAmount || 0), 0);
+  const maintenanceAvailableHours = selectedProject.rateNetto > 0
+    ? maintenanceContractNetValue / selectedProject.rateNetto
+    : 0;
+  const totalProjectAvailableHours = totalHoursUsed + maintenanceAvailableHours;
+  const totalProjectWorkedHours = youtrackTotal + maintenanceWorkedHours;
+  const maxScale = Math.max(
+    selectedProject.maxHours || 1,
+    totalHoursUsed,
+    youtrackTotal,
+    maintenanceAvailableHours,
+    maintenanceWorkedHours,
+    totalProjectAvailableHours,
+    totalProjectWorkedHours,
+  );
   const hoursDifference = totalHoursUsed - youtrackTotal;
   const hoursDifferencePct = totalHoursUsed > 0
     ? (hoursDifference / totalHoursUsed) * 100
@@ -938,6 +1006,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       : 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
   const hoursDifferenceNet = hoursDifference * selectedProject.rateNetto;
   const hoursDifferenceGross = hoursDifference * selectedProject.rateBrutto;
+  const maintenanceDifferenceHours = maintenanceAvailableHours - maintenanceWorkedHours;
+  const totalProjectDifferenceHours = totalProjectAvailableHours - totalProjectWorkedHours;
   const targetProfitPct = selectedProject.targetProfitPct ?? 20;
   const targetProfitRatio = targetProfitPct / 100;
   const historicalUsedHours = totalHoursUsed;
@@ -972,6 +1042,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const progPct = youtrackTotal > 0 ? (youtrackHours['Programistyczne'] / youtrackTotal) * 100 : 0;
   const obsPct = youtrackTotal > 0 ? (youtrackHours['Obsługa projektu'] / youtrackTotal) * 100 : 0;
   const inPct = youtrackTotal > 0 ? (youtrackHours['Inne'] / youtrackTotal) * 100 : 0;
+  const maintenanceProgPct = maintenanceWorkedHours > 0 ? (maintenanceHoursByCategory['Programistyczne'] / maintenanceWorkedHours) * 100 : 0;
+  const maintenanceObsPct = maintenanceWorkedHours > 0 ? (maintenanceHoursByCategory['Obsługa projektu'] / maintenanceWorkedHours) * 100 : 0;
+  const maintenanceInPct = maintenanceWorkedHours > 0 ? (maintenanceHoursByCategory['Inne'] / maintenanceWorkedHours) * 100 : 0;
+  const totalProjectProgPct = totalProjectWorkedHours > 0 ? (totalProjectHoursByCategory['Programistyczne'] / totalProjectWorkedHours) * 100 : 0;
+  const totalProjectObsPct = totalProjectWorkedHours > 0 ? (totalProjectHoursByCategory['Obsługa projektu'] / totalProjectWorkedHours) * 100 : 0;
+  const totalProjectInPct = totalProjectWorkedHours > 0 ? (totalProjectHoursByCategory['Inne'] / totalProjectWorkedHours) * 100 : 0;
+  const formatHoursWithUnit = (hours: number) => `${formatOrderHours(hours)} h`;
+  const formatShareLabel = (hours: number, pct: number) => `${pct.toFixed(0)}% · ${formatHoursWithUnit(hours)}`;
   const pendingSettlementHours = contractedHours;
   const contractedTotalHours = totalHoursUsed;
   const remainingInContract = selectedProject.maxHours - contractedTotalHours;
@@ -1440,16 +1518,18 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                       <Activity size={20} className="text-indigo-500" />
-                      <h3 className="font-bold sm:text-lg">Wykorzystane vs Przepracowane</h3>
+                      <h3 className="font-bold sm:text-lg">
+                        {selectedProject.hasMaintenance ? 'Utrzymanie, Zlecenia vs Praca' : 'Zlecenia vs Praca'}
+                      </h3>
                     </div>
                     <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
-                      {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifferenceLabel}
+                      {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifference > 0 ? '+' : ''}{hoursDifference.toFixed(1)} h · {hoursDifferenceLabel}
                     </div>
                   </div>
                   <div className="space-y-5">
                     <div>
                       <div className="flex justify-between text-sm mb-1.5 font-medium">
-                        <span className="text-gray-600 dark:text-gray-400">Wykorzystane (Rozliczone + Zakontraktowane)</span>
+                        <span className="text-gray-600 dark:text-gray-400">Wykorzystane w zleceniach (Rozliczone + Zakontraktowane)</span>
                         <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
                       </div>
                       <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -1459,27 +1539,103 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
                     <div>
                       <div className="flex justify-between text-sm mb-1.5 font-medium">
-                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w YouTrack</span>
+                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack bez utrzymania)</span>
                         <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
                       </div>
                       <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
-                        <div className="bg-violet-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${youtrackHours['Programistyczne'].toFixed(1)}h (${progPct.toFixed(0)}%)`}>
-                          {progPct > 5 ? `${progPct.toFixed(0)}%` : ''}
-                        </div>
-                        <div className="bg-emerald-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${youtrackHours['Obsługa projektu'].toFixed(1)}h (${obsPct.toFixed(0)}%)`}>
-                          {obsPct > 5 ? `${obsPct.toFixed(0)}%` : ''}
-                        </div>
-                        <div className="bg-amber-500 h-full transition-all duration-1000 flex items-center justify-center text-[10px] font-bold text-white leading-none" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${youtrackHours['Inne'].toFixed(1)}h (${inPct.toFixed(0)}%)`}>
-                          {inPct > 5 ? `${inPct.toFixed(0)}%` : ''}
-                        </div>
+                        <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(youtrackHours['Programistyczne'], progPct)}`}></div>
+                        <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(youtrackHours['Obsługa projektu'], obsPct)}`}></div>
+                        <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(youtrackHours['Inne'], inPct)}`}></div>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
-                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne {progPct > 0 && `(${progPct.toFixed(0)}%)`}</div>
-                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu {obsPct > 0 && `(${obsPct.toFixed(0)}%)`}</div>
-                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne {inPct > 0 && `(${inPct.toFixed(0)}%)`}</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(youtrackHours['Programistyczne'], progPct)})</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(youtrackHours['Obsługa projektu'], obsPct)})</div>
+                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(youtrackHours['Inne'], inPct)})</div>
                       </div>
                     </div>
+
+                    {selectedProject.hasMaintenance && (
+                      <>
+                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Rozliczenie utrzymania</p>
+                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${maintenanceDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                              {maintenanceDifferenceHours >= 0 ? 'Pozostało ' : 'Przekroczono '}
+                              {Math.abs(maintenanceDifferenceHours).toFixed(1)} h
+                            </span>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex justify-between text-sm mb-1.5 font-medium">
+                                <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w utrzymaniu</span>
+                                <span className="text-gray-900 dark:text-white font-bold">{maintenanceAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                <div className="bg-fuchsia-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (maintenanceAvailableHours / maxScale) * 100)}%` }}></div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between text-sm mb-1.5 font-medium">
+                                <span className="text-gray-600 dark:text-gray-400">Wykorzystano w utrzymaniu</span>
+                                <span className="text-gray-900 dark:text-white font-bold">{maintenanceWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                                <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(maintenanceHoursByCategory['Programistyczne'], maintenanceProgPct)}`}></div>
+                                <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(maintenanceHoursByCategory['Obsługa projektu'], maintenanceObsPct)}`}></div>
+                                <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(maintenanceHoursByCategory['Inne'], maintenanceInPct)}`}></div>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(maintenanceHoursByCategory['Programistyczne'], maintenanceProgPct)})</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(maintenanceHoursByCategory['Obsługa projektu'], maintenanceObsPct)})</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(maintenanceHoursByCategory['Inne'], maintenanceInPct)})</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Cały projekt: zlecenia + utrzymanie</p>
+                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${totalProjectDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                              {totalProjectDifferenceHours >= 0 ? 'Pozostało ' : 'Przekroczono '}
+                              {Math.abs(totalProjectDifferenceHours).toFixed(1)} h
+                            </span>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex justify-between text-sm mb-1.5 font-medium">
+                                <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w całym projekcie</span>
+                                <span className="text-gray-900 dark:text-white font-bold">{totalProjectAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                                <div className="bg-sky-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalProjectAvailableHours / maxScale) * 100)}%` }}></div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="flex justify-between text-sm mb-1.5 font-medium">
+                                <span className="text-gray-600 dark:text-gray-400">Wykorzystano w całym projekcie</span>
+                                <span className="text-gray-900 dark:text-white font-bold">{totalProjectWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              </div>
+                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                                <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(totalProjectHoursByCategory['Programistyczne'], totalProjectProgPct)}`}></div>
+                                <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(totalProjectHoursByCategory['Obsługa projektu'], totalProjectObsPct)}`}></div>
+                                <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(totalProjectHoursByCategory['Inne'], totalProjectInPct)}`}></div>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(totalProjectHoursByCategory['Programistyczne'], totalProjectProgPct)})</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(totalProjectHoursByCategory['Obsługa projektu'], totalProjectObsPct)})</div>
+                                <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(totalProjectHoursByCategory['Inne'], totalProjectInPct)})</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
