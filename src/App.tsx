@@ -2465,19 +2465,19 @@ const getOrderRegistryRowClassName = (order: Order) => {
   const acceptanceDateKey = getComparableDateKey(order.acceptanceDate);
 
   if (handoverDateKey === todayKey && !acceptanceDateKey) {
-    return 'bg-amber-50/80 dark:bg-amber-950/20 hover:bg-amber-100/80 dark:hover:bg-amber-950/30';
+    return 'bg-amber-300/70 dark:bg-amber-700/45 hover:bg-amber-300 dark:hover:bg-amber-700/60';
   }
 
   if (handoverDateKey && handoverDateKey < todayKey && !acceptanceDateKey) {
-    return 'bg-sky-50/80 dark:bg-sky-950/20 hover:bg-sky-100/80 dark:hover:bg-sky-950/30';
+    return 'bg-sky-300/70 dark:bg-sky-700/45 hover:bg-sky-300 dark:hover:bg-sky-700/60';
   }
 
   if (scheduleToKey && scheduleToKey < todayKey && !handoverDateKey) {
-    return 'bg-red-50/80 dark:bg-red-950/20 hover:bg-red-100/80 dark:hover:bg-red-950/30';
+    return 'bg-red-300/70 dark:bg-red-700/45 hover:bg-red-300 dark:hover:bg-red-700/60';
   }
 
   if (scheduleToKey && scheduleToKey > todayKey) {
-    return 'bg-emerald-50/80 dark:bg-emerald-950/20 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/30';
+    return 'bg-emerald-300/70 dark:bg-emerald-700/45 hover:bg-emerald-300 dark:hover:bg-emerald-700/60';
   }
 
   return 'hover:bg-gray-50 dark:hover:bg-gray-800/50';

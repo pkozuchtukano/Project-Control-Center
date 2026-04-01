@@ -78,6 +78,9 @@
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
 
 ## Rejestr zleceń
+- 2026-03-30 – Wzmocnienie kontrastu kolorów statusu zleceń
+  -- Zwiększono nasycenie teł i stanów hover dla kolorowych wierszy w tabeli `Rejestr Zleceń`.
+  -- Statusy terminów są teraz bardziej widoczne w widoku jasnym i ciemnym, bez zmiany logiki przypisywania kolorów.
 - 2026-03-30 – Kolorowe oznaczenia statusu terminów w rejestrze zleceń
   -- Dodano automatyczne kolorowanie całych wierszy w tabeli `Rejestr Zleceń` na podstawie pól `Data do`, `Data przekazania` i `Data odbioru`.
   -- Wiersze są teraz oznaczane na zielono dla zleceń z terminem końcowym po dzisiejszej dacie, na pomarańczowo dla zleceń przekazanych dzisiaj bez odbioru, na czerwono dla zleceń po terminie bez przekazania oraz na niebiesko dla zleceń przekazanych wcześniej bez odbioru.
