@@ -113,7 +113,6 @@ import {
 import { buildExecutiveSettlementReportData } from './features/reports/services/settlementExecutiveReportService';
 import { exportExecutiveSettlementReportToExcel } from './features/reports/services/settlementExecutiveExcelExportService';
 import { exportExecutiveSettlementReportToWord } from './features/reports/services/settlementExecutiveWordExportService';
-import { buildSettlementSuccessMetrics } from './features/reports/services/settlementSuccessMetricsService';
 
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -1224,39 +1223,6 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         : 'text-red-700 dark:text-red-300',
     },
   ];
-  const successMetricStatusClass = (status: 'good' | 'warning' | 'risk' | 'neutral') => {
-    switch (status) {
-      case 'good':
-        return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300';
-      case 'warning':
-        return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300';
-      case 'risk':
-        return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300';
-      default:
-        return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-300';
-    }
-  };
-  const formatSuccessMetricValue = (
-    value: number | null | undefined,
-    unit: 'hoursPerDay' | 'currencyPerDay' | 'index' | 'ratio' | 'percent'
-  ) => {
-    if (value === null || value === undefined || Number.isNaN(value)) {
-      return 'brak danych';
-    }
-
-    switch (unit) {
-      case 'hoursPerDay':
-        return `${formatOrderHours(value)} h/dzień`;
-      case 'currencyPerDay':
-        return `${formatCurrencyValue(value)} zł/dzień`;
-      case 'percent':
-        return `${value.toFixed(1)}%`;
-      case 'index':
-      case 'ratio':
-      default:
-        return value.toFixed(2);
-    }
-  };
   const burnUpTrendData = buildBurnUpTrendData({
     orders: orders.filter((order) => !isCancelledOrder(order)),
     workItems,
@@ -1304,11 +1270,8 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const filteredOrders = orders.filter((order) =>
     doesOrderOverlapRange(order, effectiveBurnUpRange, new Date())
   );
-  const filteredOrdersForAnalysis = orders
-    .map((order) => getFilteredOrderForRange(order, effectiveBurnUpRange, new Date()))
-    .filter((order): order is Order => Boolean(order));
-  const filteredSettledOrders = filteredOrdersForAnalysis.filter(isSettledOrder);
-  const filteredPendingSettlementOrders = filteredOrdersForAnalysis.filter(isPendingSettlementOrder);
+  const filteredSettledOrders = filteredOrders.filter(isSettledOrder);
+  const filteredPendingSettlementOrders = filteredOrders.filter(isPendingSettlementOrder);
   const filteredCancelledOrders = filteredOrders.filter(isCancelledOrder);
   const filteredSettledHours = filteredSettledOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const filteredPendingSettlementHours = filteredPendingSettlementOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
@@ -1403,12 +1366,6 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   )
     .map(([name, hours]) => ({ name, hours }))
     .sort((a, b) => b.hours - a.hours);
-  const successMetrics = buildSettlementSuccessMetrics({
-    project: selectedProject,
-    orders: filteredOrdersForAnalysis,
-    workItems: filteredWorkItems,
-    analysisRange: effectiveBurnUpRange,
-  });
   const visibleBurnUpTrendData = (() => {
     if (!effectiveBurnUpRange) return burnUpTrendData;
     return burnUpTrendData.filter((point) => point.date >= effectiveBurnUpRange.start && point.date <= effectiveBurnUpRange.end);
@@ -1987,6 +1944,61 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-300">
                     Widok pokazuje realne wykorzystanie godzin z umowy: całość zakontraktowaną w zleceniach, część już rozliczoną oraz pozycje, które nadal czekają na protokół odbioru.
                   </p>
+                  <div className="mt-5 flex flex-col gap-3">
+                    <div className="flex flex-wrap items-end gap-3">
+                      <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-200/90 dark:text-emerald-100/80">
+                        Zakres od
+                        <input
+                          type="date"
+                          value={effectiveBurnUpRange?.start || ''}
+                          onChange={(event) => {
+                            const nextStart = event.target.value;
+                            if (!nextStart) return;
+                            setBurnUpRangeMode('custom');
+                            setBurnUpVisibleRange(normalizeDateRange(nextStart, effectiveBurnUpRange?.end || nextStart));
+                          }}
+                          className="mt-2 w-full rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-emerald-500 dark:border-white/10 dark:bg-slate-900/70 dark:text-gray-200"
+                        />
+                      </label>
+                      <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-emerald-200/90 dark:text-emerald-100/80">
+                        Zakres do
+                        <input
+                          type="date"
+                          value={effectiveBurnUpRange?.end || ''}
+                          onChange={(event) => {
+                            const nextEnd = event.target.value;
+                            if (!nextEnd) return;
+                            setBurnUpRangeMode('custom');
+                            setBurnUpVisibleRange(normalizeDateRange(effectiveBurnUpRange?.start || nextEnd, nextEnd));
+                          }}
+                          className="mt-2 w-full rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-emerald-500 dark:border-white/10 dark:bg-slate-900/70 dark:text-gray-200"
+                        />
+                      </label>
+                      <button
+                        onClick={applyLastHalfYearBurnUpRange}
+                        className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
+                          burnUpRangeMode === 'halfYear'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'border border-white/70 bg-white/90 text-gray-600 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        Ostatnie pół roku
+                      </button>
+                      <button
+                        onClick={applyFullBurnUpRange}
+                        className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
+                          burnUpRangeMode === 'full'
+                            ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                            : 'border border-white/70 bg-white/90 text-gray-600 hover:bg-white dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        Całość
+                      </button>
+                    </div>
+                    <p className="text-xs font-medium text-emerald-100/80 dark:text-emerald-100/70">
+                      Filtry ustawiają wspólny zakres dat dla zestawień i wykresów widocznych niżej w zakładce `Rozliczenia`.
+                    </p>
+                  </div>
                 </div>
                 <div className="flex min-w-[220px] flex-col gap-3 lg:items-end">
                   <div className="flex items-center gap-3">
@@ -2061,240 +2073,13 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
               ))}
             </div>
 
-            <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-4xl">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
-                    <Activity size={14} />
-                    Metryka sukcesu
-                  </div>
-                  <h3 className="mt-3 text-2xl font-black text-gray-900 dark:text-white">KPI rentowności oparte na godzinach zleceń i logach YouTrack</h3>
-                  <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                    Karta przelicza tempo spalania budżetu, prognozę marży i udział pracy naprawczej w relacji do pracy rozwojowej. Wartości bazują na tych samych godzinach zleceń i logów, które zasilają pozostałe elementy zakładki Rozliczenia.
-                  </p>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <div className="flex min-w-[320px] flex-wrap items-end gap-3 lg:justify-end">
-                    <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      Zakres od
-                      <input
-                        type="date"
-                        value={effectiveBurnUpRange?.start || ''}
-                        onChange={(event) => {
-                          const nextStart = event.target.value;
-                          if (!nextStart) return;
-                          setBurnUpRangeMode('custom');
-                          setBurnUpVisibleRange(normalizeDateRange(nextStart, effectiveBurnUpRange?.end || nextStart));
-                        }}
-                        className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                      />
-                    </label>
-                    <label className="min-w-[150px] flex-1 text-xs font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      Zakres do
-                      <input
-                        type="date"
-                        value={effectiveBurnUpRange?.end || ''}
-                        onChange={(event) => {
-                          const nextEnd = event.target.value;
-                          if (!nextEnd) return;
-                          setBurnUpRangeMode('custom');
-                          setBurnUpVisibleRange(normalizeDateRange(effectiveBurnUpRange?.start || nextEnd, nextEnd));
-                        }}
-                        className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 outline-none transition focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                      />
-                    </label>
-                    <button
-                      onClick={applyLastHalfYearBurnUpRange}
-                      className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
-                        burnUpRangeMode === 'halfYear'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      Ostatnie pół roku
-                    </button>
-                    <button
-                      onClick={applyFullBurnUpRange}
-                      className={`h-[42px] rounded-xl px-4 text-sm font-semibold transition ${
-                        burnUpRangeMode === 'full'
-                          ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
-                          : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
-                      }`}
-                    >
-                      Całość
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/40">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Dni projektu</p>
-                    <p className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">{successMetrics.elapsedDays}</p>
-                  </div>
-                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-500 dark:text-indigo-300">Prognoza logów</p>
-                    <p className="mt-1 text-xl font-black text-indigo-700 dark:text-indigo-200">{formatOrderHours(successMetrics.forecastWorkedHours ?? 0)}h</p>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-500 dark:text-emerald-300">Cel marży</p>
-                    <p className="mt-1 text-xl font-black text-emerald-700 dark:text-emerald-200">{successMetrics.targetMarginPct.toFixed(0)}%</p>
-                  </div>
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-500 dark:text-amber-300">Relacja zlecenia / logi</p>
-                    <p className="mt-1 text-xl font-black text-amber-700 dark:text-amber-200">
-                      {successMetrics.kpis.find((kpi) => kpi.key === 'order-to-log-ratio')?.value?.toFixed(2) || 'brak'}
-                    </p>
-                  </div>
-                </div>
-                </div>
-              </div>
-
-              <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-                <div className="space-y-6">
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex items-center gap-2">
-                      <FileText size={16} className="text-slate-500" />
-                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">ANALIZA</h4>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {successMetrics.analysis.map((entry, index) => (
-                        <div key={`analysis-${index}`} className="rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm leading-6 text-gray-600 shadow-sm dark:border-white/10 dark:bg-gray-950/40 dark:text-gray-300">
-                          {entry}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex items-center gap-2">
-                      <Code size={16} className="text-indigo-500" />
-                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">WSKAŹNIKI</h4>
-                    </div>
-                    <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
-                      {successMetrics.kpis.map((kpi) => (
-                        <div key={kpi.key} className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-gray-950/40">
-                          <div className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${successMetricStatusClass(kpi.status)}`}>
-                            {kpi.shortLabel}
-                          </div>
-                          <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">{kpi.label}</p>
-                          <p className="mt-2 text-2xl font-black text-gray-900 dark:text-white">
-                              {isFinancialDataVisible && kpi.key === 'hourly-burn-rate'
-                              ? `${formatCurrencyValue(successMetrics.dailyBurnRateGross ?? 0)} zł/dzień`
-                              : formatSuccessMetricValue(kpi.value, kpi.unit)}
-                          </p>
-                          {isFinancialDataVisible && kpi.key === 'hourly-burn-rate' && (
-                            <p className="mt-1 text-xs font-semibold text-gray-400 dark:text-gray-500">
-                              ({formatCurrencyValue(successMetrics.dailyBurnRateNet ?? 0)} zł netto / dzień)
-                            </p>
-                          )}
-                          {!isFinancialDataVisible && kpi.auxiliaryLabel && (
-                            <p className="mt-1 text-xs font-semibold text-gray-400 dark:text-gray-500">
-                              {kpi.auxiliaryLabel}: {formatSuccessMetricValue(kpi.auxiliaryValue, kpi.auxiliaryUnit || 'index')}
-                            </p>
-                          )}
-                          <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{kpi.definition}</p>
-                          <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{kpi.detail}</p>
-                          <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-5 ${successMetricStatusClass(kpi.status)}`}>
-                            {kpi.interpretation}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex items-center gap-2">
-                      <BarChartIcon size={16} className="text-emerald-500" />
-                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">WIZUALIZACJA</h4>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                      Porównanie pokazuje, ile godzin już zakontraktowano, ile realnie zalogowano i gdzie kończy się bezpieczny limit kosztowy dla marży {successMetrics.targetMarginPct.toFixed(0)}%.
-                    </p>
-                    <div className="mt-5 h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={successMetrics.chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.4} />
-                          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} />
-                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value))}h`} />
-                          <Tooltip
-                            formatter={(value: number | string | undefined) => {
-                              const numericValue = Number(value);
-                              if (isFinancialDataVisible) {
-                                return [
-                                  `${formatCurrencyValue(numericValue * selectedProject.rateBrutto)} zł brutto (${formatCurrencyValue(numericValue * selectedProject.rateNetto)} zł netto)`,
-                                  'Wartość',
-                                ];
-                              }
-
-                              return [`${formatOrderHours(numericValue)} h`, 'Godziny'];
-                            }}
-                          />
-                          <Bar dataKey="value" radius={[10, 10, 0, 0]} maxBarSize={56}>
-                            {successMetrics.chartData.map((entry, index) => (
-                              <Cell
-                                key={`${entry.label}-${index}`}
-                                fill={['#4f46e5', '#10b981', '#0f766e', '#f59e0b'][index] || '#64748b'}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="mt-4 grid grid-cols-1 gap-3">
-                      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Prognozowana marża</p>
-                        <p className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">
-                          {successMetrics.projectedMarginPct !== null ? `${successMetrics.projectedMarginPct.toFixed(1)}%` : 'brak danych'}
-                        </p>
-                        {isFinancialDataVisible && successMetrics.projectedProfitGross !== null && (
-                          <p className="mt-1 text-xs font-semibold text-gray-400 dark:text-gray-500">
-                            {formatCurrencyValue(successMetrics.projectedProfitGross)} zł brutto ({formatCurrencyValue(successMetrics.projectedProfitNet ?? 0)} zł netto)
-                          </p>
-                        )}
-                      </div>
-                      <div className={`rounded-2xl border px-4 py-3 ${
-                        (successMetrics.projectedMarginPct ?? 0) >= successMetrics.targetMarginPct
-                          ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-900/20'
-                          : 'border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/20'
-                      }`}>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Status celu</p>
-                        <p className={`mt-1 text-base font-black ${
-                          (successMetrics.projectedMarginPct ?? 0) >= successMetrics.targetMarginPct
-                            ? 'text-emerald-700 dark:text-emerald-300'
-                            : 'text-red-700 dark:text-red-300'
-                        }`}>
-                          {(successMetrics.projectedMarginPct ?? 0) >= successMetrics.targetMarginPct
-                            ? 'Cel marżowy jest domykany'
-                            : 'Cel marżowy jest zagrożony'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={16} className="text-amber-500" />
-                      <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">STRATEGIA MARŻY</h4>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {successMetrics.marginStrategy.map((entry, index) => (
-                        <div key={`strategy-${index}`} className="rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm leading-6 text-gray-600 shadow-sm dark:border-white/10 dark:bg-gray-950/40 dark:text-gray-300">
-                          {entry}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-3xl">
                   <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wykres zleceń, logów i trendu</h4>
                   <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Narastająco: godziny zleceń vs. godziny zalogowane</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                    Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół. Zakres analizy jest wspólny dla całej części analitycznej poniżej i ustawisz go w karcie `Metryka sukcesu`.
+                    Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół. Zakres analizy jest wspólny dla całej części rozliczeniowej poniżej i ustawisz go w filtrach powyżej.
                   </p>
                 </div>
               </div>

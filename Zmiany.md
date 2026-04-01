@@ -366,3 +366,9 @@
 - 2026-04-01 – Mocniejsze wyróżnienie nagłówków sekcji projektu
   -- W kaflach `Zlecenia`, `Utrzymanie` i `Razem` wzmocniono wizualnie same nagłówki sekcji, aby były czytelniejsze na pierwszy rzut oka.
   -- Usunięto dodatkowe etykiety `Sekcja`, dzięki czemu nagłówek kafla jest prostszy i mniej zaśmiecony wizualnie.
+- 2026-04-01 – Uproszczenie zakładki `Rozliczenia`
+  -- Z zakładki `Rozliczenia` usunięto blok `Metryka sukcesu` wraz z sekcjami `ANALIZA`, `WIZUALIZACJA`, `WSKAŹNIKI` i `STRATEGIA MARŻY`.
+  -- W miejscu tej karty pozostawiono wyłącznie filtry zakresu dat, a powiązana logika obliczeń KPI i prognoz marży została wycofana z komponentu.
+- 2026-04-01 – Przeniesienie filtrów do górnej karty `Rozliczenia projektu`
+  -- Filtry zakresu dat `Zakres od`, `Zakres do`, `Ostatnie pół roku` i `Całość` zostały przeniesione z osobnej karty do górnego banera zakładki `Rozliczenia`.
+  -- Widok jest dzięki temu krótszy i od razu łączy opis sekcji, akcje oraz sterowanie zakresem danych w jednym miejscu.
