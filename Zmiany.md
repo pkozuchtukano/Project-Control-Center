@@ -372,3 +372,24 @@
 - 2026-04-01 – Przeniesienie filtrów do górnej karty `Rozliczenia projektu`
   -- Filtry zakresu dat `Zakres od`, `Zakres do`, `Ostatnie pół roku` i `Całość` zostały przeniesione z osobnej karty do górnego banera zakładki `Rozliczenia`.
   -- Widok jest dzięki temu krótszy i od razu łączy opis sekcji, akcje oraz sterowanie zakresem danych w jednym miejscu.
+- 2026-04-01 – Podział `Rozliczeń` na zlecenia i utrzymanie
+  -- W projektach z aktywnym utrzymaniem zakładka `Rozliczenia` rozdziela teraz dane filtrowane na część zleceniową, utrzymaniową i łączną, zamiast mieszać wszystkie logi w jedną pulę.
+  -- Dodano osobne informacje o zadaniach utrzymaniowych, zadaniach zleceniowych oraz godzinach z utrzymania, a porównania zleceń i wykres narastający opierają się teraz wyłącznie na logach niezaznaczonych jako `Utrzymanie`.
+- 2026-04-01 – Zwijanie sekcji w zakładce `Rozliczenia`
+  -- W głównych blokach zakładki `Rozliczenia` dodano możliwość zwijania i rozwijania poszczególnych sekcji bez utraty danych i ustawionych filtrów.
+  -- Funkcja obejmuje podsumowania, podział zlecenia/utrzymanie, wykresy oraz boczne sekcje analityczne, co ułatwia skupienie się na wybranym fragmencie widoku.
+- 2026-04-01 – Wykres narastania godzin respektuje filtry dat w `Rozliczeniach`
+  -- Wykres `Narastanie godzin` został wyrównany do dokładnego zakresu wybranego w filtrach `Zakres od` i `Zakres do`, zamiast opierać oś czasu wyłącznie na granicach dostępnych danych.
+  -- Po zmianie zarówno zestawienia, jak i wykres pokazują ten sam przedział dat, dzięki czemu analiza w zakładce `Rozliczenia` jest spójna z aktywnym filtrem.
+- 2026-04-01 – Sekcja utrzymania w `Podstawowym rozliczeniu`
+  -- W projektach z aktywnym utrzymaniem blok `Podstawowe rozliczenie` został rozszerzony o osobną sekcję pokazującą pulę godzin utrzymania, przepracowane godziny utrzymaniowe oraz pozostałą lub przekroczoną pulę w wybranym zakresie dat.
+  -- Sekcja korzysta z tych samych filtrów `Rozliczeń` co pozostałe zestawienia i ujawnia kwoty netto oraz brutto przez dotychczasowy przełącznik z ikoną dolara.
+- 2026-04-01 – Różnica godzin w podziale `Zlecenia / Utrzymanie / Razem`
+  -- W sekcji podziału `Zlecenia / Utrzymanie / Razem` dodano dodatkowy wiersz pokazujący różnicę godzin lub przekroczenie godzin dla każdej z trzech części rozliczenia.
+  -- Wyliczenia korzystają z tych samych danych przefiltrowanych po zakresie dat i ujawniają odpowiadające im kwoty netto oraz brutto po włączeniu widoczności danych finansowych.
+- 2026-04-01 – Ujemna różnica godzin pokazuje wartość ze znakiem i czerwone wyróżnienie
+  -- W rozliczeniach usunięto prezentowanie ujemnych różnic godzin jako wartości bezwzględnych w sekcjach związanych z utrzymaniem oraz w podziale `Zlecenia / Utrzymanie / Razem`.
+  -- Gdy różnica jest ujemna, interfejs pokazuje teraz rzeczywistą wartość z minusem i wyróżnia ją na czerwono, co wyraźniej sygnalizuje przekroczenie puli godzin.
+- 2026-04-01 – Osobne wykresy trendu dla zleceń i utrzymania w `Rozliczeniach`
+  -- Zmieniono nazwę karty wykresu na `Wykres zleceń, logów i trendu w ramach zleceń`, aby jednoznacznie wskazywała, że dotyczy wyłącznie części zleceniowej projektu.
+  -- W projektach z aktywnym utrzymaniem dodano drugą, równoległą kartę wykresową dla utrzymania, która pokazuje narastanie godzin wynikających z wpisów utrzymania oraz logów oznaczonych jako utrzymaniowe.

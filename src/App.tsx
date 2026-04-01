@@ -839,6 +839,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const [burnUpVisibleRange, setBurnUpVisibleRange] = useState<{ start: string; end: string } | null>(null);
   const [burnUpSelectionStart, setBurnUpSelectionStart] = useState<string | null>(null);
   const [burnUpSelectionEnd, setBurnUpSelectionEnd] = useState<string | null>(null);
+  const [collapsedSettlementSections, setCollapsedSettlementSections] = useState<Record<string, boolean>>({});
   const { orders } = useOrders(selectedProject?.id);
 
   useEffect(() => {
@@ -1225,7 +1226,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   ];
   const burnUpTrendData = buildBurnUpTrendData({
     orders: orders.filter((order) => !isCancelledOrder(order)),
-    workItems,
+    workItems: selectedProject.hasMaintenance ? nonMaintenanceWorkItems : workItems,
   });
   const lastBurnUpDate = burnUpTrendData.length > 0 ? burnUpTrendData[burnUpTrendData.length - 1].date : null;
   const todayDateKey = getDateKey(new Date());
@@ -1267,6 +1268,11 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const filteredWorkItems = workItems.filter((item) =>
     doesDateOverlapRange(item.date.split('T')[0], effectiveBurnUpRange)
   );
+  const filteredOrderWorkItems = filteredWorkItems.filter((item) => !item.isMaintenance);
+  const filteredMaintenanceWorkItems = filteredWorkItems.filter((item) => item.isMaintenance);
+  const filteredMaintenanceEntries = maintenanceEntries.filter((entry) =>
+    doesMaintenanceEntryOverlapRange(entry.month, effectiveBurnUpRange)
+  );
   const filteredOrders = orders.filter((order) =>
     doesOrderOverlapRange(order, effectiveBurnUpRange, new Date())
   );
@@ -1281,7 +1287,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     'Obsługa projektu': 0,
     'Inne': 0,
   };
-  filteredWorkItems.forEach((item) => {
+  const filteredMaintenanceYoutrackHours: Record<string, number> = {
+    'Programistyczne': 0,
+    'Obsługa projektu': 0,
+    'Inne': 0,
+  };
+  filteredOrderWorkItems.forEach((item) => {
     const category = item.category || 'Inne';
     if (filteredYoutrackHours[category] !== undefined) {
       filteredYoutrackHours[category] += (item.minutes || 0) / 60;
@@ -1289,11 +1300,39 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       filteredYoutrackHours[category] = (item.minutes || 0) / 60;
     }
   });
+  filteredMaintenanceWorkItems.forEach((item) => {
+    const category = item.category || 'Inne';
+    if (filteredMaintenanceYoutrackHours[category] !== undefined) {
+      filteredMaintenanceYoutrackHours[category] += (item.minutes || 0) / 60;
+    } else {
+      filteredMaintenanceYoutrackHours[category] = (item.minutes || 0) / 60;
+    }
+  });
   const filteredYoutrackTotal = Object.values(filteredYoutrackHours).reduce((sum, value) => sum + value, 0);
+  const filteredMaintenanceYoutrackTotal = Object.values(filteredMaintenanceYoutrackHours).reduce((sum, value) => sum + value, 0);
   const filteredWorkedNetValue = filteredYoutrackTotal * selectedProject.rateNetto;
   const filteredWorkedGrossValue = filteredYoutrackTotal * selectedProject.rateBrutto;
   const filteredContractedNetValue = filteredContractedTotalHours * selectedProject.rateNetto;
   const filteredContractedGrossValue = filteredContractedTotalHours * selectedProject.rateBrutto;
+  const filteredMaintenanceContractNetValue = filteredMaintenanceEntries.reduce((sum, entry) => sum + (entry.netAmount || 0), 0);
+  const filteredMaintenanceContractGrossValue = filteredMaintenanceEntries.reduce((sum, entry) => sum + (entry.grossAmount || 0), 0);
+  const filteredMaintenanceAvailableHours = selectedProject.rateNetto > 0
+    ? filteredMaintenanceContractNetValue / selectedProject.rateNetto
+    : 0;
+  const filteredMaintenanceWorkedNetValue = filteredMaintenanceYoutrackTotal * selectedProject.rateNetto;
+  const filteredMaintenanceWorkedGrossValue = filteredMaintenanceYoutrackTotal * selectedProject.rateBrutto;
+  const filteredMaintenanceDifferenceHours = filteredMaintenanceAvailableHours - filteredMaintenanceYoutrackTotal;
+  const filteredMaintenanceDifferenceNetValue = filteredMaintenanceDifferenceHours * selectedProject.rateNetto;
+  const filteredMaintenanceDifferenceGrossValue = filteredMaintenanceDifferenceHours * selectedProject.rateBrutto;
+  const filteredTotalWorkedHours = filteredYoutrackTotal + filteredMaintenanceYoutrackTotal;
+  const filteredTotalWorkedNetValue = filteredWorkedNetValue + filteredMaintenanceWorkedNetValue;
+  const filteredTotalWorkedGrossValue = filteredWorkedGrossValue + filteredMaintenanceWorkedGrossValue;
+  const filteredTotalAvailableHours = filteredContractedTotalHours + filteredMaintenanceAvailableHours;
+  const filteredTotalAvailableNetValue = filteredContractedNetValue + filteredMaintenanceContractNetValue;
+  const filteredTotalAvailableGrossValue = filteredContractedGrossValue + filteredMaintenanceContractGrossValue;
+  const filteredTotalDifferenceHours = filteredTotalAvailableHours - filteredTotalWorkedHours;
+  const filteredTotalDifferenceNetValue = filteredTotalAvailableNetValue - filteredTotalWorkedNetValue;
+  const filteredTotalDifferenceGrossValue = filteredTotalAvailableGrossValue - filteredTotalWorkedGrossValue;
   const filteredPendingNetValue = filteredPendingSettlementHours * selectedProject.rateNetto;
   const filteredPendingGrossValue = filteredPendingSettlementHours * selectedProject.rateBrutto;
   const filteredSettledNetValue = filteredSettledHours * selectedProject.rateNetto;
@@ -1304,6 +1343,9 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const filteredProfitabilityPct = filteredContractedTotalHours > 0
     ? (filteredProfitabilityHours / filteredContractedTotalHours) * 100
     : 0;
+  const filteredOrderTaskCount = new Set(filteredOrderWorkItems.map((item) => item.issueId).filter(Boolean)).size;
+  const filteredMaintenanceTaskCount = new Set(filteredMaintenanceWorkItems.map((item) => item.issueId).filter(Boolean)).size;
+  const filteredTotalTaskCount = new Set(filteredWorkItems.map((item) => item.issueId).filter(Boolean)).size;
   const filteredInProgressOrders = filteredPendingSettlementOrders.filter(isInProgressPendingOrder);
   const filteredHandedOverPendingOrders = filteredPendingSettlementOrders.filter(isHandedOverPendingOrder);
   const filteredSettlementRows = [
@@ -1334,6 +1376,36 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     },
     settlementRows[4],
   ];
+  const filteredMaintenanceSettlementRows = selectedProject.hasMaintenance ? [
+    {
+      label: 'Pula utrzymania',
+      value: formatOrderHours(filteredMaintenanceAvailableHours),
+      amountNet: filteredMaintenanceContractNetValue,
+      amountGross: filteredMaintenanceContractGrossValue,
+      note: `${filteredMaintenanceEntries.length} mies. utrzymania w wybranym zakresie dat.`,
+      tone: 'text-fuchsia-700 dark:text-fuchsia-300',
+    },
+    {
+      label: 'Przepracowane w utrzymaniu',
+      value: formatOrderHours(filteredMaintenanceYoutrackTotal),
+      amountNet: filteredMaintenanceWorkedNetValue,
+      amountGross: filteredMaintenanceWorkedGrossValue,
+      note: 'Logi YouTrack oznaczone jako utrzymanie w wybranym zakresie dat.',
+      tone: 'text-violet-700 dark:text-violet-300',
+    },
+    {
+      label: filteredMaintenanceDifferenceHours >= 0 ? 'Pozostało w utrzymaniu' : 'Przekroczono utrzymanie',
+      value: formatOrderHours(filteredMaintenanceDifferenceHours),
+      amountNet: filteredMaintenanceDifferenceNetValue,
+      amountGross: filteredMaintenanceDifferenceGrossValue,
+      note: filteredMaintenanceDifferenceHours >= 0
+        ? 'Pozostała pula godzin wynikająca z wpisów utrzymania w wybranym zakresie.'
+        : 'Praca utrzymaniowa przekroczyła pulę wynikającą z wpisów utrzymania w wybranym zakresie.',
+      tone: filteredMaintenanceDifferenceHours >= 0
+        ? 'text-emerald-700 dark:text-emerald-300'
+        : 'text-red-700 dark:text-red-300',
+    },
+  ] : [];
   const filteredProfitabilityRows = [
     {
       label: 'Zakontraktowane godziny',
@@ -1343,20 +1415,157 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       tone: 'text-indigo-700 dark:text-indigo-300',
     },
     {
-      label: 'Rzeczywiście przepracowane',
+      label: 'Przepracowane w zleceniach',
       value: formatOrderHours(filteredYoutrackTotal),
-      note: 'Logi YouTrack z wybranego zakresu dat.',
+      note: 'Logi YouTrack z wybranego zakresu dat, bez zadań oznaczonych jako utrzymanie.',
       financialNote: `Netto ${formatCurrencyValue(filteredWorkedNetValue)} zł, brutto ${formatCurrencyValue(filteredWorkedGrossValue)} zł.`,
       tone: 'text-violet-700 dark:text-violet-300',
     },
     {
       label: 'Zysk na różnicy godzin',
       value: formatOrderHours(filteredProfitabilityHours),
-      note: 'Różnica zakontraktowane - przepracowane dla wybranego zakresu.',
+      note: 'Różnica zakontraktowane - przepracowane dla części zleceniowej w wybranym zakresie.',
       financialNote: `Netto ${formatCurrencyValue(filteredProfitabilityNetValue)} zł, brutto ${formatCurrencyValue(filteredProfitabilityGrossValue)} zł.`,
       tone: filteredProfitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
     },
   ];
+  const filteredSettlementBreakdownSections = selectedProject.hasMaintenance ? [
+    {
+      key: 'orders',
+      title: 'Zlecenia',
+      tone: 'border-sky-100 bg-sky-50/70 dark:border-sky-900/40 dark:bg-sky-950/20',
+      items: [
+        {
+          label: 'Zadania w ramach zleceń',
+          value: filteredOrderTaskCount.toString(),
+          suffix: 'zad.',
+          note: 'Unikalne zadania YouTrack bez oznaczenia utrzymania.',
+          amountNet: undefined,
+          amountGross: undefined,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Godziny zakontraktowane',
+          value: formatOrderHours(filteredContractedTotalHours),
+          suffix: 'h',
+          note: 'Zlecenia nachodzące na wybrany zakres dat.',
+          amountNet: filteredContractedNetValue,
+          amountGross: filteredContractedGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Godziny przepracowane',
+          value: formatOrderHours(filteredYoutrackTotal),
+          suffix: 'h',
+          note: 'Logi wykonane w ramach zadań zleceniowych.',
+          amountNet: filteredWorkedNetValue,
+          amountGross: filteredWorkedGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: filteredProfitabilityHours >= 0 ? 'Różnica godzin' : 'Przekroczenie godzin',
+          value: formatOrderHours(filteredProfitabilityHours),
+          suffix: 'h',
+          note: filteredProfitabilityHours >= 0
+            ? 'Pozostała różnica między pulą zleceń a przepracowanymi godzinami zleceniowymi.'
+            : 'Praca zleceniowa przekroczyła zakontraktowaną pulę godzin w wybranym zakresie.',
+          amountNet: filteredProfitabilityNetValue,
+          amountGross: filteredProfitabilityGrossValue,
+          tone: filteredProfitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+        },
+      ],
+    },
+    {
+      key: 'maintenance',
+      title: 'Utrzymanie',
+      tone: 'border-fuchsia-100 bg-fuchsia-50/70 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20',
+      items: [
+        {
+          label: 'Zadania utrzymaniowe',
+          value: filteredMaintenanceTaskCount.toString(),
+          suffix: 'zad.',
+          note: 'Unikalne zadania YouTrack oznaczone jako utrzymanie.',
+          amountNet: undefined,
+          amountGross: undefined,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Godziny z utrzymania',
+          value: formatOrderHours(filteredMaintenanceAvailableHours),
+          suffix: 'h',
+          note: `${filteredMaintenanceEntries.length} mies. utrzymania w wybranym zakresie.`,
+          amountNet: filteredMaintenanceContractNetValue,
+          amountGross: filteredMaintenanceContractGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Przepracowane w utrzymaniu',
+          value: formatOrderHours(filteredMaintenanceYoutrackTotal),
+          suffix: 'h',
+          note: 'Logi wykonane w ramach zadań utrzymaniowych.',
+          amountNet: filteredMaintenanceWorkedNetValue,
+          amountGross: filteredMaintenanceWorkedGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: filteredMaintenanceDifferenceHours >= 0 ? 'Różnica godzin' : 'Przekroczenie godzin',
+          value: formatOrderHours(filteredMaintenanceDifferenceHours),
+          suffix: 'h',
+          note: filteredMaintenanceDifferenceHours >= 0
+            ? 'Pozostała pula godzin z utrzymania po odjęciu pracy utrzymaniowej.'
+            : 'Praca utrzymaniowa przekroczyła pulę godzin wynikającą z wpisów utrzymania.',
+          amountNet: filteredMaintenanceDifferenceNetValue,
+          amountGross: filteredMaintenanceDifferenceGrossValue,
+          tone: filteredMaintenanceDifferenceHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+        },
+      ],
+    },
+    {
+      key: 'total',
+      title: 'Razem',
+      tone: 'border-emerald-100 bg-emerald-50/70 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+      items: [
+        {
+          label: 'Zadania łącznie',
+          value: filteredTotalTaskCount.toString(),
+          suffix: 'zad.',
+          note: 'Wszystkie unikalne zadania widoczne w wybranym zakresie.',
+          amountNet: undefined,
+          amountGross: undefined,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Godziny do wykorzystania',
+          value: formatOrderHours(filteredTotalAvailableHours),
+          suffix: 'h',
+          note: 'Zlecenia + pula godzin wynikająca z wpisów utrzymania.',
+          amountNet: filteredTotalAvailableNetValue,
+          amountGross: filteredTotalAvailableGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: 'Godziny przepracowane',
+          value: formatOrderHours(filteredTotalWorkedHours),
+          suffix: 'h',
+          note: 'Łączna praca wykonana w zleceniach i utrzymaniu.',
+          amountNet: filteredTotalWorkedNetValue,
+          amountGross: filteredTotalWorkedGrossValue,
+          tone: 'text-gray-900 dark:text-white',
+        },
+        {
+          label: filteredTotalDifferenceHours >= 0 ? 'Różnica godzin' : 'Przekroczenie godzin',
+          value: formatOrderHours(filteredTotalDifferenceHours),
+          suffix: 'h',
+          note: filteredTotalDifferenceHours >= 0
+            ? 'Pozostała łączna pula godzin dla zleceń i utrzymania w wybranym zakresie.'
+            : 'Łączna praca przekroczyła dostępną pulę zleceń i utrzymania w wybranym zakresie.',
+          amountNet: filteredTotalDifferenceNetValue,
+          amountGross: filteredTotalDifferenceGrossValue,
+          tone: filteredTotalDifferenceHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+        },
+      ],
+    },
+  ] : [];
   const filteredAuthorHours = Object.entries(
     filteredWorkItems.reduce<Record<string, number>>((acc, item) => {
       const authorName = item.authorName || 'Nieznana osoba';
@@ -1368,65 +1577,53 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     .sort((a, b) => b.hours - a.hours);
   const visibleBurnUpTrendData = (() => {
     if (!effectiveBurnUpRange) return burnUpTrendData;
-    return burnUpTrendData.filter((point) => point.date >= effectiveBurnUpRange.start && point.date <= effectiveBurnUpRange.end);
+    return alignBurnUpTrendDataToRange(
+      burnUpTrendData,
+      effectiveBurnUpRange,
+    );
   })();
-  const firstVisibleBurnUpPoint = visibleBurnUpTrendData[0] || null;
-  const latestVisibleBurnUpPoint = visibleBurnUpTrendData[visibleBurnUpTrendData.length - 1] || null;
-  const latestVisibleTrendPoint = [...visibleBurnUpTrendData]
-    .reverse()
-    .find((point) => point.trendRatio !== null || point.rollingTrendRatio !== null) || null;
-  const burnUpEstimateCeiling = latestVisibleBurnUpPoint?.cumulativeEstimate || 0;
-  const burnUpActualCeiling = latestVisibleBurnUpPoint?.cumulativeActual || 0;
-  const burnUpDeltaHours = latestVisibleBurnUpPoint?.deltaHours || 0;
-  const burnUpMarginChange = firstVisibleBurnUpPoint && latestVisibleBurnUpPoint
-    ? latestVisibleBurnUpPoint.deltaHours - firstVisibleBurnUpPoint.deltaHours
-    : null;
-  const burnUpTrendRatio = latestVisibleTrendPoint?.trendRatio ?? null;
-  const burnUpRollingTrendRatio = latestVisibleTrendPoint?.rollingTrendRatio ?? null;
-  const burnUpTrendTone = burnUpDeltaHours >= 0
-    ? 'text-emerald-700 dark:text-emerald-300'
-    : 'text-red-700 dark:text-red-300';
-  const burnUpMarginChangeTone = burnUpMarginChange === null
-    ? 'text-slate-600 dark:text-slate-300'
-    : burnUpMarginChange > 0
-      ? 'text-emerald-700 dark:text-emerald-300'
-      : burnUpMarginChange < 0
-        ? 'text-red-700 dark:text-red-300'
-        : 'text-slate-600 dark:text-slate-300';
-  const burnUpMarginDirectionLabel = burnUpMarginChange === null
-    ? 'Brak zmiany marży'
-    : burnUpMarginChange > 0
-      ? 'Marża rośnie'
-      : burnUpMarginChange < 0
-        ? 'Marża maleje'
-        : 'Marża stabilna';
-  const burnUpTrendBadgeTone = burnUpTrendRatio === null
-    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300'
-    : burnUpTrendRatio >= 1
-      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
-  const burnUpHoursValues = visibleBurnUpTrendData.flatMap((point) => [
-    point.cumulativeEstimate,
-    point.cumulativeActual,
-  ]);
-  const burnUpHoursMin = burnUpHoursValues.length > 0 ? Math.min(...burnUpHoursValues) : 0;
-  const burnUpHoursMax = burnUpHoursValues.length > 0 ? Math.max(...burnUpHoursValues) : 0;
-  const burnUpHoursPadding = burnUpHoursMin === burnUpHoursMax
-    ? Math.max(Math.abs(burnUpHoursMax) * 0.03, 1)
-    : Math.max((burnUpHoursMax - burnUpHoursMin) * 0.04, 0.5);
-  const burnUpHoursDomain: [number, number] = burnUpHoursMin === burnUpHoursMax
-    ? [burnUpHoursMin - burnUpHoursPadding, burnUpHoursMax + burnUpHoursPadding]
-    : [burnUpHoursMin - burnUpHoursPadding, burnUpHoursMax + burnUpHoursPadding];
-  const burnUpMarginValues = visibleBurnUpTrendData.map((point) => point.deltaHours);
-  const burnUpMarginMin = burnUpMarginValues.length > 0 ? Math.min(...burnUpMarginValues) : 0;
-  const burnUpMarginMax = burnUpMarginValues.length > 0 ? Math.max(...burnUpMarginValues) : 0;
-  const burnUpMarginPadding = burnUpMarginMin === burnUpMarginMax
-    ? Math.max(Math.abs(burnUpMarginMax) * 0.03, 1)
-    : Math.max((burnUpMarginMax - burnUpMarginMin) * 0.04, 0.5);
-  const burnUpMarginDomain: [number, number] = burnUpMarginMin === burnUpMarginMax
-    ? [burnUpMarginMin - burnUpMarginPadding, burnUpMarginMax + burnUpMarginPadding]
-    : [burnUpMarginMin - burnUpMarginPadding, burnUpMarginMax + burnUpMarginPadding];
-  const shouldShowBurnUpMarginZeroLine = burnUpMarginDomain[0] <= 0 && burnUpMarginDomain[1] >= 0;
+  const burnUpSummary = summarizeBurnUpTrendData(visibleBurnUpTrendData);
+  const burnUpEstimateCeiling = burnUpSummary.estimateCeiling;
+  const burnUpActualCeiling = burnUpSummary.actualCeiling;
+  const burnUpDeltaHours = burnUpSummary.deltaHours;
+  const burnUpMarginChange = burnUpSummary.marginChange;
+  const burnUpTrendRatio = burnUpSummary.trendRatio;
+  const burnUpRollingTrendRatio = burnUpSummary.rollingTrendRatio;
+  const burnUpTrendTone = burnUpSummary.trendTone;
+  const burnUpMarginChangeTone = burnUpSummary.marginChangeTone;
+  const burnUpMarginDirectionLabel = burnUpSummary.marginDirectionLabel;
+  const burnUpTrendBadgeTone = burnUpSummary.trendBadgeTone;
+  const burnUpHoursDomain = burnUpSummary.hoursDomain;
+  const burnUpMarginDomain = burnUpSummary.marginDomain;
+  const shouldShowBurnUpMarginZeroLine = burnUpSummary.shouldShowMarginZeroLine;
+  const maintenanceBurnUpTrendData = selectedProject.hasMaintenance
+    ? buildMaintenanceBurnUpTrendData({
+      maintenanceEntries,
+      workItems: maintenanceWorkItems,
+      rateNetto: selectedProject.rateNetto,
+    })
+    : [];
+  const visibleMaintenanceBurnUpTrendData = (() => {
+    if (!effectiveBurnUpRange) return maintenanceBurnUpTrendData;
+    return alignBurnUpTrendDataToRange(
+      maintenanceBurnUpTrendData,
+      effectiveBurnUpRange,
+    );
+  })();
+  const maintenanceBurnUpSummary = summarizeBurnUpTrendData(visibleMaintenanceBurnUpTrendData);
+  const maintenanceBurnUpEstimateCeiling = maintenanceBurnUpSummary.estimateCeiling;
+  const maintenanceBurnUpActualCeiling = maintenanceBurnUpSummary.actualCeiling;
+  const maintenanceBurnUpDeltaHours = maintenanceBurnUpSummary.deltaHours;
+  const maintenanceBurnUpMarginChange = maintenanceBurnUpSummary.marginChange;
+  const maintenanceBurnUpTrendRatio = maintenanceBurnUpSummary.trendRatio;
+  const maintenanceBurnUpRollingTrendRatio = maintenanceBurnUpSummary.rollingTrendRatio;
+  const maintenanceBurnUpTrendTone = maintenanceBurnUpSummary.trendTone;
+  const maintenanceBurnUpMarginChangeTone = maintenanceBurnUpSummary.marginChangeTone;
+  const maintenanceBurnUpMarginDirectionLabel = maintenanceBurnUpSummary.marginDirectionLabel;
+  const maintenanceBurnUpTrendBadgeTone = maintenanceBurnUpSummary.trendBadgeTone;
+  const maintenanceBurnUpHoursDomain = maintenanceBurnUpSummary.hoursDomain;
+  const maintenanceBurnUpMarginDomain = maintenanceBurnUpSummary.marginDomain;
+  const shouldShowMaintenanceBurnUpMarginZeroLine = maintenanceBurnUpSummary.shouldShowMarginZeroLine;
   const applyFullBurnUpRange = () => {
     setBurnUpRangeMode('full');
     setBurnUpVisibleRange(fullContractBurnUpRange);
@@ -1467,6 +1664,13 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const burnUpSelectionRange = burnUpSelectionStart && burnUpSelectionEnd
     ? normalizeDateRange(burnUpSelectionStart, burnUpSelectionEnd)
     : null;
+  const toggleSettlementSection = (sectionKey: string) => {
+    setCollapsedSettlementSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
+  };
+  const isSettlementSectionCollapsed = (sectionKey: string) => Boolean(collapsedSettlementSections[sectionKey]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
@@ -2048,41 +2252,145 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-              {settlementRows.map((row) => (
-                <div key={row.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">{row.label}</p>
-                  <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
-                    {row.value}
-                    <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">h</span>
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => toggleSettlementSection('settlement-overview')}
+                className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1 text-left"
+              >
+                <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Podstawowe rozliczenie</h4>
+                <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-overview') ? '-rotate-90' : 'rotate-0'}`} />
+              </button>
+              {!isSettlementSectionCollapsed('settlement-overview') && (
+                <div className="mt-4 space-y-6">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    {filteredSettlementRows.map((row) => (
+                      <div key={row.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900/30">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">{row.label}</p>
+                        <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
+                          {row.value}
+                          <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">h</span>
+                        </div>
+                        <div className="mt-3 space-y-1">
+                          <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
+                          {isFinancialDataVisible && (
+                            <>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                                Netto: {formatCurrencyValue(Number(row.amountNet))} zł
+                              </p>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                                Brutto: {formatCurrencyValue(Number(row.amountGross))} zł
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="mt-3 space-y-1">
-                    <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
-                    {isFinancialDataVisible && (
-                      <>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                          Netto: {formatCurrencyValue(Number(row.amountNet))} zł
+                  {selectedProject.hasMaintenance && (
+                    <div className="rounded-2xl border border-fuchsia-100 bg-fuchsia-50/40 p-4 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/10">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-fuchsia-500 dark:text-fuchsia-300">Utrzymanie</p>
+                          <h5 className="mt-1 text-lg font-black tracking-tight text-fuchsia-900 dark:text-fuchsia-100">Podsumowanie utrzymania w wybranym zakresie</h5>
+                        </div>
+                        <p className="text-sm leading-5 text-fuchsia-700 dark:text-fuchsia-200">
+                          Wartości poniżej pokazują pulę godzin z abonamentu i jej wykorzystanie po aktywnych filtrach dat.
                         </p>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                          Brutto: {formatCurrencyValue(Number(row.amountGross))} zł
-                        </p>
-                      </>
-                    )}
-                  </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                        {filteredMaintenanceSettlementRows.map((row) => (
+                          <div key={row.label} className="rounded-2xl border border-fuchsia-100 bg-white p-5 shadow-sm dark:border-fuchsia-900/40 dark:bg-gray-900/40">
+                            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-fuchsia-400 dark:text-fuchsia-300">{row.label}</p>
+                            <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
+                              {row.value}
+                              <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">h</span>
+                            </div>
+                            <div className="mt-3 space-y-1">
+                              <p className="text-sm leading-5 text-gray-500 dark:text-gray-400">{row.note}</p>
+                              {isFinancialDataVisible && (
+                                <>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                                    Netto: {formatCurrencyValue(Number(row.amountNet))} zł
+                                  </p>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                                    Brutto: {formatCurrencyValue(Number(row.amountGross))} zł
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
 
+            {selectedProject.hasMaintenance && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                <button
+                  type="button"
+                  onClick={() => toggleSettlementSection('settlement-breakdown')}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl px-2 py-1 text-left"
+                >
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Podział zlecenia / utrzymanie / razem</h4>
+                  <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-breakdown') ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
+                {!isSettlementSectionCollapsed('settlement-breakdown') && (
+                  <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
+                    {filteredSettlementBreakdownSections.map((section) => (
+                      <div key={section.key} className={`rounded-2xl border p-5 shadow-sm ${section.tone}`}>
+                        <h4 className="text-sm font-black uppercase tracking-[0.22em] text-gray-900 dark:text-white">{section.title}</h4>
+                        <div className="mt-4 space-y-3">
+                          {section.items.map((item) => (
+                            <div key={`${section.key}-${item.label}`} className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-gray-900/30">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.label}</p>
+                                <p className={`text-xl font-black ${item.tone}`}>
+                                  {item.value} <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">{item.suffix}</span>
+                                </p>
+                              </div>
+                              <p className="mt-2 text-sm leading-5 text-gray-500 dark:text-gray-400">{item.note}</p>
+                              {isFinancialDataVisible && item.amountNet !== undefined && item.amountGross !== undefined && (
+                                <div className="mt-3 grid grid-cols-2 gap-3">
+                                  <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Netto</p>
+                                    <p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{formatCurrencyValue(item.amountNet)} zł</p>
+                                  </div>
+                                  <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800/70">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Brutto</p>
+                                    <p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{formatCurrencyValue(item.amountGross)} zł</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <button
+                type="button"
+                onClick={() => toggleSettlementSection('settlement-burnup')}
+                className="flex w-full items-start justify-between gap-3 text-left"
+              >
                 <div className="max-w-3xl">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wykres zleceń, logów i trendu</h4>
-                  <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Narastająco: godziny zleceń vs. godziny zalogowane</h3>
+                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wykres zleceń, logów i trendu w ramach zleceń</h4>
+                  <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Narastająco: godziny zleceń vs. godziny zalogowane w ramach zleceń</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                    Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół. Zakres analizy jest wspólny dla całej części rozliczeniowej poniżej i ustawisz go w filtrach powyżej.
+                    Główne linie pokazują, jak w czasie narastają godziny zakontraktowane w zleceniach oraz godziny rzeczywiście zalogowane przez zespół w części zleceniowej. Zakres analizy jest wspólny dla całej części rozliczeniowej poniżej i ustawisz go w filtrach powyżej.
                   </p>
                 </div>
-              </div>
+                <ChevronDown size={18} className={`mt-1 shrink-0 text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-burnup') ? '-rotate-90' : 'rotate-0'}`} />
+              </button>
+              <div className={isSettlementSectionCollapsed('settlement-burnup') ? 'hidden' : 'block'}>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
                   Powiększ: przeciągnij myszą po wykresie, aby zaznaczyć zakres dat.
@@ -2174,7 +2482,6 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       </ResponsiveContainer>
                     </div>
                   </div>
-
                     <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                         <div className="max-w-3xl">
@@ -2277,14 +2584,244 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                   Brak wystarczających danych do zbudowania wykresów zleceń, logów i trendu. Wymagane są zlecenia z datami i godzinami albo logi pracy z YouTrack.
                 </div>
               )}
+              </div>
             </div>
+
+            {selectedProject.hasMaintenance && (
+              <div className="rounded-2xl border border-fuchsia-100 bg-white p-6 shadow-sm dark:border-fuchsia-900/30 dark:bg-gray-800">
+                <button
+                  type="button"
+                  onClick={() => toggleSettlementSection('settlement-burnup-maintenance')}
+                  className="flex w-full items-start justify-between gap-3 text-left"
+                >
+                  <div className="max-w-3xl">
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-fuchsia-500 dark:text-fuchsia-300">Wykres utrzymania, logów i trendu w ramach utrzymania</h4>
+                    <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Narastająco: godziny utrzymania vs. godziny zalogowane w ramach utrzymania</h3>
+                    <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                      Ta karta pokazuje osobno narastanie godzin wynikających z wpisów utrzymania oraz logów oznaczonych jako utrzymaniowe. Zakres analizy jest wspólny dla całej części rozliczeniowej poniżej i ustawisz go w filtrach powyżej.
+                    </p>
+                  </div>
+                  <ChevronDown size={18} className={`mt-1 shrink-0 text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-burnup-maintenance') ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
+                <div className={isSettlementSectionCollapsed('settlement-burnup-maintenance') ? 'hidden' : 'block'}>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                      Powiększ: przeciągnij myszą po wykresie, aby zaznaczyć zakres dat.
+                    </p>
+                  </div>
+
+                  {visibleMaintenanceBurnUpTrendData.length > 0 ? (
+                    <>
+                      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-4">
+                        <div className="rounded-2xl bg-fuchsia-50 p-4 dark:bg-fuchsia-950/30">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fuchsia-500 dark:text-fuchsia-300">Godziny utrzymania narastająco</p>
+                          <p className="mt-2 text-2xl font-black text-fuchsia-700 dark:text-fuchsia-200">{formatOrderHours(maintenanceBurnUpEstimateCeiling)} h</p>
+                        </div>
+                        <div className="rounded-2xl bg-emerald-50 p-4 dark:bg-emerald-950/30">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-500 dark:text-emerald-300">Godziny zalogowane narastająco</p>
+                          <p className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-200">{formatOrderHours(maintenanceBurnUpActualCeiling)} h</p>
+                        </div>
+                        <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/60">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica godzin</p>
+                          <p className={`mt-2 text-2xl font-black ${maintenanceBurnUpTrendTone}`}>{formatOrderHours(maintenanceBurnUpDeltaHours)} h</p>
+                        </div>
+                        <div className={`rounded-2xl p-4 ${maintenanceBurnUpTrendBadgeTone}`}>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em]">Relacja utrzymania do logów / trend 30 dni</p>
+                          <p className="mt-2 text-2xl font-black">
+                            {maintenanceBurnUpTrendRatio !== null ? maintenanceBurnUpTrendRatio.toFixed(2) : 'brak'}
+                            <span className="ml-2 text-sm font-semibold opacity-80">
+                              {maintenanceBurnUpRollingTrendRatio !== null ? `30d: ${maintenanceBurnUpRollingTrendRatio.toFixed(2)}` : '30d: brak'}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                        <div className="flex flex-col gap-2">
+                          <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Narastanie godzin utrzymania</h4>
+                          <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                            Linie są pokazane schodkowo, żeby było widać dyskretne przyrosty: wpisy utrzymania budują plan godzin w czasie, a logi utrzymaniowe pokazują rzeczywiste narastanie przepracowanych godzin.
+                          </p>
+                        </div>
+                        <div className="mt-5 h-[420px] min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart
+                              data={visibleMaintenanceBurnUpTrendData}
+                              margin={{ top: 16, right: 24, left: 8, bottom: 12 }}
+                              onMouseDown={handleBurnUpMouseDown}
+                              onMouseMove={handleBurnUpMouseMove}
+                              onMouseUp={handleBurnUpMouseUp}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                              <XAxis
+                                dataKey="date"
+                                minTickGap={28}
+                                axisLine={false}
+                                tickLine={false}
+                                tickFormatter={(value) => {
+                                  const date = new Date(`${value}T00:00:00`);
+                                  return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
+                                }}
+                                tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                              />
+                              <YAxis
+                                yAxisId="hours"
+                                axisLine={false}
+                                tickLine={false}
+                                domain={maintenanceBurnUpHoursDomain}
+                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                              />
+                              <YAxis yAxisId="increments" hide />
+                              <Tooltip
+                                content={(
+                                  <BurnUpTrendTooltip
+                                    estimateLabel="Godziny utrzymania narastająco"
+                                    actualLabel="Godziny zalogowane narastająco"
+                                    dailyEstimateLabel="Przyrost utrzymania w dniu"
+                                    dailyEstimateItemsLabel="Miesiące utrzymania w przyroście"
+                                  />
+                                )}
+                              />
+                              <Legend verticalAlign="top" height={42} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                              <Bar yAxisId="increments" dataKey="dailyEstimate" name="Przyrost godzin utrzymania" fill="rgba(217,70,239,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
+                              <Area yAxisId="hours" dataKey="favorableBase" stackId="maintenancePlanBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                              <Area yAxisId="hours" dataKey="favorableGap" stackId="maintenancePlanBuffer" name="Bufor względem logów utrzymania" fill="rgba(16,185,129,0.22)" stroke="none" isAnimationActive={false} />
+                              <Area yAxisId="hours" dataKey="overrunBase" stackId="maintenanceActualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                              <Area yAxisId="hours" dataKey="overrunGap" stackId="maintenanceActualOverrun" name="Przekroczenie logów nad utrzymaniem" fill="rgba(239,68,68,0.18)" stroke="none" isAnimationActive={false} />
+                              <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny utrzymania narastająco" stroke="#d946ef" strokeWidth={3} dot={false} isAnimationActive={false} />
+                              <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
+                              {burnUpSelectionRange && (
+                                <ReferenceArea
+                                  yAxisId="hours"
+                                  x1={burnUpSelectionRange.start}
+                                  x2={burnUpSelectionRange.end}
+                                  strokeOpacity={0}
+                                  fill="rgba(217,70,239,0.14)"
+                                />
+                              )}
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                          <div className="max-w-3xl">
+                            <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Trend relacji</h4>
+                            <h3 className="mt-2 text-2xl font-black text-gray-900 dark:text-white">Trend relacji i marży godzinowej utrzymania</h3>
+                            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                              Schodkowe linie pokazują narastająco godziny utrzymania i logów utrzymaniowych, a osobna linia marży godzinowej pokazuje, czy bufor między nimi rośnie, czy maleje w czasie. Im wyżej nad zerem przebiega marża, tym większy zapas godzin w utrzymaniu.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className={`inline-flex rounded-2xl px-4 py-3 text-sm font-bold ${maintenanceBurnUpTrendBadgeTone}`}>
+                              {maintenanceBurnUpTrendRatio !== null ? `Bieżąca relacja: ${maintenanceBurnUpTrendRatio.toFixed(2)}` : 'Brak danych trendu'}
+                            </div>
+                            <div className="rounded-2xl bg-white px-4 py-3 text-sm shadow-sm dark:bg-gray-900/80">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Zmiana marży w zakresie</p>
+                              <p className={`mt-1 text-base font-black ${maintenanceBurnUpMarginChangeTone}`}>
+                                {maintenanceBurnUpMarginChange !== null ? `${maintenanceBurnUpMarginChange > 0 ? '+' : ''}${formatOrderHours(maintenanceBurnUpMarginChange)} h` : 'brak'}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-gray-500 dark:text-gray-400">{maintenanceBurnUpMarginDirectionLabel}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 h-[360px] min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart
+                              data={visibleMaintenanceBurnUpTrendData}
+                              margin={{ top: 16, right: 24, left: 8, bottom: 12 }}
+                              onMouseDown={handleBurnUpMouseDown}
+                              onMouseMove={handleBurnUpMouseMove}
+                              onMouseUp={handleBurnUpMouseUp}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                              <XAxis
+                                dataKey="date"
+                                minTickGap={28}
+                                axisLine={false}
+                                tickLine={false}
+                                tickFormatter={(value) => {
+                                  const date = new Date(`${value}T00:00:00`);
+                                  return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
+                                }}
+                                tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                              />
+                              <YAxis
+                                yAxisId="hours"
+                                axisLine={false}
+                                tickLine={false}
+                                width={56}
+                                domain={maintenanceBurnUpHoursDomain}
+                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                              />
+                              <YAxis
+                                yAxisId="margin"
+                                orientation="right"
+                                axisLine={false}
+                                tickLine={false}
+                                width={72}
+                                domain={maintenanceBurnUpMarginDomain}
+                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                tickFormatter={(value) => `${Math.round(Number(value))}h`}
+                              />
+                              <Tooltip
+                                formatter={(value: number | string | undefined, name?: string) => {
+                                  const numericValue = Number(value);
+                                  return [Number.isFinite(numericValue) ? `${formatOrderHours(numericValue)} h` : 'brak', name ?? 'Trend'];
+                                }}
+                                labelFormatter={(label) => {
+                                  const date = new Date(`${label}T00:00:00`);
+                                  return `Data: ${Number.isNaN(date.getTime()) ? label : format(date, 'dd.MM.yyyy')}`;
+                                }}
+                              />
+                              <Legend verticalAlign="top" height={38} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
+                              <Area yAxisId="hours" dataKey="favorableBase" stackId="maintenanceTrendPlanBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                              <Area yAxisId="hours" dataKey="favorableGap" stackId="maintenanceTrendPlanBuffer" name="Bufor względem logów utrzymania" fill="rgba(16,185,129,0.18)" stroke="none" isAnimationActive={false} />
+                              <Area yAxisId="hours" dataKey="overrunBase" stackId="maintenanceTrendActualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
+                              <Area yAxisId="hours" dataKey="overrunGap" stackId="maintenanceTrendActualOverrun" name="Przekroczenie logów nad utrzymaniem" fill="rgba(239,68,68,0.16)" stroke="none" isAnimationActive={false} />
+                              <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny utrzymania narastająco" stroke="#d946ef" strokeWidth={3} dot={false} isAnimationActive={false} />
+                              <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
+                              {shouldShowMaintenanceBurnUpMarginZeroLine && (
+                                <ReferenceLine yAxisId="margin" y={0} stroke="#94a3b8" strokeDasharray="4 4" />
+                              )}
+                              <Line yAxisId="margin" type="monotone" dataKey="deltaHours" name="Marża godzinowa (utrzymanie - logi)" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                              {burnUpSelectionRange && (
+                                <ReferenceArea
+                                  x1={burnUpSelectionRange.start}
+                                  x2={burnUpSelectionRange.end}
+                                  strokeOpacity={0}
+                                  fill="rgba(217,70,239,0.14)"
+                                />
+                              )}
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-6 rounded-2xl border border-dashed border-fuchsia-200 bg-fuchsia-50/70 px-6 py-8 text-sm leading-7 text-fuchsia-700 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/10 dark:text-fuchsia-200">
+                      Brak wystarczających danych do zbudowania wykresów utrzymania, logów i trendu. Wymagane są wpisy utrzymania z kwotą albo logi pracy oznaczone jako utrzymaniowe.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr]">
               <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800 overflow-hidden">
-                <div className="border-b border-gray-100 px-6 py-4 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => toggleSettlementSection('settlement-table')}
+                  className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-6 py-4 text-left dark:border-gray-800"
+                >
                   <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Tabela rozliczeń</h4>
-                </div>
-                <div className="grid grid-cols-1 gap-4 p-4 sm:p-5">
+                  <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-table') ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
+                <div className={`grid grid-cols-1 gap-4 p-4 sm:p-5 ${isSettlementSectionCollapsed('settlement-table') ? 'hidden' : ''}`}>
                   {filteredSettlementRows.map((row) => (
                     <div key={row.label} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-900/30">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2315,8 +2852,15 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
               <div className="space-y-6">
                 <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zyskowność projektu</h4>
-                  <div className="mt-4 space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSettlementSection('settlement-profitability')}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zyskowność projektu</h4>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-profitability') ? '-rotate-90' : 'rotate-0'}`} />
+                  </button>
+                  <div className={`mt-4 space-y-4 ${isSettlementSectionCollapsed('settlement-profitability') ? 'hidden' : ''}`}>
                     {filteredProfitabilityRows.map((row) => (
                       <div key={row.label} className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/40">
                         <div className="flex items-center justify-between gap-3">
@@ -2332,7 +2876,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       </div>
                     ))}
                   </div>
-                  <div className={`mt-5 rounded-2xl border p-4 ${filteredProfitabilityHours >= 0 ? 'border-emerald-100 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/20' : 'border-red-100 bg-red-50 dark:border-red-900/30 dark:bg-red-900/20'}`}>
+                  <div className={`mt-5 rounded-2xl border p-4 ${filteredProfitabilityHours >= 0 ? 'border-emerald-100 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/20' : 'border-red-100 bg-red-50 dark:border-red-900/30 dark:bg-red-900/20'} ${isSettlementSectionCollapsed('settlement-profitability') ? 'hidden' : ''}`}>
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Marża godzinowa</p>
                     <p className={`mt-2 text-3xl font-black ${filteredProfitabilityHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                       {filteredProfitabilityPct.toFixed(1)}%
@@ -2346,8 +2890,15 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
 
                 <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Osoby pracujące w projekcie</h4>
-                  <div className="mt-5 space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleSettlementSection('settlement-authors')}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Osoby pracujące w projekcie</h4>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-authors') ? '-rotate-90' : 'rotate-0'}`} />
+                  </button>
+                  <div className={`mt-5 space-y-4 ${isSettlementSectionCollapsed('settlement-authors') ? 'hidden' : ''}`}>
                     {filteredAuthorHours.length > 0 ? filteredAuthorHours.map((author) => {
                       const sharePct = filteredYoutrackTotal > 0 ? (author.hours / filteredYoutrackTotal) * 100 : 0;
                       return (
@@ -2376,8 +2927,15 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
 
                 <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Status zleceń</h4>
-                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleSettlementSection('settlement-status')}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Status zleceń</h4>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-status') ? '-rotate-90' : 'rotate-0'}`} />
+                  </button>
+                  <div className={`mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3 ${isSettlementSectionCollapsed('settlement-status') ? 'hidden' : ''}`}>
                     <div className="rounded-2xl bg-amber-50 p-4 dark:bg-amber-900/20">
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">W trakcie</p>
                       <p className="mt-2 text-3xl font-black text-amber-800 dark:text-amber-200">{filteredInProgressOrders.length}</p>
@@ -2397,11 +2955,18 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
 
                 <div className={`rounded-2xl border p-6 shadow-sm ${remainingInContract >= 0 ? 'border-fuchsia-100 bg-fuchsia-50 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/20' : 'border-red-100 bg-red-50 dark:border-red-900/30 dark:bg-red-900/20'}`}>
-                  <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wniosek</h4>
-                  <p className={`mt-4 text-2xl font-black ${remainingInContract >= 0 ? 'text-fuchsia-700 dark:text-fuchsia-300' : 'text-red-700 dark:text-red-300'}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleSettlementSection('settlement-conclusion')}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wniosek</h4>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-conclusion') ? '-rotate-90' : 'rotate-0'}`} />
+                  </button>
+                  <p className={`mt-4 text-2xl font-black ${remainingInContract >= 0 ? 'text-fuchsia-700 dark:text-fuchsia-300' : 'text-red-700 dark:text-red-300'} ${isSettlementSectionCollapsed('settlement-conclusion') ? 'hidden' : ''}`}>
                     {remainingInContract >= 0 ? 'Umowa mieści się w limicie' : 'Umowa jest przekroczona'}
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                  <p className={`mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300 ${isSettlementSectionCollapsed('settlement-conclusion') ? 'hidden' : ''}`}>
                     {remainingInContract >= 0
                       ? `Po uwzględnieniu wszystkich zleceń w rejestrze pozostaje jeszcze ${formatOrderHours(remainingInContract)} h do wykorzystania w ramach umowy.`
                       : `Suma zleceń przekracza limit umowny o ${formatOrderHours(Math.abs(remainingInContract))} h i wymaga korekty lub aneksu.`}
@@ -3214,6 +3779,24 @@ const doesDateOverlapRange = (
   if (!range) return true;
   return date >= range.start && date <= range.end;
 };
+const doesMaintenanceEntryOverlapRange = (
+  month: string,
+  range: { start: string; end: string } | null,
+) => {
+  if (!range) return true;
+  if (!month?.trim()) return false;
+
+  const [yearValue, monthValue] = month.split('-');
+  const year = Number(yearValue);
+  const monthIndex = Number(monthValue);
+  if (!year || !monthIndex || monthIndex < 1 || monthIndex > 12) {
+    return false;
+  }
+
+  const monthStart = getDateKey(new Date(year, monthIndex - 1, 1));
+  const monthEnd = getDateKey(new Date(year, monthIndex, 0));
+  return monthStart <= range.end && monthEnd >= range.start;
+};
 const getOrderDistributionRange = (order: Order, fallbackEndDate: Date) => {
   const timelineRange = getOrderTimelineRange(order, fallbackEndDate);
   if (timelineRange) {
@@ -3535,14 +4118,317 @@ const buildBurnUpTrendData = ({
   return points;
 };
 
+const alignBurnUpTrendDataToRange = (
+  points: BurnUpTrendPoint[],
+  range: { start: string; end: string } | null,
+) => {
+  if (!range || points.length === 0) {
+    return points;
+  }
+
+  const rangeStart = parseCalendarDate(range.start);
+  const rangeEnd = parseCalendarDate(range.end);
+
+  if (!rangeStart || !rangeEnd) {
+    return points;
+  }
+
+  const pointsByDate = new Map(points.map((point) => [point.date, point]));
+  const normalizedPoints: BurnUpTrendPoint[] = [];
+  let previousPoint: BurnUpTrendPoint | null = null;
+
+  for (
+    let cursor = new Date(rangeStart);
+    cursor.getTime() <= rangeEnd.getTime();
+    cursor = addDays(cursor, 1)
+  ) {
+    const dateKey = getDateKey(cursor);
+    const existingPoint = pointsByDate.get(dateKey);
+
+    if (existingPoint) {
+      normalizedPoints.push(existingPoint);
+      previousPoint = existingPoint;
+      continue;
+    }
+
+    const cumulativeEstimate = previousPoint?.cumulativeEstimate || 0;
+    const cumulativeActual = previousPoint?.cumulativeActual || 0;
+    const deltaHours = cumulativeEstimate - cumulativeActual;
+    const minBandBase = Math.min(cumulativeEstimate, cumulativeActual);
+
+    normalizedPoints.push({
+      date: dateKey,
+      shortLabel: format(cursor, 'dd.MM'),
+      dailyEstimate: 0,
+      dailyEstimateOrderNumbers: [],
+      dailyActual: 0,
+      cumulativeEstimate,
+      cumulativeActual,
+      deltaHours,
+      deltaPct: cumulativeActual > 0 ? (deltaHours / cumulativeActual) * 100 : null,
+      trendRatio: previousPoint?.trendRatio ?? null,
+      rollingTrendRatio: previousPoint?.rollingTrendRatio ?? null,
+      regressionTrendRatio: previousPoint?.regressionTrendRatio ?? null,
+      favorableBase: minBandBase,
+      favorableGap: Math.max(cumulativeEstimate - cumulativeActual, 0),
+      overrunBase: minBandBase,
+      overrunGap: Math.max(cumulativeActual - cumulativeEstimate, 0),
+    });
+  }
+
+  return normalizedPoints;
+};
+
+const summarizeBurnUpTrendData = (points: BurnUpTrendPoint[]) => {
+  const firstPoint = points[0] || null;
+  const latestPoint = points[points.length - 1] || null;
+  const latestTrendPoint = [...points]
+    .reverse()
+    .find((point) => point.trendRatio !== null || point.rollingTrendRatio !== null) || null;
+  const estimateCeiling = latestPoint?.cumulativeEstimate || 0;
+  const actualCeiling = latestPoint?.cumulativeActual || 0;
+  const deltaHours = latestPoint?.deltaHours || 0;
+  const marginChange = firstPoint && latestPoint
+    ? latestPoint.deltaHours - firstPoint.deltaHours
+    : null;
+  const trendRatio = latestTrendPoint?.trendRatio ?? null;
+  const rollingTrendRatio = latestTrendPoint?.rollingTrendRatio ?? null;
+  const trendTone = deltaHours >= 0
+    ? 'text-emerald-700 dark:text-emerald-300'
+    : 'text-red-700 dark:text-red-300';
+  const marginChangeTone = marginChange === null
+    ? 'text-slate-600 dark:text-slate-300'
+    : marginChange > 0
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : marginChange < 0
+        ? 'text-red-700 dark:text-red-300'
+        : 'text-slate-600 dark:text-slate-300';
+  const marginDirectionLabel = marginChange === null
+    ? 'Brak zmiany marży'
+    : marginChange > 0
+      ? 'Marża rośnie'
+      : marginChange < 0
+        ? 'Marża maleje'
+        : 'Marża stabilna';
+  const trendBadgeTone = trendRatio === null
+    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300'
+    : trendRatio >= 1
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+  const hoursValues = points.flatMap((point) => [
+    point.cumulativeEstimate,
+    point.cumulativeActual,
+  ]);
+  const hoursMin = hoursValues.length > 0 ? Math.min(...hoursValues) : 0;
+  const hoursMax = hoursValues.length > 0 ? Math.max(...hoursValues) : 0;
+  const hoursPadding = hoursMin === hoursMax
+    ? Math.max(Math.abs(hoursMax) * 0.03, 1)
+    : Math.max((hoursMax - hoursMin) * 0.04, 0.5);
+  const hoursDomain: [number, number] = [hoursMin - hoursPadding, hoursMax + hoursPadding];
+  const marginValues = points.map((point) => point.deltaHours);
+  const marginMin = marginValues.length > 0 ? Math.min(...marginValues) : 0;
+  const marginMax = marginValues.length > 0 ? Math.max(...marginValues) : 0;
+  const marginPadding = marginMin === marginMax
+    ? Math.max(Math.abs(marginMax) * 0.03, 1)
+    : Math.max((marginMax - marginMin) * 0.04, 0.5);
+  const marginDomain: [number, number] = [marginMin - marginPadding, marginMax + marginPadding];
+
+  return {
+    estimateCeiling,
+    actualCeiling,
+    deltaHours,
+    marginChange,
+    trendRatio,
+    rollingTrendRatio,
+    trendTone,
+    marginChangeTone,
+    marginDirectionLabel,
+    trendBadgeTone,
+    hoursDomain,
+    marginDomain,
+    shouldShowMarginZeroLine: marginDomain[0] <= 0 && marginDomain[1] >= 0,
+  };
+};
+
+const getMaintenanceMonthRange = (month: string) => {
+  if (!month?.trim()) return null;
+
+  const [yearValue, monthValue] = month.split('-');
+  const year = Number(yearValue);
+  const monthIndex = Number(monthValue);
+  if (!year || !monthIndex || monthIndex < 1 || monthIndex > 12) {
+    return null;
+  }
+
+  return {
+    startDate: new Date(year, monthIndex - 1, 1),
+    endDate: new Date(year, monthIndex, 0),
+  };
+};
+
+const buildMaintenanceBurnUpTrendData = ({
+  maintenanceEntries,
+  workItems,
+  rateNetto,
+}: {
+  maintenanceEntries: MaintenanceEntry[];
+  workItems: Array<{ date: string; minutes: number }>;
+  rateNetto: number;
+}) => {
+  if (rateNetto <= 0) {
+    return [] as BurnUpTrendPoint[];
+  }
+
+  const today = parseCalendarDate(format(new Date(), 'yyyy-MM-dd')) || new Date();
+  const relevantEntries = maintenanceEntries
+    .map((entry) => {
+      const monthRange = getMaintenanceMonthRange(entry.month);
+      const totalHours = (entry.netAmount || 0) / rateNetto;
+
+      if (!monthRange || totalHours <= 0) {
+        return null;
+      }
+
+      return {
+        periodLabel: formatMaintenanceMonth(entry.month),
+        startDate: monthRange.startDate,
+        endDate: monthRange.endDate,
+        totalHours,
+      };
+    })
+    .filter((entry): entry is { periodLabel: string; startDate: Date; endDate: Date; totalHours: number } => Boolean(entry));
+
+  const actualEntries = workItems
+    .map((item) => ({
+      date: parseCalendarDate(item.date),
+      hours: (item.minutes || 0) / 60,
+    }))
+    .filter((entry): entry is { date: Date; hours: number } => Boolean(entry.date));
+
+  const boundaryDates = [
+    ...relevantEntries.flatMap((entry) => [entry.startDate, entry.endDate]),
+    ...actualEntries.map((entry) => entry.date),
+  ];
+
+  if (boundaryDates.length === 0) {
+    return [] as BurnUpTrendPoint[];
+  }
+
+  const startDate = getMinDate(boundaryDates);
+  const endDate = getMaxDate([new Date(), ...boundaryDates]);
+  const dailyEstimateMap = new Map<string, number>();
+  const dailyEstimateOrderNumbersMap = new Map<string, Set<string>>();
+  const dailyActualMap = new Map<string, number>();
+
+  relevantEntries.forEach((entry) => {
+    const durationDays = getDaysDiffInclusive(entry.startDate, entry.endDate);
+    const dailyEstimate = entry.totalHours / durationDays;
+    for (let offset = 0; offset < durationDays; offset += 1) {
+      const dateKey = getDateKey(addDays(entry.startDate, offset));
+      dailyEstimateMap.set(dateKey, (dailyEstimateMap.get(dateKey) || 0) + dailyEstimate);
+      const existingLabels = dailyEstimateOrderNumbersMap.get(dateKey) || new Set<string>();
+      existingLabels.add(entry.periodLabel);
+      dailyEstimateOrderNumbersMap.set(dateKey, existingLabels);
+    }
+  });
+
+  actualEntries.forEach((entry) => {
+    const dateKey = getDateKey(entry.date);
+    dailyActualMap.set(dateKey, (dailyActualMap.get(dateKey) || 0) + entry.hours);
+  });
+
+  const points: BurnUpTrendPoint[] = [];
+  const rollingEstimateWindow: number[] = [];
+  const rollingActualWindow: number[] = [];
+  let cumulativeEstimate = 0;
+  let cumulativeActual = 0;
+
+  for (let cursor = new Date(startDate); cursor.getTime() <= endDate.getTime(); cursor = addDays(cursor, 1)) {
+    const dateKey = getDateKey(cursor);
+    const dailyEstimate = dailyEstimateMap.get(dateKey) || 0;
+    const dailyEstimateOrderNumbers = Array.from(dailyEstimateOrderNumbersMap.get(dateKey) || []).sort((a, b) => a.localeCompare(b, 'pl'));
+    const dailyActual = dailyActualMap.get(dateKey) || 0;
+    const isAfterToday = cursor.getTime() > today.getTime();
+
+    cumulativeEstimate += dailyEstimate;
+    cumulativeActual += dailyActual;
+
+    rollingEstimateWindow.push(dailyEstimate);
+    rollingActualWindow.push(dailyActual);
+    if (rollingEstimateWindow.length > 30) rollingEstimateWindow.shift();
+    if (rollingActualWindow.length > 30) rollingActualWindow.shift();
+
+    const rollingEstimateAvg = rollingEstimateWindow.reduce((sum, value) => sum + value, 0) / rollingEstimateWindow.length;
+    const rollingActualAvg = rollingActualWindow.reduce((sum, value) => sum + value, 0) / rollingActualWindow.length;
+    const deltaHours = cumulativeEstimate - cumulativeActual;
+    const minBandBase = Math.min(cumulativeEstimate, cumulativeActual);
+
+    points.push({
+      date: dateKey,
+      shortLabel: format(cursor, 'dd.MM'),
+      dailyEstimate,
+      dailyEstimateOrderNumbers,
+      dailyActual,
+      cumulativeEstimate,
+      cumulativeActual,
+      deltaHours,
+      deltaPct: cumulativeActual > 0 ? (deltaHours / cumulativeActual) * 100 : null,
+      trendRatio: !isAfterToday && cumulativeActual > 0 ? cumulativeEstimate / cumulativeActual : null,
+      rollingTrendRatio: !isAfterToday && rollingActualAvg > 0 ? rollingEstimateAvg / rollingActualAvg : null,
+      regressionTrendRatio: null,
+      favorableBase: minBandBase,
+      favorableGap: Math.max(cumulativeEstimate - cumulativeActual, 0),
+      overrunBase: minBandBase,
+      overrunGap: Math.max(cumulativeActual - cumulativeEstimate, 0),
+    });
+  }
+
+  const regressionPoints = points
+    .map((point, index) => ({ x: index, y: point.rollingTrendRatio ?? point.trendRatio }))
+    .filter((point): point is { x: number; y: number } => typeof point.y === 'number' && Number.isFinite(point.y));
+
+  if (regressionPoints.length >= 2) {
+    const pointCount = regressionPoints.length;
+    const sumX = regressionPoints.reduce((sum, point) => sum + point.x, 0);
+    const sumY = regressionPoints.reduce((sum, point) => sum + point.y, 0);
+    const sumXY = regressionPoints.reduce((sum, point) => sum + point.x * point.y, 0);
+    const sumXX = regressionPoints.reduce((sum, point) => sum + point.x * point.x, 0);
+    const denominator = (pointCount * sumXX) - (sumX * sumX);
+
+    if (denominator !== 0) {
+      const slope = ((pointCount * sumXY) - (sumX * sumY)) / denominator;
+      const intercept = (sumY - (slope * sumX)) / pointCount;
+
+      points.forEach((point, index) => {
+        if (point.trendRatio === null && point.rollingTrendRatio === null) {
+          point.regressionTrendRatio = null;
+          return;
+        }
+
+        point.regressionTrendRatio = intercept + (slope * index);
+      });
+    }
+  }
+
+  return points;
+};
+
 const BurnUpTrendTooltip = ({
   active,
   payload,
   label,
+  estimateLabel = 'Godziny zleceń narastająco',
+  actualLabel = 'Godziny zalogowane narastająco',
+  dailyEstimateLabel = 'Przyrost zleceń w dniu',
+  dailyEstimateItemsLabel = 'Zlecenia w przyroście',
 }: {
   active?: boolean;
   payload?: Array<{ payload: BurnUpTrendPoint }>;
   label?: string;
+  estimateLabel?: string;
+  actualLabel?: string;
+  dailyEstimateLabel?: string;
+  dailyEstimateItemsLabel?: string;
 }) => {
   if (!active || !payload?.[0]) return null;
 
@@ -3555,20 +4441,20 @@ const BurnUpTrendTooltip = ({
       </p>
       <div className="mt-3 space-y-2">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-500 dark:text-gray-400">Godziny zleceń narastająco</span>
+          <span className="text-gray-500 dark:text-gray-400">{estimateLabel}</span>
           <span className="font-bold text-indigo-600 dark:text-indigo-300">{formatOrderHours(point.cumulativeEstimate)} h</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-500 dark:text-gray-400">Godziny zalogowane narastająco</span>
+          <span className="text-gray-500 dark:text-gray-400">{actualLabel}</span>
           <span className="font-bold text-emerald-600 dark:text-emerald-300">{formatOrderHours(point.cumulativeActual)} h</span>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-gray-500 dark:text-gray-400">Przyrost zleceń w dniu</span>
+          <span className="text-gray-500 dark:text-gray-400">{dailyEstimateLabel}</span>
           <span className="font-bold text-sky-600 dark:text-sky-300">{formatOrderHours(point.dailyEstimate)} h</span>
         </div>
         {point.dailyEstimateOrderNumbers.length > 0 && (
           <div className="rounded-xl bg-sky-50 px-3 py-2 dark:bg-sky-950/30">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">Zlecenia w przyroście</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">{dailyEstimateItemsLabel}</p>
             <p className="mt-1 text-xs font-semibold leading-5 text-sky-800 dark:text-sky-200">
               {point.dailyEstimateOrderNumbers.join(', ')}
             </p>
