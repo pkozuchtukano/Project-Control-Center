@@ -153,6 +153,10 @@ db.exec(`
         issueId TEXT PRIMARY KEY,
         category TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS issue_maintenance_flags (
+        issueId TEXT PRIMARY KEY,
+        isMaintenance INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE IF NOT EXISTS order_item_templates (
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -262,6 +266,10 @@ const initializeDatabase = () => {
         CREATE TABLE IF NOT EXISTS issue_categories (
             issueId TEXT PRIMARY KEY,
             category TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS issue_maintenance_flags (
+            issueId TEXT PRIMARY KEY,
+            isMaintenance INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS order_item_templates (
             projectId TEXT PRIMARY KEY,
@@ -847,6 +855,34 @@ ipcMain.handle('set-issue-categories-bulk', async (_, { issueIds, category }: { 
         return { success: true };
     } catch (error) {
         console.error('Błąd masowego zapisu kategorii:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-issue-maintenance-flags', async () => {
+    try {
+        const rows = db.prepare('SELECT issueId, isMaintenance FROM issue_maintenance_flags').all() as { issueId: string; isMaintenance: number }[];
+        const map: Record<string, boolean> = {};
+        for (const row of rows) {
+            map[row.issueId] = row.isMaintenance === 1;
+        }
+        return map;
+    } catch (error) {
+        console.error('Błąd pobierania flag utrzymania zgłoszeń:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('set-issue-maintenance-flag', async (_, { issueId, isMaintenance }: { issueId: string; isMaintenance: boolean }) => {
+    try {
+        db.prepare(`
+            INSERT INTO issue_maintenance_flags (issueId, isMaintenance)
+            VALUES (?, ?)
+            ON CONFLICT(issueId) DO UPDATE SET isMaintenance = excluded.isMaintenance
+        `).run(issueId, isMaintenance ? 1 : 0);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu flagi utrzymania zgłoszenia:', error);
         throw error;
     }
 });

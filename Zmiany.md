@@ -345,3 +345,6 @@
   -- Dodano nową tabelę SQLite `maintenance_entries` z bezstratną inicjalizacją oraz IPC do pobierania, zapisu i usuwania miesięcznych wpisów utrzymania per projekt.
   -- Projekt z aktywną opcją utrzymania pokazuje teraz dodatkową zakładkę `Utrzymanie`, w której dostępna jest lista miesięcy rozliczeniowych z podsumowaniem netto i brutto.
   -- W zakładce dodano formularz `Dodaj miesiąc`, pozwalający zapisać miesiąc, kwoty netto/VAT/brutto oraz pole `Uwagi`, z automatycznym przeliczaniem netto i brutto podczas edycji.
+- 2026-04-01 – Oznaczanie zadań w rejestrze pracy jako utrzymanie
+  -- W `Rejestrze pracy` dla projektów z aktywnym utrzymaniem dodano checkbox `Utrzymanie` przy zadaniu YouTrack, zapisywany per `issueId`.
+  -- Flaga jest przechowywana w tabeli SQLite `issue_maintenance_flags`, dzięki czemu oznaczenie pozostaje zachowane także po kolejnych synchronizacjach logów czasu.

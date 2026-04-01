@@ -18,7 +18,7 @@ interface Props {
 
 export const WorkRegistryMain = ({ project, settings }: Props) => {
     const { updateProject } = useProjectContext();
-    const { workItems, isLoading, error, setCategory, setCategoriesBulk, refresh } = useWorkRegistry(project);
+    const { workItems, isLoading, error, setCategory, setMaintenance, setCategoriesBulk, refresh } = useWorkRegistry(project);
     const [activeTab, setActiveTab] = useState<'stats' | 'youtrack'>('stats');
     const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
@@ -154,7 +154,9 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                     <YouTrackTable
                         items={workItems}
                         onSetCategory={setCategory}
+                        onSetMaintenance={setMaintenance}
                         onSetCategoriesBulk={setCategoriesBulk}
+                        showMaintenanceToggle={project.hasMaintenance}
                         youtrackBaseUrl={settings?.youtrackBaseUrl}
                     />
                 )}

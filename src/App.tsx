@@ -27,6 +27,8 @@ declare global {
       saveOrderItemTemplate: (data: { projectId: string, data: { names: string[]; lastDate: string } }) => Promise<{ success: boolean }>;
       getIssueCategories: () => Promise<Record<string, string>>;
       setIssueCategory: (data: { issueId: string, category: string }) => Promise<{ success: boolean }>;
+      getIssueMaintenanceFlags: () => Promise<Record<string, boolean>>;
+      setIssueMaintenanceFlag: (data: { issueId: string, isMaintenance: boolean }) => Promise<{ success: boolean }>;
       importOrders: (data: { orders: any[], projectId: string }) => Promise<{ success: boolean }>;
       getEstimation: (projectId: string) => Promise<any>;
       saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;

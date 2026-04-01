@@ -10,7 +10,9 @@ import { pl } from 'date-fns/locale';
 interface Props {
     items: WorkItemRow[];
     onSetCategory: (issueId: string, category: WorkCategory) => void;
+    onSetMaintenance?: (issueId: string, isMaintenance: boolean) => void;
     onSetCategoriesBulk?: (issueIds: string[], category: WorkCategory) => void;
+    showMaintenanceToggle?: boolean;
     youtrackBaseUrl?: string;
 }
 
@@ -79,6 +81,7 @@ interface IssueGroup {
     issueReadableId: string;
     issueSummary: string;
     category: WorkCategory;
+    isMaintenance: boolean;
     totalMinutes: number;
     rows: WorkItemRow[];
 }
@@ -88,12 +91,14 @@ interface AccordionRowProps {
     isSelected: boolean;
     onToggleSelect: () => void;
     onSetCategory: (issueId: string, cat: WorkCategory) => void;
+    onSetMaintenance?: (issueId: string, isMaintenance: boolean) => void;
+    showMaintenanceToggle?: boolean;
     youtrackBaseUrl?: string;
 }
 
 const CATEGORIES: WorkCategory[] = ['Programistyczne', 'Obsługa projektu', 'Inne'];
 
-const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, youtrackBaseUrl }: AccordionRowProps) => {
+const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, onSetMaintenance, showMaintenanceToggle = false, youtrackBaseUrl }: AccordionRowProps) => {
     const [open, setOpen] = useState(false);
     const logs = useMemo(() => groupLogs(group.rows), [group.rows]);
 
@@ -179,6 +184,29 @@ const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, youtra
                         ))}
                     </select>
                 </div>
+
+                {showMaintenanceToggle && onSetMaintenance && (
+                    <button
+                        type="button"
+                        className={`flex flex-shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                            group.isMaintenance
+                                ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:bg-indigo-50/60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/20'
+                        }`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onSetMaintenance(group.issueId, !group.isMaintenance);
+                        }}
+                        aria-pressed={group.isMaintenance}
+                    >
+                        {group.isMaintenance ? (
+                            <CheckSquare size={16} className="text-indigo-600 dark:text-indigo-300" />
+                        ) : (
+                            <Square size={16} className="text-gray-400 dark:text-gray-500" />
+                        )}
+                        <span>Utrzymanie</span>
+                    </button>
+                )}
             </div>
 
             {/* ---- Rozwinięta sekcja z logami ---- */}
@@ -268,7 +296,7 @@ const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, youtra
 // =====================================================
 // ---- Główny komponent YouTrackTable ----
 // =====================================================
-export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtrackBaseUrl }: Props) => {
+export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCategoriesBulk, showMaintenanceToggle = false, youtrackBaseUrl }: Props) => {
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<WorkCategory | 'all'>('all');
     const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
@@ -284,6 +312,7 @@ export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtr
                     issueReadableId: item.issueReadableId,
                     issueSummary: item.issueSummary,
                     category: item.category,
+                    isMaintenance: item.isMaintenance,
                     totalMinutes: 0,
                     rows: []
                 });
@@ -293,6 +322,7 @@ export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtr
             g.rows.push(item);
             // Kategoria — weź zawsze aktualną (ostatnio ustawioną)
             g.category = item.category;
+            g.isMaintenance = item.isMaintenance;
         });
 
         // Filtruj + szukaj
@@ -417,12 +447,13 @@ export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtr
             )}
 
             {/* ---- Nagłówek kolumn ---- */}
-            <div className="px-4 py-2.5 grid grid-cols-[18px_18px_1fr_auto_auto] gap-3 items-center text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/30 select-none">
+            <div className={`px-4 py-2.5 grid ${showMaintenanceToggle ? 'grid-cols-[18px_18px_1fr_auto_auto_auto]' : 'grid-cols-[18px_18px_1fr_auto_auto]'} gap-3 items-center text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider border-b border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/30 select-none`}>
                 <span />
                 <span />
                 <span>Zadanie</span>
                 <span className="text-right pr-2">Łącznie</span>
                 <span>Grupa</span>
+                {showMaintenanceToggle && <span>Utrzymanie</span>}
             </div>
 
             {/* ---- Lista zadań ---- */}
@@ -440,6 +471,8 @@ export const YouTrackTable = ({ items, onSetCategory, onSetCategoriesBulk, youtr
                                 isSelected={selectedIssueIds.has(group.issueId)}
                                 onToggleSelect={() => toggleSelectIssue(group.issueId)}
                                 onSetCategory={onSetCategory}
+                                onSetMaintenance={onSetMaintenance}
+                                showMaintenanceToggle={showMaintenanceToggle}
                                 youtrackBaseUrl={youtrackBaseUrl}
                             />
                         ))}
