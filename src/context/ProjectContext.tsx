@@ -5,6 +5,30 @@ import type {
 } from '../types';
 import { getEnvSettingsOrNull } from '../config/env';
 
+const DEFAULT_MAINTENANCE_VAT_RATE = 23;
+
+const roundCurrency = (value: number) => Number((value || 0).toFixed(2));
+
+const calculateGrossFromNet = (net: number, vatRate: number) =>
+  roundCurrency((net || 0) * (1 + (vatRate || 0) / 100));
+
+const normalizeProject = (project: Project): Project => {
+  const hasMaintenance = project.hasMaintenance ?? false;
+  const maintenanceVatRate = project.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE;
+  const maintenanceNetAmount = roundCurrency(project.maintenanceNetAmount ?? 0);
+  const maintenanceGrossAmount = roundCurrency(
+    project.maintenanceGrossAmount ?? calculateGrossFromNet(maintenanceNetAmount, maintenanceVatRate),
+  );
+
+  return {
+    ...project,
+    hasMaintenance,
+    maintenanceNetAmount,
+    maintenanceVatRate,
+    maintenanceGrossAmount,
+  };
+};
+
 export type ProjectContextType = {
   projects: Project[];
   orders: Order[];
@@ -44,15 +68,16 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
 
   const syncDb = async (newProjects: Project[], newOrders: Order[]) => {
     const resolvedSettings = getEnvSettingsOrNull();
+    const normalizedProjects = newProjects.map(normalizeProject);
     try {
       if (!window.electron) {
-        localStorage.setItem('pcc_projects', JSON.stringify(newProjects));
+        localStorage.setItem('pcc_projects', JSON.stringify(normalizedProjects));
         localStorage.setItem('pcc_orders', JSON.stringify(newOrders));
         localStorage.removeItem('pcc_settings');
       } else {
-        await window.electron.writeDb({ projects: newProjects, orders: newOrders });
+        await window.electron.writeDb({ projects: normalizedProjects, orders: newOrders });
       }
-      setProjects(newProjects);
+      setProjects(normalizedProjects);
       setOrders(newOrders);
       setSettings(resolvedSettings);
     } catch (err: any) {
@@ -75,7 +100,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
           const storedProjects = localStorage.getItem('pcc_projects');
           const storedOrders = localStorage.getItem('pcc_orders');
 
-          if (storedProjects) setProjects(JSON.parse(storedProjects));
+          if (storedProjects) setProjects(JSON.parse(storedProjects).map(normalizeProject));
           localStorage.removeItem('pcc_settings');
           setSettings(getEnvSettingsOrNull());
 
@@ -89,7 +114,7 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
         }
 
         const data = await window.electron.readDb();
-        setProjects(data.projects || []);
+        setProjects((data.projects || []).map(normalizeProject));
         setSettings(data.settings || getEnvSettingsOrNull());
 
         const loadedOrders = data.orders || [];
@@ -166,15 +191,15 @@ export const ProjectProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addProject = async (p: Omit<Project, 'id'>) => {
-    const newProject = { ...p, id: generateId() };
+    const newProject = normalizeProject({ ...p, id: generateId() });
     await syncDb([...projects, newProject], orders);
   };
 
   const updateProject = async (id: string, updates: Partial<Project>) => {
-    const updated = projects.map(proj => proj.id === id ? { ...proj, ...updates } : proj);
+    const updated = projects.map(proj => proj.id === id ? normalizeProject({ ...proj, ...updates }) : proj);
     await syncDb(updated, orders);
     if (selectedProject?.id === id) {
-      setSelectedProject({ ...selectedProject, ...updates });
+      setSelectedProject(normalizeProject({ ...selectedProject, ...updates }));
     }
   };
 

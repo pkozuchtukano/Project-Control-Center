@@ -93,6 +93,17 @@ db.exec(`
         updatedAt TEXT NOT NULL,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS maintenance_entries (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        month TEXT NOT NULL,
+        netAmount REAL NOT NULL,
+        vatRate REAL NOT NULL,
+        grossAmount REAL NOT NULL,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS daily_hubs (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -213,6 +224,17 @@ const initializeDatabase = () => {
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL,
             data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS maintenance_entries (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            month TEXT NOT NULL,
+            netAmount REAL NOT NULL,
+            vatRate REAL NOT NULL,
+            grossAmount REAL NOT NULL,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS daily_hubs (
             id TEXT PRIMARY KEY,
@@ -1182,6 +1204,71 @@ ipcMain.handle('delete-status-report', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('Błąd usuwania status report:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-maintenance-entries', async (_, projectId: string) => {
+    try {
+        return db.prepare(`
+            SELECT id, projectId, month, netAmount, vatRate, grossAmount, notes, createdAt, updatedAt
+            FROM maintenance_entries
+            WHERE projectId = ?
+            ORDER BY month DESC, createdAt DESC
+        `).all(projectId);
+    } catch (error) {
+        console.error('Błąd pobierania wpisów utrzymania:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-maintenance-entry', async (_, data: {
+    id: string;
+    projectId: string;
+    month: string;
+    netAmount: number;
+    vatRate: number;
+    grossAmount: number;
+    notes?: string;
+    createdAt: string;
+    updatedAt: string;
+}) => {
+    try {
+        db.prepare(`
+            INSERT INTO maintenance_entries (id, projectId, month, netAmount, vatRate, grossAmount, notes, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                month = excluded.month,
+                netAmount = excluded.netAmount,
+                vatRate = excluded.vatRate,
+                grossAmount = excluded.grossAmount,
+                notes = excluded.notes,
+                updatedAt = excluded.updatedAt
+        `).run(
+            data.id,
+            data.projectId,
+            data.month,
+            data.netAmount,
+            data.vatRate,
+            data.grossAmount,
+            data.notes || '',
+            data.createdAt,
+            data.updatedAt
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu wpisu utrzymania:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-maintenance-entry', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM maintenance_entries WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania wpisu utrzymania:', error);
         throw error;
     }
 });

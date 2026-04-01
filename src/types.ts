@@ -26,6 +26,10 @@ export type Project = {
   rateNetto: number;
   rateBrutto: number;
   vatRate: number;
+  hasMaintenance: boolean;
+  maintenanceNetAmount: number;
+  maintenanceVatRate: number;
+  maintenanceGrossAmount: number;
   targetProfitPct?: number;
   youtrackQuery?: string;
   taskTypes?: TaskType[];
@@ -186,6 +190,18 @@ export type StatusReport = {
   dateTo: string;
   content: string;
   stories: StatusStory[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MaintenanceEntry = {
+  id: string;
+  projectId: string;
+  month: string;
+  netAmount: number;
+  vatRate: number;
+  grossAmount: number;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 };

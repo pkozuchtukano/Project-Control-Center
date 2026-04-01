@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment, 
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry
 } from './types';
 
 declare global {
@@ -38,6 +38,9 @@ declare global {
       getStatusReports: (projectId: string) => Promise<StatusReport[]>;
       saveStatusReport: (data: { projectId: string, data: StatusReport }) => Promise<{ success: boolean }>;
       deleteStatusReport: (id: string) => Promise<{ success: boolean }>;
+      getMaintenanceEntries: (projectId: string) => Promise<MaintenanceEntry[]>;
+      saveMaintenanceEntry: (data: MaintenanceEntry) => Promise<{ success: boolean }>;
+      deleteMaintenanceEntry: (id: string) => Promise<{ success: boolean }>;
       writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
@@ -74,7 +77,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code
+  CheckCircle, AlertCircle, Code, Lock, LockOpen
 } from 'lucide-react';
 
 import { 
@@ -113,6 +116,53 @@ import { buildSettlementSuccessMetrics } from './features/reports/services/settl
 // Export everything from context for convenience (optional, but avoids breaking other imports immediately)
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
 export type { Project, Stakeholder, Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate };
+
+const DEFAULT_MAINTENANCE_VAT_RATE = 23;
+
+const roundCurrency = (value: number) => Number((value || 0).toFixed(2));
+
+const calculateGrossFromNet = (net: number, vatRate: number) =>
+  roundCurrency((net || 0) * (1 + (vatRate || 0) / 100));
+
+const calculateNetFromGross = (gross: number, vatRate: number) => {
+  const divisor = 1 + (vatRate || 0) / 100;
+  if (divisor <= 0) {
+    return roundCurrency(gross || 0);
+  }
+
+  return roundCurrency((gross || 0) / divisor);
+};
+
+const createClientId = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+
+const getCurrentMonthValue = () => format(new Date(), 'yyyy-MM');
+
+const formatMaintenanceMonth = (value: string) => {
+  if (!value) return 'Brak miesiąca';
+  const [year, month] = value.split('-');
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  if (!parsedYear || !parsedMonth) return value;
+  return new Date(parsedYear, parsedMonth - 1, 1).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+};
+
+const createMaintenanceDraft = (project: Project): MaintenanceEntry => {
+  const now = new Date().toISOString();
+  return {
+    id: createClientId(),
+    projectId: project.id,
+    month: getCurrentMonthValue(),
+    netAmount: project.maintenanceNetAmount || 0,
+    vatRate: project.maintenanceVatRate || DEFAULT_MAINTENANCE_VAT_RATE,
+    grossAmount: project.maintenanceGrossAmount || 0,
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  };
+};
 
 const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportDatabase, onImportDatabase, isDatabaseTransferPending, currentView, onViewChange }: {
   isDark: boolean,
@@ -252,10 +302,12 @@ const ProjectModal = ({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
+    hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
     taskTypes: [],
     googleDocLink: '',
     stakeholders: []
   });
+  const [isMaintenanceGrossLocked, setIsMaintenanceGrossLocked] = useState(true);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
   const predefinedIcons = Object.keys(TaskTypeIconMap);
@@ -276,11 +328,16 @@ const ProjectModal = ({
         rateNetto: projectToEdit.rateNetto,
         rateBrutto: projectToEdit.rateBrutto,
         vatRate: projectToEdit.vatRate !== undefined ? projectToEdit.vatRate : 23,
+        hasMaintenance: projectToEdit.hasMaintenance ?? false,
+        maintenanceNetAmount: projectToEdit.maintenanceNetAmount ?? 0,
+        maintenanceVatRate: projectToEdit.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE,
+        maintenanceGrossAmount: projectToEdit.maintenanceGrossAmount ?? calculateGrossFromNet(projectToEdit.maintenanceNetAmount ?? 0, projectToEdit.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE),
         targetProfitPct: projectToEdit.targetProfitPct !== undefined ? projectToEdit.targetProfitPct : 20,
         taskTypes: projectToEdit.taskTypes || [],
         googleDocLink: projectToEdit.googleDocLink || '',
         stakeholders: projectToEdit.stakeholders || []
       });
+      setIsMaintenanceGrossLocked(true);
       setTaskTypes(projectToEdit.taskTypes || []);
       setStakeholders(projectToEdit.stakeholders || []);
     } else {
@@ -288,21 +345,27 @@ const ProjectModal = ({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
+        hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
         taskTypes: [],
         googleDocLink: '',
         stakeholders: []
       });
+      setIsMaintenanceGrossLocked(true);
       setTaskTypes([]);
       setStakeholders([]);
     }
   }, [projectToEdit, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type } = e.target;
+    const { name, value, type, checked } = e.target;
     let newValue: any = value;
 
     if (type === 'number') {
       newValue = parseFloat(value) || 0;
+    }
+
+    if (name === 'hasMaintenance' && !checked) {
+      setIsMaintenanceGrossLocked(true);
     }
 
     setFormData(prev => {
@@ -316,7 +379,73 @@ const ProjectModal = ({
       } else if (name === 'rateBrutto') {
         updated.rateNetto = parseFloat((newValue / vatMultiplier).toFixed(2));
       }
+
+      if (name === 'hasMaintenance') {
+        const hasMaintenance = checked;
+        updated.hasMaintenance = hasMaintenance;
+        if (!hasMaintenance) {
+          updated.maintenanceNetAmount = 0;
+          updated.maintenanceVatRate = DEFAULT_MAINTENANCE_VAT_RATE;
+          updated.maintenanceGrossAmount = 0;
+        } else {
+          updated.maintenanceVatRate = prev.maintenanceVatRate || DEFAULT_MAINTENANCE_VAT_RATE;
+          updated.maintenanceGrossAmount = calculateGrossFromNet(
+            updated.maintenanceNetAmount,
+            updated.maintenanceVatRate,
+          );
+        }
+      }
+
+      if (name === 'maintenanceVatRate') {
+        updated.maintenanceVatRate = newValue;
+        if (isMaintenanceGrossLocked) {
+          updated.maintenanceGrossAmount = calculateGrossFromNet(updated.maintenanceNetAmount, newValue);
+        } else {
+          updated.maintenanceNetAmount = calculateNetFromGross(updated.maintenanceGrossAmount, newValue);
+        }
+      } else if (name === 'maintenanceNetAmount') {
+        updated.maintenanceNetAmount = newValue;
+        if (isMaintenanceGrossLocked) {
+          updated.maintenanceGrossAmount = calculateGrossFromNet(newValue, updated.maintenanceVatRate);
+        }
+      } else if (name === 'maintenanceGrossAmount') {
+        updated.maintenanceGrossAmount = newValue;
+        if (!isMaintenanceGrossLocked) {
+          updated.maintenanceNetAmount = calculateNetFromGross(newValue, updated.maintenanceVatRate);
+        }
+      }
+
       return updated;
+    });
+  };
+
+  const handleMaintenanceLockToggle = () => {
+    setIsMaintenanceGrossLocked(prev => {
+      const next = !prev;
+      setFormData(current => {
+        if (!current.hasMaintenance) {
+          return current;
+        }
+
+        if (next) {
+          return {
+            ...current,
+            maintenanceGrossAmount: calculateGrossFromNet(
+              current.maintenanceNetAmount,
+              current.maintenanceVatRate,
+            ),
+          };
+        }
+
+        return {
+          ...current,
+          maintenanceNetAmount: calculateNetFromGross(
+            current.maintenanceGrossAmount,
+            current.maintenanceVatRate,
+          ),
+        };
+      });
+      return next;
     });
   };
 
@@ -467,6 +596,84 @@ const ProjectModal = ({
                         placeholder="https://docs.google.com/document/d/..." />
                     </div>
                     <div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-md font-bold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">Utrzymanie i Abonamenty</h3>
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    name="hasMaintenance"
+                    checked={formData.hasMaintenance}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <div>
+                    <span className="block text-sm font-medium text-gray-900 dark:text-white">Opłata za utrzymanie</span>
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">Włączenie odblokowuje konfigurację miesięcznej opłaty abonamentowej.</span>
+                  </div>
+                </label>
+
+                <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity ${formData.hasMaintenance ? 'opacity-100' : 'opacity-60'}`}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota Netto (PLN)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="maintenanceNetAmount"
+                      value={formData.maintenanceNetAmount}
+                      onChange={handleChange}
+                      disabled={!formData.hasMaintenance || !isMaintenanceGrossLocked}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stawka VAT (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="maintenanceVatRate"
+                      value={formData.maintenanceVatRate}
+                      onChange={handleChange}
+                      disabled={!formData.hasMaintenance}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota Brutto (PLN)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        name="maintenanceGrossAmount"
+                        value={formData.maintenanceGrossAmount}
+                        onChange={handleChange}
+                        disabled={!formData.hasMaintenance || isMaintenanceGrossLocked}
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleMaintenanceLockToggle}
+                        disabled={!formData.hasMaintenance}
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 text-gray-600 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-600 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:bg-gray-800"
+                        title={isMaintenanceGrossLocked ? 'Brutto liczone automatycznie z netto' : 'Netto liczone od stałej kwoty brutto'}
+                        aria-label={isMaintenanceGrossLocked ? 'Brutto liczone automatycznie z netto' : 'Netto liczone od stałej kwoty brutto'}
+                      >
+                        {isMaintenanceGrossLocked ? <Lock size={16} /> : <LockOpen size={16} />}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {isMaintenanceGrossLocked
+                        ? 'Tryb automatyczny: zmiana netto lub VAT przelicza brutto.'
+                        : 'Tryb ryczałtowy: stałe brutto przelicza netto po zmianie VAT.'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -623,7 +830,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'maintenance' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
@@ -641,7 +848,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       return;
     }
 
-    const allowedTabs = ['dashboard', 'orders', 'work', 'settlements', 'status', 'youtrack', 'estimation', 'notes'];
+    const allowedTabs = ['dashboard', 'orders', 'work', 'settlements', 'maintenance', 'status', 'youtrack', 'estimation', 'notes'];
     if (allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab as typeof activeTab);
       return;
@@ -1164,6 +1371,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           >
             Rozliczenia
           </button>
+          {selectedProject.hasMaintenance && (
+            <button
+              onClick={() => setActiveTab('maintenance')}
+              className={`pb-3 border-b-2 transition-colors ${activeTab === 'maintenance' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+            >
+              Utrzymanie
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('status')}
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'status' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
@@ -2092,6 +2307,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           <StatusMain project={selectedProject} />
         )}
 
+        {activeTab === 'maintenance' && selectedProject.hasMaintenance && (
+          <MaintenanceView project={selectedProject} />
+        )}
+
         {activeTab === '__status_placeholder__' && (
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
             <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-4">
@@ -2452,6 +2671,385 @@ const parseCalendarDate = (value?: string) => {
   const normalizedValue = value.includes('T') ? value : `${value}T00:00:00`;
   const date = new Date(normalizedValue);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const MaintenanceView = ({ project }: { project: Project }) => {
+  const [entries, setEntries] = useState<MaintenanceEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<MaintenanceEntry | null>(null);
+
+  const loadEntries = async () => {
+    if (!window.electron) {
+      setEntries([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await window.electron.getMaintenanceEntries(project.id);
+      setEntries(result);
+    } catch (err: any) {
+      setError(err.message || 'Nie udało się pobrać wpisów utrzymania.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadEntries();
+  }, [project.id]);
+
+  const openCreateModal = () => {
+      setEditingEntry(null);
+      setIsModalOpen(true);
+  };
+
+  const openEditModal = (entry: MaintenanceEntry) => {
+    setEditingEntry(entry);
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (entry: MaintenanceEntry) => {
+    if (!window.electron) return;
+
+    await window.electron.saveMaintenanceEntry(entry);
+    setIsModalOpen(false);
+    setEditingEntry(null);
+    await loadEntries();
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!window.electron) return;
+    if (!window.confirm('Czy na pewno chcesz usunąć ten wpis utrzymania?')) {
+      return;
+    }
+
+    await window.electron.deleteMaintenanceEntry(entryId);
+    if (editingEntry?.id === entryId) {
+      setEditingEntry(null);
+      setIsModalOpen(false);
+    }
+    await loadEntries();
+  };
+
+  const totalNet = entries.reduce((sum, entry) => sum + entry.netAmount, 0);
+  const totalGross = entries.reduce((sum, entry) => sum + entry.grossAmount, 0);
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
+            <DollarSign className="text-indigo-500" /> Utrzymanie
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Ewidencja miesięcy rozliczanych w ramach opłaty utrzymaniowej dla projektu: {project.code}
+          </p>
+        </div>
+        <button
+          onClick={openCreateModal}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm"
+        >
+          <Plus size={16} /> Dodaj miesiąc
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Miesięcy</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{entries.length}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Suma netto</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{formatCurrencyValue(totalNet)} zł</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Suma brutto</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{formatCurrencyValue(totalGross)} zł</p>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+        {isLoading ? (
+          <div className="flex justify-center p-12">
+            <Loader2 className="animate-spin text-indigo-500" size={32} />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
+              <DollarSign size={28} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak wpisów utrzymania</h3>
+            <p className="text-gray-500 dark:text-gray-400">Dodaj pierwszy miesiąc rozliczeniowy dla opłaty utrzymaniowej.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
+                <tr>
+                  <th className="px-6 py-4 whitespace-nowrap">Miesiąc</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Netto</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">VAT</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Brutto</th>
+                  <th className="px-6 py-4">Uwagi</th>
+                  <th className="px-6 py-4 text-center">Akcje</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                      {formatMaintenanceMonth(entry.month)}
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      {formatCurrencyValue(entry.netAmount)} zł
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap text-gray-500 dark:text-gray-400">
+                      {entry.vatRate.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                    </td>
+                    <td className="px-6 py-4 text-right whitespace-nowrap font-medium text-indigo-600 dark:text-indigo-400">
+                      {formatCurrencyValue(entry.grossAmount)} zł
+                    </td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                      {entry.notes?.trim() ? entry.notes : <span className="text-gray-400 dark:text-gray-500">Brak uwag</span>}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => openEditModal(entry)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => void handleDelete(entry.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <MaintenanceEntryModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingEntry(null);
+        }}
+        project={project}
+        entryToEdit={editingEntry}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
+    </div>
+  );
+};
+
+const MaintenanceEntryModal = ({
+  isOpen,
+  onClose,
+  project,
+  entryToEdit,
+  onSave,
+  onDelete,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  project: Project;
+  entryToEdit: MaintenanceEntry | null;
+  onSave: (entry: MaintenanceEntry) => Promise<void>;
+  onDelete: (entryId: string) => Promise<void>;
+}) => {
+  const [formData, setFormData] = useState<MaintenanceEntry>(() => createMaintenanceDraft(project.id));
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError('');
+    if (entryToEdit) {
+      setFormData(entryToEdit);
+      return;
+    }
+      setFormData(createMaintenanceDraft(project));
+  }, [entryToEdit, isOpen, project.id]);
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = event.target;
+    const nextValue = type === 'number' ? parseFloat(value) || 0 : value;
+
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: nextValue, updatedAt: new Date().toISOString() };
+
+      if (name === 'netAmount' || name === 'vatRate') {
+        updated.grossAmount = calculateGrossFromNet(
+          name === 'netAmount' ? Number(nextValue) : prev.netAmount,
+          name === 'vatRate' ? Number(nextValue) : prev.vatRate,
+        );
+      } else if (name === 'grossAmount') {
+        updated.netAmount = calculateNetFromGross(Number(nextValue), prev.vatRate);
+      }
+
+      return updated;
+    });
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+
+    if (!formData.month) {
+      setError('Wybierz miesiąc rozliczeniowy.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        ...formData,
+        projectId: project.id,
+        notes: formData.notes?.trim() || '',
+        updatedAt: new Date().toISOString(),
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Wystąpił błąd zapisu wpisu utrzymania.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            {entryToEdit ? 'Edytuj wpis utrzymania' : 'Dodaj miesiąc utrzymania'}
+          </h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-6 overflow-y-auto flex-1 space-y-6">
+            {error && (
+              <div className="p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-center gap-2">
+                <AlertTriangle size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Miesiąc *</label>
+                <input
+                  required
+                  type="month"
+                  name="month"
+                  value={formData.month}
+                  onChange={handleChange}
+                  onKeyDown={handleDateInputTabNavigation}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </div>
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-100">
+                <p className="font-semibold">Projekt</p>
+                <p className="mt-1">{project.code} · {project.name}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota netto</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="netAmount"
+                  value={formData.netAmount}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">VAT (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="vatRate"
+                  value={formData.vatRate}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota brutto</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="grossAmount"
+                  value={formData.grossAmount}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Uwagi</label>
+              <textarea
+                name="notes"
+                value={formData.notes || ''}
+                onChange={handleChange}
+                rows={5}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition resize-y"
+                placeholder="Opcjonalny opis, np. zakres abonamentu, numer faktury, uwagi rozliczeniowe..."
+              />
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between gap-3 shrink-0">
+            <div>
+              {entryToEdit && (
+                <button
+                  type="button"
+                  onClick={() => void onDelete(entryToEdit.id)}
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                >
+                  Usuń wpis
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                Anuluj
+              </button>
+              <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900 transition flex items-center justify-center min-w-[140px]">
+                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : (entryToEdit ? 'Zapisz zmiany' : 'Dodaj wpis')}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 };
 const getDateKey = (date: Date) => format(date, 'yyyy-MM-dd');
 const getComparableDateKey = (value?: string) => {

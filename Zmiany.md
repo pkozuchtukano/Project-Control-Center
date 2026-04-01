@@ -219,6 +219,7 @@
   - 2026-03-27 – Wspólny zakres dat dla części analitycznej rozliczeń
     -- Filtry `Zakres od`, `Zakres do`, `Ostatnie pół roku` i `Całość` przeniesiono do karty `Metryka sukcesu`, aby stały się głównym punktem sterowania analizą w zakładce `Rozliczenia`.
     -- Ten sam zakres dat steruje teraz wszystkimi sekcjami poniżej karty filtrów: KPI, wykresami trendu, dolną tabelą rozliczeń, zyskownością, listą osób i statusami zleceń, podczas gdy kafelki odnoszące się do całej umowy zachowują wartości globalne.
+
   - 2026-03-27 – Uproszczenie KPI Metryki sukcesu do relacji zlecenia vs logi
     -- W karcie `Metryka sukcesu` usunięto zależność od typów zadań YouTrack i zastąpiono wskaźnik `Bug-to-Task Ratio` prostą relacją `Order-to-Log Ratio`.
     -- KPI i opisy biznesowe w tej karcie bazują teraz wyłącznie na porównaniu godzin zakontraktowanych w zleceniach z godzinami rzeczywiście zalogowanymi, zgodnie z logiką rozliczeń projektu.
@@ -332,3 +333,15 @@
 - 2026-03-26 – Odświeżanie parametrów daty przy wejściu do notatek
   -- W module notatek dodano odświeżanie zmiennych szablonu rozpoznawanych jako daty, takich jak `{{data}}`, `{{data+3d}}` i `{{data-1w}}`, już podczas otwierania widoku projektu.
   -- Po wejściu do zakładki `Notatki` pola dat nie zachowują już poprzednio zapisanej wartości z wcześniejszego dnia, tylko ustawiają się na bieżącą datę wynikającą z tokenu.
+
+## Ustawienia projektu
+- 2026-04-01 – Konfiguracja utrzymania i abonamentów projektu
+  -- Rozszerzono model `Project` o pola `hasMaintenance`, `maintenanceNetAmount`, `maintenanceVatRate` i `maintenanceGrossAmount`, a przy odczycie istniejących projektów dodawane są bezpieczne wartości domyślne bez utraty zapisanych danych.
+  -- W modalu edycji projektu dodano sekcję `Utrzymanie i Abonamenty` z checkboxem aktywującym opłatę, polami netto/VAT/brutto oraz przełącznikiem trybu liczenia przez kłódkę.
+  -- Formularz przelicza kwoty w czasie rzeczywistym: w trybie domyślnym liczy `brutto` z `netto`, a po odblokowaniu pozwala utrzymać stałą kwotę `brutto` i wylicza `netto` w dół według aktualnej stawki VAT.
+
+## Utrzymanie
+- 2026-04-01 – Zakładka miesięcznych wpisów utrzymania projektu
+  -- Dodano nową tabelę SQLite `maintenance_entries` z bezstratną inicjalizacją oraz IPC do pobierania, zapisu i usuwania miesięcznych wpisów utrzymania per projekt.
+  -- Projekt z aktywną opcją utrzymania pokazuje teraz dodatkową zakładkę `Utrzymanie`, w której dostępna jest lista miesięcy rozliczeniowych z podsumowaniem netto i brutto.
+  -- W zakładce dodano formularz `Dodaj miesiąc`, pozwalający zapisać miesiąc, kwoty netto/VAT/brutto oraz pole `Uwagi`, z automatycznym przeliczaniem netto i brutto podczas edycji.
