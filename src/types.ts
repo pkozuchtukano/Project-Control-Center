@@ -113,6 +113,12 @@ export type OrderProtocolEmailTemplateData = {
   lastModified: string;
 };
 
+export type MaintenanceSettlementEmailTemplateData = {
+  projectId: string;
+  emailTemplate: EmailTemplate;
+  lastModified: string;
+};
+
 export type Estimation = {
   projectId: string;
   items: EstimationItem[];
@@ -222,6 +228,7 @@ export type MaintenanceEntry = {
   vatRate: number;
   grossAmount: number;
   notes?: string;
+  settlementFlow?: OrderProtocolFlow;
   createdAt: string;
   updatedAt: string;
 };

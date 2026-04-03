@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow
 } from './types';
 
 declare global {
@@ -36,6 +36,8 @@ declare global {
       saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       getOrderProtocolEmailTemplate: (projectId: string) => Promise<OrderProtocolEmailTemplateData | null>;
       saveOrderProtocolEmailTemplate: (data: { projectId: string, data: OrderProtocolEmailTemplateData }) => Promise<{ success: boolean }>;
+      getMaintenanceSettlementEmailTemplate: (projectId: string) => Promise<MaintenanceSettlementEmailTemplateData | null>;
+      saveMaintenanceSettlementEmailTemplate: (data: { projectId: string, data: MaintenanceSettlementEmailTemplateData }) => Promise<{ success: boolean }>;
       getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
       saveProjectLink: (data: ProjectLink) => Promise<{ success: boolean }>;
       deleteProjectLink: (id: string) => Promise<{ success: boolean }>;
@@ -3389,10 +3391,11 @@ const OrderProtocolFlowModal = ({
 
   useEffect(() => {
     if (!isOpen || !order || !emailTemplateData || isEmailTemplateLoading) return;
-    if (!window.electron?.saveOrderProtocolEmailTemplate) return;
+    const electronApi = window.electron;
+    if (!electronApi?.saveOrderProtocolEmailTemplate) return;
 
     const timer = setTimeout(() => {
-      void window.electron.saveOrderProtocolEmailTemplate({
+      void electronApi.saveOrderProtocolEmailTemplate({
         projectId: order.projectId,
         data: {
           ...emailTemplateData,
@@ -4078,6 +4081,22 @@ const createOrderProtocolEmailTemplateData = (
   lastModified: template?.lastModified || new Date().toISOString(),
 });
 
+const createMaintenanceSettlementEmailTemplateData = (
+  projectId: string,
+  template?: Partial<MaintenanceSettlementEmailTemplateData> | null,
+): MaintenanceSettlementEmailTemplateData => ({
+  projectId,
+  emailTemplate: {
+    ...createEmptyEmailTemplate(),
+    ...(template?.emailTemplate || {}),
+    variables: {
+      ...createEmptyEmailTemplate().variables,
+      ...(template?.emailTemplate?.variables || {}),
+    },
+  },
+  lastModified: template?.lastModified || new Date().toISOString(),
+});
+
 const buildOrderItemsFromTemplate = (template?: { names?: string[]; lastDate?: string } | null): OrderItem[] => {
   const names = (template?.names || []).map(name => name.trim()).filter(Boolean);
   if (names.length === 0) {
@@ -4137,10 +4156,60 @@ const getOrderPpVariableDefinitions = (order: Order, overrides?: Partial<Record<
   ];
 };
 
+const getMaintenanceSettlementVariableDefinitions = (
+  entry: MaintenanceEntry,
+  project: Project,
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const [yearValue, monthValue] = entry.month.split('-');
+  const year = Number(yearValue);
+  const monthIndex = Number(monthValue);
+  const monthDate = year && monthIndex ? new Date(year, monthIndex - 1, 1) : null;
+  const monthStart = monthDate ? format(monthDate, 'yyyy-MM-dd') : '';
+  const monthEnd = monthDate ? format(new Date(year, monthIndex, 0), 'yyyy-MM-dd') : '';
+  const settlementDate = overrides?.data
+    || monthEnd
+    || format(new Date(), 'yyyy-MM-dd');
+
+  return [
+    { token: 'kod_projektu', aliases: ['projectCode'], value: project.code || '' },
+    { token: 'nazwa_projektu', aliases: ['projectName'], value: project.name || '' },
+    { token: 'nr_umowy', aliases: ['contractNo'], value: project.contractNo || '' },
+    { token: 'miesiac', aliases: ['month'], value: entry.month || '' },
+    { token: 'miesiac_nazwa', aliases: ['monthName'], value: monthDate ? formatMaintenanceMonth(entry.month) : entry.month || '' },
+    { token: 'poczatek_miesiaca', aliases: ['monthStart', 'startOfMonth'], value: monthStart },
+    { token: 'koniec_miesiaca', aliases: ['monthEnd', 'endOfMonth'], value: monthEnd },
+    { token: 'rok', aliases: ['year'], value: yearValue || '' },
+    { token: 'kwota_netto', aliases: ['netAmount'], value: formatCurrencyValue(Number(entry.netAmount) || 0) },
+    { token: 'stawka_vat', aliases: ['vatRate'], value: (Number(entry.vatRate) || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+    { token: 'kwota_brutto', aliases: ['grossAmount'], value: formatCurrencyValue(Number(entry.grossAmount) || 0) },
+    { token: 'uwagi', aliases: ['notes'], value: entry.notes || '' },
+    { token: 'data_utworzenia', aliases: ['createdAt'], value: toCalendarDateString(entry.createdAt) },
+    { token: 'data_aktualizacji', aliases: ['updatedAt'], value: toCalendarDateString(entry.updatedAt) },
+    { token: 'data', aliases: ['settlementDate', 'today'], value: settlementDate },
+  ];
+};
+
 const buildOrderPpVariableMap = (order: Order, overrides?: Partial<Record<string, string>>) => {
   const map: Record<string, string> = {};
 
   getOrderPpVariableDefinitions(order, overrides).forEach(({ token, aliases, value }) => {
+    [token, ...(aliases || [])].forEach(alias => {
+      map[normalizeTemplateVariableKey(alias)] = value;
+    });
+  });
+
+  return map;
+};
+
+const buildMaintenanceSettlementVariableMap = (
+  entry: MaintenanceEntry,
+  project: Project,
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const map: Record<string, string> = {};
+
+  getMaintenanceSettlementVariableDefinitions(entry, project, overrides).forEach(({ token, aliases, value }) => {
     [token, ...(aliases || [])].forEach(alias => {
       map[normalizeTemplateVariableKey(alias)] = value;
     });
@@ -4182,6 +4251,59 @@ const renderResolvedTemplateWithHighlightedValues = (template: string, order: Or
   });
 };
 
+const normalizeMaintenanceSettlementFlow = (flow?: MaintenanceEntry['settlementFlow'] | null): OrderProtocolFlow => ({
+  steps: Array.isArray(flow?.steps)
+    ? flow.steps.map(step => createOrderProtocolStep(step))
+    : [],
+  completedStepIds: Array.isArray(flow?.completedStepIds)
+    ? flow.completedStepIds.filter((stepId): stepId is string => typeof stepId === 'string' && stepId.trim().length > 0)
+    : [],
+  updatedAt: flow?.updatedAt,
+});
+
+const resolveMaintenanceSettlementTemplate = (
+  template: string,
+  entry: MaintenanceEntry,
+  project: Project,
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const variableMap = buildMaintenanceSettlementVariableMap(entry, project, overrides);
+  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, rawToken) => {
+    const normalizedToken = normalizeTemplateVariableKey(rawToken);
+    return Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
+      ? variableMap[normalizedToken]
+      : `{{${String(rawToken).trim()}}}`;
+  });
+};
+
+const renderResolvedMaintenanceSettlementTemplate = (
+  template: string,
+  entry: MaintenanceEntry,
+  project: Project,
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const variableMap = buildMaintenanceSettlementVariableMap(entry, project, overrides);
+  const segments = template.split(/(\{\{[^}]+\}\})/g);
+
+  return segments.map((segment, index) => {
+    const match = segment.match(/^\{\{\s*([^}]+)\s*\}\}$/);
+    if (match) {
+      const normalizedToken = normalizeTemplateVariableKey(match[1]);
+      const resolvedValue = Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
+        ? variableMap[normalizedToken]
+        : segment;
+
+      return (
+        <strong key={`${segment}-${index}`} className="font-extrabold text-gray-900 dark:text-white">
+          {resolvedValue}
+        </strong>
+      );
+    }
+
+    return <React.Fragment key={`${segment}-${index}`}>{segment}</React.Fragment>;
+  });
+};
+
 const parseCalendarDate = (value?: string) => {
   if (!value?.trim()) return null;
   const normalizedValue = value.includes('T') ? value : `${value}T00:00:00`;
@@ -4195,6 +4317,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<MaintenanceEntry | null>(null);
+  const [settlementEntryId, setSettlementEntryId] = useState<string | null>(null);
 
   const loadEntries = async () => {
     if (!window.electron) {
@@ -4252,8 +4375,22 @@ const MaintenanceView = ({ project }: { project: Project }) => {
     await loadEntries();
   };
 
+  const handleSaveSettlementFlow = async (entryId: string, flow: OrderProtocolFlow) => {
+    const entry = entries.find((item) => item.id === entryId);
+    if (!window.electron || !entry) return;
+
+    await window.electron.saveMaintenanceEntry({
+      ...entry,
+      settlementFlow: flow,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await loadEntries();
+  };
+
   const totalNet = entries.reduce((sum, entry) => sum + entry.netAmount, 0);
   const totalGross = entries.reduce((sum, entry) => sum + entry.grossAmount, 0);
+  const settlementEntry = entries.find((entry) => entry.id === settlementEntryId) || null;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -4341,6 +4478,15 @@ const MaintenanceView = ({ project }: { project: Project }) => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSettlementEntryId(entry.id)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition"
+                          title="Rozliczenie miesiąca"
+                          aria-label={`Rozliczenie miesiąca ${formatMaintenanceMonth(entry.month)}`}
+                        >
+                          <FileText size={16} />
+                        </button>
                         <button onClick={() => openEditModal(entry)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
                           <Edit2 size={16} />
                         </button>
@@ -4368,6 +4514,13 @@ const MaintenanceView = ({ project }: { project: Project }) => {
         onSave={handleSave}
         onDelete={handleDelete}
       />
+      <MaintenanceSettlementFlowModal
+        isOpen={Boolean(settlementEntry)}
+        entry={settlementEntry}
+        project={project}
+        onClose={() => setSettlementEntryId(null)}
+        onSave={handleSaveSettlementFlow}
+      />
     </div>
   );
 };
@@ -4387,7 +4540,7 @@ const MaintenanceEntryModal = ({
   onSave: (entry: MaintenanceEntry) => Promise<void>;
   onDelete: (entryId: string) => Promise<void>;
 }) => {
-  const [formData, setFormData] = useState<MaintenanceEntry>(() => createMaintenanceDraft(project.id));
+  const [formData, setFormData] = useState<MaintenanceEntry>(() => createMaintenanceDraft(project));
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -4563,6 +4716,630 @@ const MaintenanceEntryModal = ({
             </div>
           </div>
         </form>
+      </div>
+    </div>
+  );
+};
+
+const MaintenanceSettlementFlowModal = ({
+  isOpen,
+  entry,
+  project,
+  onClose,
+  onSave,
+}: {
+  isOpen: boolean;
+  entry: MaintenanceEntry | null;
+  project: Project;
+  onClose: () => void;
+  onSave: (entryId: string, flow: OrderProtocolFlow) => Promise<void>;
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [draftSteps, setDraftSteps] = useState(() => normalizeMaintenanceSettlementFlow(entry?.settlementFlow).steps);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
+  const [emailTemplateData, setEmailTemplateData] = useState<MaintenanceSettlementEmailTemplateData | null>(null);
+  const [isEmailTemplateLoading, setIsEmailTemplateLoading] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !entry) {
+      setIsEditMode(false);
+      setDraftSteps([]);
+      setIsSaving(false);
+      setIsVariablesSectionExpanded(false);
+      setEmailTemplateData(null);
+      setIsEmailTemplateLoading(false);
+      setCopiedField(null);
+      return;
+    }
+
+    setIsEditMode(false);
+    setDraftSteps(normalizeMaintenanceSettlementFlow(entry.settlementFlow).steps);
+    setIsSaving(false);
+    setIsVariablesSectionExpanded(false);
+    setCopiedField(null);
+  }, [entry, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !entry) return;
+
+    let isCancelled = false;
+
+    const loadEmailTemplate = async () => {
+      setIsEmailTemplateLoading(true);
+      try {
+        if (!window.electron?.getMaintenanceSettlementEmailTemplate) {
+          if (!isCancelled) {
+            setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id));
+          }
+          return;
+        }
+
+        const savedTemplate = await window.electron.getMaintenanceSettlementEmailTemplate(project.id);
+        if (!isCancelled) {
+          setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id, savedTemplate));
+        }
+      } catch (error) {
+        console.error('Błąd pobierania szablonu e-mail rozliczenia miesiąca:', error);
+        if (!isCancelled) {
+          setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsEmailTemplateLoading(false);
+        }
+      }
+    };
+
+    void loadEmailTemplate();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [entry, isOpen, project.id]);
+
+  useEffect(() => {
+    if (!isOpen || !entry || !emailTemplateData || isEmailTemplateLoading) return;
+    const electronApi = window.electron;
+    if (!electronApi?.saveMaintenanceSettlementEmailTemplate) return;
+
+    const timer = setTimeout(() => {
+      void electronApi.saveMaintenanceSettlementEmailTemplate({
+        projectId: project.id,
+        data: {
+          ...emailTemplateData,
+          projectId: project.id,
+          lastModified: new Date().toISOString(),
+        },
+      });
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [emailTemplateData, entry, isEmailTemplateLoading, isOpen, project.id]);
+
+  if (!isOpen || !entry) return null;
+
+  const normalizedFlow = normalizeMaintenanceSettlementFlow(entry.settlementFlow);
+  const persistedSteps = normalizedFlow.steps || [];
+  const completedStepIds = normalizedFlow.completedStepIds || [];
+  const stepsToRender = isEditMode ? draftSteps : persistedSteps;
+  const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
+  const availableVariables = getMaintenanceSettlementVariableDefinitions(entry, project);
+
+  const handleOpenEditMode = () => {
+    setDraftSteps((current) => {
+      if (current.length > 0) {
+        return current;
+      }
+
+      return persistedSteps.length > 0 ? persistedSteps : [createOrderProtocolStep()];
+    });
+    setIsEditMode(true);
+  };
+
+  const handleStepChange = (stepId: string, field: 'description' | 'linkUrl' | 'linkLabel', value: string) => {
+    setDraftSteps(prev => prev.map(step => (
+      step.id === stepId
+        ? { ...step, [field]: value }
+        : step
+    )));
+  };
+
+  const handleAddStep = () => {
+    setDraftSteps(prev => [...prev, createOrderProtocolStep()]);
+  };
+
+  const handleRemoveStep = (stepId: string) => {
+    setDraftSteps(prev => prev.filter(step => step.id !== stepId));
+  };
+
+  const handleMoveStep = (stepId: string, direction: 'up' | 'down') => {
+    setDraftSteps(prev => {
+      const index = prev.findIndex(step => step.id === stepId);
+      if (index < 0) return prev;
+
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+
+      const next = [...prev];
+      const [movedStep] = next.splice(index, 1);
+      next.splice(targetIndex, 0, movedStep);
+      return next;
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setDraftSteps(persistedSteps);
+    setIsEditMode(false);
+  };
+
+  const handleSaveFlow = async () => {
+    setIsSaving(true);
+    try {
+      const cleanedSteps = draftSteps
+        .map(step => ({
+          ...step,
+          description: step.description.trim(),
+          linkUrl: step.linkUrl?.trim() || '',
+          linkLabel: step.linkLabel?.trim() || '',
+        }))
+        .filter(step => step.description || step.linkUrl || step.linkLabel);
+
+      await onSave(entry.id, {
+        steps: cleanedSteps,
+        completedStepIds: completedStepIds.filter(stepId => cleanedSteps.some(step => step.id === stepId)),
+        updatedAt: new Date().toISOString(),
+      });
+      setIsEditMode(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleStepCompleted = async (stepId: string, isCompleted: boolean) => {
+    const nextCompletedStepIds = isCompleted
+      ? [...new Set([...completedStepIds, stepId])]
+      : completedStepIds.filter(id => id !== stepId);
+
+    await onSave(entry.id, {
+      steps: persistedSteps,
+      completedStepIds: nextCompletedStepIds,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleOpenExternal = async (url: string) => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+
+    const normalizedUrl = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmedUrl) ? trimmedUrl : `https://${trimmedUrl}`;
+
+    if (window.electron?.openExternal) {
+      await window.electron.openExternal(normalizedUrl);
+      return;
+    }
+
+    window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const updateProjectEmailTemplate = (updates: Partial<EmailTemplate>) => {
+    setEmailTemplateData(prev => createMaintenanceSettlementEmailTemplateData(project.id, {
+      ...(prev || {}),
+      emailTemplate: {
+        ...(prev?.emailTemplate || createEmptyEmailTemplate()),
+        ...updates,
+      },
+      lastModified: new Date().toISOString(),
+    }));
+  };
+
+  const handleCopyEmailField = async (value: string, fieldId: string) => {
+    const resolvedValue = resolveMaintenanceSettlementTemplate(value, entry, project);
+    try {
+      await navigator.clipboard.writeText(resolvedValue);
+      setCopiedField(fieldId);
+      window.setTimeout(() => setCopiedField(current => (current === fieldId ? null : current)), 1500);
+    } catch (error) {
+      console.error('Błąd kopiowania pola e-mail rozliczenia miesiąca:', error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-gray-800">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between gap-4 shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <FileText className="text-indigo-500" size={20} />
+              Rozliczenie miesiąca {formatMaintenanceMonth(entry.month)}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {project.code} · {project.name}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenEditMode}
+              className={`p-2.5 rounded-xl border transition ${
+                isEditMode
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700'
+              }`}
+              title="Edycja flow rozliczenia miesiąca"
+              aria-label="Edytuj flow rozliczenia miesiąca"
+            >
+              <Edit2 size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
+              aria-label="Zamknij modal rozliczenia miesiąca"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <section className="rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900/40 dark:bg-indigo-950/20 p-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Miesiąc</p>
+                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{formatMaintenanceMonth(entry.month)}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Netto</p>
+                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{formatCurrencyValue(entry.netAmount)} zł</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">VAT</p>
+                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{entry.vatRate.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Brutto</p>
+                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{formatCurrencyValue(entry.grossAmount)} zł</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => setIsVariablesSectionExpanded(prev => !prev)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Zmienne</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Zmiennych możesz używać w krokach flow i w szablonie wiadomości e-mail.
+                </p>
+              </div>
+              <ChevronDown size={18} className={`text-gray-400 transition-transform ${isVariablesSectionExpanded ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isVariablesSectionExpanded && (
+              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                {availableVariables.map((variable) => (
+                  <div key={variable.token} className="rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">{`{{${variable.token}}}`}</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white break-words">{variable.value || 'brak wartości'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {isEditMode ? (
+            <section className="space-y-4">
+              {draftSteps.map((step, index) => (
+                <div key={step.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-5 shadow-sm">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
+                        {index + 1}
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Krok rozliczenia</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveStep(step.id, 'up')}
+                        className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700 transition"
+                        title="Przesuń krok wyżej"
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveStep(step.id, 'down')}
+                        className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700 transition"
+                        title="Przesuń krok niżej"
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStep(step.id)}
+                        className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-red-600 hover:border-red-300 dark:text-gray-300 dark:hover:text-red-300 dark:hover:border-red-700 transition"
+                        title="Usuń krok"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etykieta linku</label>
+                      <input
+                        type="text"
+                        value={step.linkLabel || ''}
+                        onChange={(event) => handleStepChange(step.id, 'linkLabel', event.target.value)}
+                        placeholder="np. Dokument rozliczenia w SharePoint"
+                        className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link</label>
+                      <input
+                        type="text"
+                        value={step.linkUrl || ''}
+                        onChange={(event) => handleStepChange(step.id, 'linkUrl', event.target.value)}
+                        placeholder="https://..."
+                        className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis kroku</label>
+                    <textarea
+                      value={step.description}
+                      onChange={(event) => handleStepChange(step.id, 'description', event.target.value)}
+                      rows={4}
+                      placeholder="Opisz czynność. Możesz używać zmiennych, np. {{miesiac_nazwa}}, {{kwota_brutto}}, {{data}}."
+                      className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                    />
+                    {step.description && (
+                      <div className="mt-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/50 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                        {renderResolvedMaintenanceSettlementTemplate(step.description, entry, project)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={handleAddStep}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-indigo-300 text-indigo-700 dark:border-indigo-700 dark:text-indigo-300 px-4 py-2.5 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
+              >
+                <Plus size={16} />
+                Dodaj krok
+              </button>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              {stepsToRender.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Brak zdefiniowanego flow rozliczenia miesiąca</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla wybranego miesiąca utrzymania.
+                  </p>
+                </div>
+              ) : (
+                stepsToRender.map((step, index) => {
+                  const resolvedDescription = resolveMaintenanceSettlementTemplate(step.description || '', entry, project);
+                  const resolvedLinkLabel = resolveMaintenanceSettlementTemplate(step.linkLabel || '', entry, project);
+                  const resolvedLinkUrl = resolveMaintenanceSettlementTemplate(step.linkUrl || '', entry, project);
+                  const isCompleted = completedStepIds.includes(step.id);
+
+                  return (
+                    <div
+                      key={step.id}
+                      className={`rounded-2xl border bg-white dark:bg-gray-800/60 shadow-sm transition-all ${
+                        isCompleted
+                          ? 'border-emerald-200 dark:border-emerald-800/60 p-3'
+                          : 'border-gray-200 dark:border-gray-700 p-5'
+                      }`}
+                    >
+                      <div className={`flex gap-4 ${isCompleted ? 'items-center' : 'items-start'}`}>
+                        <div className={`w-9 h-9 rounded-full text-white text-sm font-bold flex items-center justify-center shrink-0 ${isCompleted ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+                          {index + 1}
+                        </div>
+                        <div className={`min-w-0 flex-1 ${isCompleted ? 'space-y-0' : 'space-y-3'}`}>
+                          {!isCompleted && resolvedLinkUrl && (
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenExternal(resolvedLinkUrl)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition"
+                            >
+                              <ExternalLink size={15} />
+                              <span className="truncate">{resolvedLinkLabel || 'Otwórz link'}</span>
+                            </button>
+                          )}
+                          {isCompleted ? (
+                            <div className="flex items-center gap-3 min-w-0">
+                              <p className="text-sm leading-6 text-gray-600 dark:text-gray-300 truncate">
+                                {resolvedDescription || 'Brak opisu kroku.'}
+                              </p>
+                              {resolvedLinkUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleOpenExternal(resolvedLinkUrl)}
+                                  className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition"
+                                >
+                                  <ExternalLink size={12} />
+                                  <span>{resolvedLinkLabel || 'Link'}</span>
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                              {resolvedDescription ? renderResolvedMaintenanceSettlementTemplate(step.description || '', entry, project) : 'Brak opisu kroku.'}
+                            </p>
+                          )}
+                        </div>
+                        <label
+                          className={`shrink-0 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                            isCompleted
+                              ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300'
+                              : 'bg-white border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500 dark:hover:text-emerald-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20'
+                          } ${isCompleted ? 'w-10 h-10' : 'w-10 h-10 mt-0.5'}`}
+                          title="Wykonane"
+                          aria-label={`Oznacz krok ${index + 1} jako wykonany`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isCompleted}
+                            onChange={(event) => void handleToggleStepCompleted(step.id, event.target.checked)}
+                            className="sr-only"
+                          />
+                          <CheckCircle size={18} className={isCompleted ? '' : 'opacity-55'} />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </section>
+          )}
+
+          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+            <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
+              <Mail className="text-indigo-500" size={18} />
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Szablon wiadomości E-mail</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania.</p>
+              </div>
+            </div>
+
+            {isEmailTemplateLoading ? (
+              <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                <Loader2 className="animate-spin text-indigo-500 mr-2" size={18} />
+                Wczytywanie szablonu e-mail...
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { id: 'to', label: 'DO:', value: projectEmailTemplate.to || '' },
+                    { id: 'cc', label: 'DW:', value: projectEmailTemplate.cc || '' },
+                  ].map(field => (
+                    <div key={field.id} className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                        <div className="flex items-center gap-2">
+                          {copiedField === field.id && (
+                            <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyEmailField(field.value, field.id)}
+                            className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                            title="Kopiuj z podstawieniem zmiennych"
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={field.value}
+                        onChange={event => updateProjectEmailTemplate({ [field.id]: event.target.value } as Partial<EmailTemplate>)}
+                        className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow w-full dark:text-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
+                    <div className="flex items-center gap-2">
+                      {copiedField === 'subject' && (
+                        <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEmailField(projectEmailTemplate.subject || '', 'subject')}
+                        className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                        title="Kopiuj z podstawieniem zmiennych"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={projectEmailTemplate.subject || ''}
+                    onChange={event => updateProjectEmailTemplate({ subject: event.target.value })}
+                    className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow font-medium w-full dark:text-white"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Treść wiadomości:</label>
+                    <div className="flex items-center gap-2">
+                      {copiedField === 'body' && (
+                        <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano treść!</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEmailField(projectEmailTemplate.body || '', 'body')}
+                        className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
+                        title="Kopiuj treść z podstawieniem zmiennych"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={projectEmailTemplate.body || ''}
+                    onChange={event => updateProjectEmailTemplate({ body: event.target.value })}
+                    rows={6}
+                    className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-2 text-sm outline-none font-sans leading-relaxed resize-none transition-shadow w-full dark:text-white"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 shrink-0 bg-gray-50/70 dark:bg-gray-900/70 rounded-b-3xl">
+          {isEditMode ? (
+            <>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+                disabled={isSaving}
+              >
+                Anuluj edycję
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveFlow()}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition shadow-sm disabled:opacity-60"
+                disabled={isSaving}
+              >
+                {isSaving ? 'Zapisywanie...' : 'Zapisz flow'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+            >
+              Zamknij
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

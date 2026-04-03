@@ -407,3 +407,14 @@
 - 2026-04-01 – Osobne wykresy trendu dla zleceń i utrzymania w `Rozliczeniach`
   -- Zmieniono nazwę karty wykresu na `Wykres zleceń, logów i trendu w ramach zleceń`, aby jednoznacznie wskazywała, że dotyczy wyłącznie części zleceniowej projektu.
   -- W projektach z aktywnym utrzymaniem dodano drugą, równoległą kartę wykresową dla utrzymania, która pokazuje narastanie godzin wynikających z wpisów utrzymania oraz logów oznaczonych jako utrzymaniowe.
+
+## Utrzymanie
+- 2026-04-03 – Rozliczenie miesiąca dla miesięcy utrzymaniowych
+  -- W zakładce `Utrzymanie` dodano nową akcję `Rozliczenie miesiąca` dla każdego miesiąca oraz modal z flow kroków, oznaczaniem wykonania, listą zmiennych i projektowym szablonem wiadomości e-mail.
+  -- Funkcja działa analogicznie do `Protokółu Przekazania` w zleceniach, ale operuje na konkretnym miesiącu utrzymania i pozwala prowadzić osobny proces rozliczeniowy dla każdego wpisu.
+- 2026-04-03 – Rozszerzenie modelu danych dla rozliczeń miesięcy utrzymania
+  -- Tabela `maintenance_entries` została bezstratnie rozszerzona o zapis flow rozliczenia miesiąca, a dodatkowo dodano osobną tabelę na szablony e-mail dla rozliczeń miesięcy utrzymania.
+  -- Dzięki temu aplikacja zachowuje stan kroków dla każdego miesiąca osobno, a równocześnie udostępnia wspólny projektowy wzorzec wiadomości do kopiowania i wysyłki.
+- 2026-04-03 – Zmienne początku i końca miesiąca w rozliczeniu utrzymania
+  -- Do zmiennych rozliczenia miesiąca dodano `{{poczatek_miesiaca}}` oraz `{{koniec_miesiaca}}` wraz z aliasami technicznymi dla szablonów i flow.
+  -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.

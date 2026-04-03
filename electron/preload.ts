@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electron', {
     saveMeetingNotes: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-meeting-notes', data),
     getOrderProtocolEmailTemplate: (projectId: string) => ipcRenderer.invoke('get-order-protocol-email-template', projectId),
     saveOrderProtocolEmailTemplate: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-order-protocol-email-template', data),
+    getMaintenanceSettlementEmailTemplate: (projectId: string) => ipcRenderer.invoke('get-maintenance-settlement-email-template', projectId),
+    saveMaintenanceSettlementEmailTemplate: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-maintenance-settlement-email-template', data),
     getProjectLinks: (projectId: string) => ipcRenderer.invoke('get-project-links', projectId),
     saveProjectLink: (data: any) => ipcRenderer.invoke('save-project-link', data),
     deleteProjectLink: (id: string) => ipcRenderer.invoke('delete-project-link', id),

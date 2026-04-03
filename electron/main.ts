@@ -78,6 +78,10 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS maintenance_settlement_email_templates (
+        projectId TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS project_links (
         id TEXT PRIMARY KEY,
         projectId TEXT NOT NULL,
@@ -105,6 +109,7 @@ db.exec(`
         vatRate REAL NOT NULL,
         grossAmount REAL NOT NULL,
         notes TEXT,
+        settlementFlow TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
     );
@@ -218,6 +223,10 @@ const initializeDatabase = () => {
             projectId TEXT PRIMARY KEY,
             data TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS maintenance_settlement_email_templates (
+            projectId TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS project_links (
             id TEXT PRIMARY KEY,
             projectId TEXT NOT NULL,
@@ -245,6 +254,7 @@ const initializeDatabase = () => {
             vatRate REAL NOT NULL,
             grossAmount REAL NOT NULL,
             notes TEXT,
+            settlementFlow TEXT,
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         );
@@ -299,6 +309,15 @@ const initializeDatabase = () => {
         }
     } catch (error) {
         console.error('Błąd migracji kolumny respectDates:', error);
+    }
+    try {
+        const columns = db.prepare('PRAGMA table_info(maintenance_entries)').all() as { name: string }[];
+        const hasSettlementFlow = columns.some(col => col.name === 'settlementFlow');
+        if (!hasSettlementFlow) {
+            db.prepare('ALTER TABLE maintenance_entries ADD COLUMN settlementFlow TEXT').run();
+        }
+    } catch (error) {
+        console.error('BĹ‚Ä…d migracji kolumny settlementFlow:', error);
     }
 };
 
@@ -1145,6 +1164,30 @@ ipcMain.handle('save-order-protocol-email-template', async (_, { projectId, data
     }
 });
 
+ipcMain.handle('get-maintenance-settlement-email-template', async (_, projectId: string) => {
+    try {
+        const row = db.prepare('SELECT data FROM maintenance_settlement_email_templates WHERE projectId = ?').get(projectId) as { data: string } | undefined;
+        return row ? JSON.parse(row.data) : null;
+    } catch (error) {
+        console.error('BĹ‚Ä…d pobierania szablonu e-mail rozliczenia miesiÄ…ca:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-maintenance-settlement-email-template', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO maintenance_settlement_email_templates (projectId, data)
+            VALUES (?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET data = excluded.data
+        `).run(projectId, JSON.stringify(data));
+        return { success: true };
+    } catch (error) {
+        console.error('BĹ‚Ä…d zapisu szablonu e-mail rozliczenia miesiÄ…ca:', error);
+        throw error;
+    }
+});
+
 ipcMain.handle('get-project-links', async (_, projectId: string) => {
     try {
         const rows = db.prepare(`
@@ -1278,12 +1321,27 @@ ipcMain.handle('delete-status-report', async (_, id: string) => {
 
 ipcMain.handle('get-maintenance-entries', async (_, projectId: string) => {
     try {
-        return db.prepare(`
-            SELECT id, projectId, month, netAmount, vatRate, grossAmount, notes, createdAt, updatedAt
+        const rows = db.prepare(`
+            SELECT id, projectId, month, netAmount, vatRate, grossAmount, notes, settlementFlow, createdAt, updatedAt
             FROM maintenance_entries
             WHERE projectId = ?
             ORDER BY month DESC, createdAt DESC
-        `).all(projectId);
+        `).all(projectId) as {
+            id: string;
+            projectId: string;
+            month: string;
+            netAmount: number;
+            vatRate: number;
+            grossAmount: number;
+            notes?: string;
+            settlementFlow?: string | null;
+            createdAt: string;
+            updatedAt: string;
+        }[];
+        return rows.map((row) => ({
+            ...row,
+            settlementFlow: row.settlementFlow ? JSON.parse(row.settlementFlow) : undefined,
+        }));
     } catch (error) {
         console.error('Błąd pobierania wpisów utrzymania:', error);
         throw error;
@@ -1298,19 +1356,21 @@ ipcMain.handle('save-maintenance-entry', async (_, data: {
     vatRate: number;
     grossAmount: number;
     notes?: string;
+    settlementFlow?: any;
     createdAt: string;
     updatedAt: string;
 }) => {
     try {
         db.prepare(`
-            INSERT INTO maintenance_entries (id, projectId, month, netAmount, vatRate, grossAmount, notes, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO maintenance_entries (id, projectId, month, netAmount, vatRate, grossAmount, notes, settlementFlow, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 month = excluded.month,
                 netAmount = excluded.netAmount,
                 vatRate = excluded.vatRate,
                 grossAmount = excluded.grossAmount,
                 notes = excluded.notes,
+                settlementFlow = excluded.settlementFlow,
                 updatedAt = excluded.updatedAt
         `).run(
             data.id,
@@ -1320,6 +1380,7 @@ ipcMain.handle('save-maintenance-entry', async (_, data: {
             data.vatRate,
             data.grossAmount,
             data.notes || '',
+            data.settlementFlow ? JSON.stringify(data.settlementFlow) : null,
             data.createdAt,
             data.updatedAt
         );
