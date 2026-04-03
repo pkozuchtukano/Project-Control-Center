@@ -3,8 +3,8 @@ import { format } from 'date-fns';
 
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
-  DailyHub, DailySection, DailyComment, 
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry
+  DailyHub, DailySection, DailyComment,
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData
 } from './types';
 
 declare global {
@@ -34,6 +34,8 @@ declare global {
       saveEstimation: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       getMeetingNotes: (projectId: string) => Promise<any>;
       saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
+      getOrderProtocolEmailTemplate: (projectId: string) => Promise<OrderProtocolEmailTemplateData | null>;
+      saveOrderProtocolEmailTemplate: (data: { projectId: string, data: OrderProtocolEmailTemplateData }) => Promise<{ success: boolean }>;
       getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
       saveProjectLink: (data: ProjectLink) => Promise<{ success: boolean }>;
       deleteProjectLink: (id: string) => Promise<{ success: boolean }>;
@@ -74,12 +76,12 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, CartesianGrid, ComposedChart, Line, Area, Legend, ReferenceArea, ReferenceLine
 } from 'recharts';
-import {
+import { 
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy
 } from 'lucide-react';
 
 import { 
@@ -94,7 +96,7 @@ import { YouTrackTab } from './components/YouTrackTab';
 import { WorkRegistryMain } from './features/work-registry/components/WorkRegistryMain';
 import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry';
 import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-registry/services/excelService';
-import { FileUp, FileDown } from 'lucide-react';
+import { FileUp, FileDown, ExternalLink, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
 import { DailyMain } from './features/daily/components/DailyMain';
@@ -1712,7 +1714,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             onClick={() => setActiveTab('orders')}
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'orders' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
-            Rejestr Zleceń
+            Zlecenia
           </button>
           <button
             onClick={() => setActiveTab('work')}
@@ -3030,8 +3032,11 @@ const OrdersRegistryView = () => {
   const [isPmsReportModalOpen, setIsPmsReportModalOpen] = useState(false);
   const [isReportsExpanded, setIsReportsExpanded] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [ppOrderId, setPpOrderId] = useState<string | null>(null);
 
   if (!selectedProject) return null;
+
+  const ppOrder = ppOrderId ? orders.find(order => order.id === ppOrderId) || null : null;
 
   const handleOpenModal = () => {
     setEditingOrder(null);
@@ -3093,6 +3098,14 @@ const OrdersRegistryView = () => {
     }
   };
 
+  const handleSavePpFlow = async (orderId: string, flow: NonNullable<Order['ppFlow']>) => {
+    await updateOrder(orderId, { ppFlow: flow });
+  };
+
+  const handleApplyPpHandoverDate = async (orderId: string, handoverDate: string) => {
+    await updateOrder(orderId, { handoverDate });
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -3106,7 +3119,7 @@ const OrdersRegistryView = () => {
       <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
-            <Briefcase className="text-indigo-500" /> Rejestr Zleceń
+            <Briefcase className="text-indigo-500" /> Zlecenia
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {selectedProject.code}</p>
         </div>
@@ -3238,6 +3251,15 @@ const OrdersRegistryView = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setPpOrderId(order.id)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 rounded-lg transition mr-1 border border-indigo-100 dark:border-indigo-800/60"
+                          title="Protokół Przekazania"
+                          aria-label={`Protokół Przekazania dla zlecenia ${order.orderNumber}`}
+                        >
+                          PP
+                        </button>
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
                           <Edit2 size={16} />
                         </button>
@@ -3271,6 +3293,689 @@ const OrdersRegistryView = () => {
       <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} onDelete={handleDeleteFromModal} />
       <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={selectedProject} orders={orders} />
       <ReportPmsModal isOpen={isPmsReportModalOpen} onClose={() => setIsPmsReportModalOpen(false)} project={selectedProject} orders={orders} />
+      <OrderProtocolFlowModal
+        isOpen={Boolean(ppOrder)}
+        order={ppOrder}
+        onClose={() => setPpOrderId(null)}
+        onSave={handleSavePpFlow}
+        onApplyHandoverDate={handleApplyPpHandoverDate}
+      />
+    </div>
+  );
+};
+
+const OrderProtocolFlowModal = ({
+  isOpen,
+  order,
+  onClose,
+  onSave,
+  onApplyHandoverDate,
+}: {
+  isOpen: boolean;
+  order: Order | null;
+  onClose: () => void;
+  onSave: (orderId: string, flow: NonNullable<Order['ppFlow']>) => Promise<void>;
+  onApplyHandoverDate: (orderId: string, handoverDate: string) => Promise<void>;
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [draftSteps, setDraftSteps] = useState(() => normalizeOrderProtocolFlow(order?.ppFlow).steps);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
+  const [protocolDate, setProtocolDate] = useState('');
+  const [isApplyingHandoverDate, setIsApplyingHandoverDate] = useState(false);
+  const [emailTemplateData, setEmailTemplateData] = useState<OrderProtocolEmailTemplateData | null>(null);
+  const [isEmailTemplateLoading, setIsEmailTemplateLoading] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !order) {
+      setIsEditMode(false);
+      setDraftSteps([]);
+      setIsSaving(false);
+      setIsVariablesSectionExpanded(false);
+      setProtocolDate('');
+      setIsApplyingHandoverDate(false);
+      setEmailTemplateData(null);
+      setIsEmailTemplateLoading(false);
+      setCopiedField(null);
+      return;
+    }
+
+    setIsEditMode(false);
+    setDraftSteps(normalizeOrderProtocolFlow(order.ppFlow).steps);
+    setIsSaving(false);
+    setIsVariablesSectionExpanded(false);
+    setProtocolDate(suggestOrderProtocolDate(order));
+    setIsApplyingHandoverDate(false);
+  }, [isOpen, order]);
+
+  useEffect(() => {
+    if (!isOpen || !order) return;
+
+    let isCancelled = false;
+
+    const loadEmailTemplate = async () => {
+      setIsEmailTemplateLoading(true);
+      try {
+        if (!window.electron?.getOrderProtocolEmailTemplate) {
+          if (!isCancelled) {
+            setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId));
+          }
+          return;
+        }
+
+        const savedTemplate = await window.electron.getOrderProtocolEmailTemplate(order.projectId);
+        if (!isCancelled) {
+          setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId, savedTemplate));
+        }
+      } catch (error) {
+        console.error('Błąd pobierania szablonu e-mail PP:', error);
+        if (!isCancelled) {
+          setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsEmailTemplateLoading(false);
+        }
+      }
+    };
+
+    void loadEmailTemplate();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, order]);
+
+  useEffect(() => {
+    if (!isOpen || !order || !emailTemplateData || isEmailTemplateLoading) return;
+    if (!window.electron?.saveOrderProtocolEmailTemplate) return;
+
+    const timer = setTimeout(() => {
+      void window.electron.saveOrderProtocolEmailTemplate({
+        projectId: order.projectId,
+        data: {
+          ...emailTemplateData,
+          projectId: order.projectId,
+          lastModified: new Date().toISOString(),
+        },
+      });
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [emailTemplateData, isEmailTemplateLoading, isOpen, order]);
+
+  if (!isOpen || !order) return null;
+
+  const variableOverrides = { data: protocolDate || suggestOrderProtocolDate(order) };
+  const availableVariables = getOrderPpVariableDefinitions(order, variableOverrides);
+  const normalizedFlow = normalizeOrderProtocolFlow(order.ppFlow);
+  const persistedSteps = normalizedFlow.steps;
+  const completedStepIds = normalizedFlow.completedStepIds;
+  const stepsToRender = isEditMode ? draftSteps : persistedSteps;
+  const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
+
+  const handleOpenEditMode = () => {
+    setDraftSteps((current) => {
+      if (current.length > 0) {
+        return current;
+      }
+
+      return persistedSteps.length > 0 ? persistedSteps : [createOrderProtocolStep()];
+    });
+    setIsEditMode(true);
+  };
+
+  const handleStepChange = (stepId: string, field: 'description' | 'linkUrl' | 'linkLabel', value: string) => {
+    setDraftSteps(prev => prev.map(step => (
+      step.id === stepId
+        ? { ...step, [field]: value }
+        : step
+    )));
+  };
+
+  const handleAddStep = () => {
+    setDraftSteps(prev => [...prev, createOrderProtocolStep()]);
+  };
+
+  const handleRemoveStep = (stepId: string) => {
+    setDraftSteps(prev => prev.filter(step => step.id !== stepId));
+  };
+
+  const handleMoveStep = (stepId: string, direction: 'up' | 'down') => {
+    setDraftSteps(prev => {
+      const index = prev.findIndex(step => step.id === stepId);
+      if (index < 0) return prev;
+
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+
+      const next = [...prev];
+      const [movedStep] = next.splice(index, 1);
+      next.splice(targetIndex, 0, movedStep);
+      return next;
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setDraftSteps(persistedSteps);
+    setIsEditMode(false);
+  };
+
+  const handleSaveFlow = async () => {
+    setIsSaving(true);
+    try {
+      const cleanedSteps = draftSteps
+        .map(step => ({
+          ...step,
+          description: step.description.trim(),
+          linkUrl: step.linkUrl?.trim() || '',
+          linkLabel: step.linkLabel?.trim() || '',
+        }))
+        .filter(step => step.description || step.linkUrl || step.linkLabel);
+
+      await onSave(order.id, {
+        steps: cleanedSteps,
+        completedStepIds: completedStepIds.filter(stepId => cleanedSteps.some(step => step.id === stepId)),
+        updatedAt: new Date().toISOString(),
+      });
+      setIsEditMode(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenExternal = async (url: string) => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+
+    const normalizedUrl = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmedUrl) ? trimmedUrl : `https://${trimmedUrl}`;
+
+    if (window.electron?.openExternal) {
+      await window.electron.openExternal(normalizedUrl);
+      return;
+    }
+
+    window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const updateProjectEmailTemplate = (updates: Partial<EmailTemplate>) => {
+    setEmailTemplateData(prev => createOrderProtocolEmailTemplateData(order.projectId, {
+      ...(prev || { projectId: order.projectId }),
+      emailTemplate: {
+        ...(prev?.emailTemplate || createEmptyEmailTemplate()),
+        ...updates,
+        variables: {
+          ...(prev?.emailTemplate?.variables || {}),
+          ...(updates.variables || {}),
+        },
+      },
+      lastModified: new Date().toISOString(),
+    }));
+  };
+
+  const handleCopyEmailField = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(resolveOrderPpTemplate(text, order, variableOverrides));
+    setCopiedField(id);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const handleApplyHandoverDate = async () => {
+    if (!protocolDate) {
+      return;
+    }
+
+    setIsApplyingHandoverDate(true);
+    try {
+      await onApplyHandoverDate(order.id, protocolDate);
+    } finally {
+      setIsApplyingHandoverDate(false);
+    }
+  };
+
+  const handleToggleStepCompleted = async (stepId: string, isCompleted: boolean) => {
+    const nextCompletedStepIds = isCompleted
+      ? [...new Set([...completedStepIds, stepId])]
+      : completedStepIds.filter(id => id !== stepId);
+
+    await onSave(order.id, {
+      steps: persistedSteps,
+      completedStepIds: nextCompletedStepIds,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col border border-gray-200 dark:border-gray-800">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between gap-4 shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Briefcase className="text-indigo-500" size={20} />
+              PP dla zlecenia {order.orderNumber}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {order.title}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenEditMode}
+              className={`p-2.5 rounded-xl border transition ${
+                isEditMode
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700'
+              }`}
+              title="Edycja flow protokołu przekazania"
+              aria-label="Edytuj flow protokołu przekazania"
+            >
+              <Edit2 size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition"
+              aria-label="Zamknij modal protokołu przekazania"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data dla zmiennej <code>{`{{data}}`}</code></h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Ta data jest używana w krokach `PP`, w treści e-mail oraz w akcji uzupełnienia daty przekazania.
+                </p>
+              </div>
+              <div className="w-full md:w-64">
+                <input
+                  type="date"
+                  value={protocolDate}
+                  onChange={(event) => setProtocolDate(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 dark:border-indigo-900/40 dark:bg-indigo-950/20 p-4">
+            <button
+              type="button"
+              onClick={() => setIsVariablesSectionExpanded(current => !current)}
+              className="w-full flex items-center justify-between gap-3 text-left"
+              aria-expanded={isVariablesSectionExpanded}
+            >
+              <div>
+                <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Dostępne zmienne</h3>
+                <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-1">
+                  Rozwiń, gdy potrzebujesz sprawdzić listę tokenów.
+                </p>
+              </div>
+              <ChevronDown size={18} className={`text-indigo-500 transition-transform ${isVariablesSectionExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {isVariablesSectionExpanded && (
+              <>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {availableVariables.map(variable => (
+                    <span
+                      key={variable.token}
+                      className="inline-flex items-center rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
+                      title={variable.value ? `Aktualna wartość: ${variable.value}` : 'Brak wartości w tym zleceniu'}
+                    >
+                      {`{{${variable.token}}}`}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-3">
+                  Zmienne są podstawiane z pól formularza zlecenia oraz z bieżącej daty <code>{`{{data}}`}</code>.
+                </p>
+              </>
+            )}
+          </section>
+
+          {isEditMode ? (
+            <section className="space-y-4">
+              {draftSteps.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400 text-center">
+                  Flow nie ma jeszcze żadnych kroków. Dodaj pierwszy krok, aby zdefiniować proces PP dla tego zlecenia.
+                </div>
+              ) : (
+                draftSteps.map((step, index) => (
+                  <div key={step.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">Krok {index + 1}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Możesz dodać opis oraz opcjonalny link z etykietą.</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveStep(step.id, 'up')}
+                          className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700 transition"
+                          title="Przesuń krok wyżej"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveStep(step.id, 'down')}
+                          className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700 transition"
+                          title="Przesuń krok niżej"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStep(step.id)}
+                          className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-red-600 hover:border-red-300 dark:text-gray-300 dark:hover:text-red-300 dark:hover:border-red-700 transition"
+                          title="Usuń krok"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etykieta linku</label>
+                        <input
+                          type="text"
+                          value={step.linkLabel || ''}
+                          onChange={(event) => handleStepChange(step.id, 'linkLabel', event.target.value)}
+                          placeholder="np. SharePoint - nowy protokół"
+                          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link</label>
+                        <input
+                          type="text"
+                          value={step.linkUrl || ''}
+                          onChange={(event) => handleStepChange(step.id, 'linkUrl', event.target.value)}
+                          placeholder="https://..."
+                          className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis kroku</label>
+                      <textarea
+                        value={step.description}
+                        onChange={(event) => handleStepChange(step.id, 'description', event.target.value)}
+                        rows={4}
+                        placeholder="Opisz czynność. Możesz używać zmiennych, np. {{nr}}, {{tytul}}, {{data}}."
+                        className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+                      />
+                      {step.description && (
+                        <div className="mt-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/50 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                          {renderResolvedTemplateWithHighlightedValues(step.description, order)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+
+              <button
+                type="button"
+                onClick={handleAddStep}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-indigo-300 text-indigo-700 dark:border-indigo-700 dark:text-indigo-300 px-4 py-2.5 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
+              >
+                <Plus size={16} />
+                Dodaj krok
+              </button>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              {stepsToRender.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Brak zdefiniowanego flow PP</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Użyj ikony edycji w prawym górnym rogu, aby dodać kroki protokołu przekazania dla tego zlecenia.
+                  </p>
+                </div>
+              ) : (
+                stepsToRender.map((step, index) => {
+                  const resolvedDescription = resolveOrderPpTemplate(step.description || '', order, variableOverrides);
+                  const resolvedLinkLabel = resolveOrderPpTemplate(step.linkLabel || '', order, variableOverrides);
+                  const resolvedLinkUrl = resolveOrderPpTemplate(step.linkUrl || '', order, variableOverrides);
+                  const isCompleted = completedStepIds.includes(step.id);
+
+                  return (
+                    <div
+                      key={step.id}
+                      className={`rounded-2xl border bg-white dark:bg-gray-800/60 shadow-sm transition-all ${
+                        isCompleted
+                          ? 'border-emerald-200 dark:border-emerald-800/60 p-3'
+                          : 'border-gray-200 dark:border-gray-700 p-5'
+                      }`}
+                    >
+                      <div className={`flex gap-4 ${isCompleted ? 'items-center' : 'items-start'}`}>
+                        <div className={`w-9 h-9 rounded-full text-white text-sm font-bold flex items-center justify-center shrink-0 ${isCompleted ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+                          {index + 1}
+                        </div>
+                        <div className={`min-w-0 flex-1 ${isCompleted ? 'space-y-0' : 'space-y-3'}`}>
+                          {!isCompleted && resolvedLinkUrl && (
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenExternal(resolvedLinkUrl)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition"
+                            >
+                              <ExternalLink size={15} />
+                              <span className="truncate">{resolvedLinkLabel || 'Otwórz link'}</span>
+                            </button>
+                          )}
+                          {isCompleted ? (
+                            <div className="flex items-center gap-3 min-w-0">
+                              <p className="text-sm leading-6 text-gray-600 dark:text-gray-300 truncate">
+                                {resolvedDescription || 'Brak opisu kroku.'}
+                              </p>
+                              {resolvedLinkUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleOpenExternal(resolvedLinkUrl)}
+                                  className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition"
+                                >
+                                  <ExternalLink size={12} />
+                                  <span>{resolvedLinkLabel || 'Link'}</span>
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+                              {resolvedDescription ? renderResolvedTemplateWithHighlightedValues(step.description || '', order, variableOverrides) : 'Brak opisu kroku.'}
+                            </p>
+                          )}
+                        </div>
+                        <label
+                          className={`shrink-0 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer ${
+                            isCompleted
+                              ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-300'
+                              : 'bg-white border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500 dark:hover:text-emerald-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20'
+                          } ${isCompleted ? 'w-10 h-10' : 'w-10 h-10 mt-0.5'}`}
+                          title="Wykonane"
+                          aria-label={`Oznacz krok ${index + 1} jako wykonany`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isCompleted}
+                            onChange={(event) => void handleToggleStepCompleted(step.id, event.target.checked)}
+                            className="sr-only"
+                          />
+                          <CheckCircle size={18} className={isCompleted ? '' : 'opacity-55'} />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </section>
+          )}
+
+          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 mt-6">
+            <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
+              <Mail className="text-indigo-500" size={18} />
+              <div>
+                <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Szablon wiadomości E-mail</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego zlecenia.</p>
+              </div>
+            </div>
+
+            {isEmailTemplateLoading ? (
+              <div className="flex items-center justify-center py-10 text-sm text-gray-500 dark:text-gray-400">
+                <Loader2 className="animate-spin text-indigo-500 mr-2" size={18} />
+                Wczytywanie szablonu e-mail...
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { id: 'to', label: 'DO:', value: projectEmailTemplate.to || '' },
+                    { id: 'cc', label: 'DW:', value: projectEmailTemplate.cc || '' },
+                  ].map(field => (
+                    <div key={field.id} className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                        <div className="flex items-center gap-2">
+                          {copiedField === field.id && (
+                            <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyEmailField(field.value, field.id)}
+                            className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                            title="Kopiuj z podstawieniem zmiennych"
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={field.value}
+                        onChange={event => updateProjectEmailTemplate({ [field.id]: event.target.value } as Partial<EmailTemplate>)}
+                        className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow w-full dark:text-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
+                    <div className="flex items-center gap-2">
+                      {copiedField === 'subject' && (
+                        <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEmailField(projectEmailTemplate.subject || '', 'subject')}
+                        className="p-1 text-gray-400 hover:text-indigo-500 transition-colors"
+                        title="Kopiuj z podstawieniem zmiennych"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="text"
+                    value={projectEmailTemplate.subject || ''}
+                    onChange={event => updateProjectEmailTemplate({ subject: event.target.value })}
+                    className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none transition-shadow font-medium w-full dark:text-white"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Treść wiadomości:</label>
+                    <div className="flex items-center gap-2">
+                      {copiedField === 'body' && (
+                        <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano treść!</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyEmailField(projectEmailTemplate.body || '', 'body')}
+                        className="p-1.5 text-gray-400 hover:text-indigo-500 transition-colors"
+                        title="Kopiuj treść z podstawieniem zmiennych"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <textarea
+                    value={projectEmailTemplate.body || ''}
+                    onChange={event => updateProjectEmailTemplate({ body: event.target.value })}
+                    rows={6}
+                    className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-1 focus:ring-indigo-500 rounded-lg px-3 py-2 text-sm outline-none font-sans leading-relaxed resize-none transition-shadow w-full dark:text-white"
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20 p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Ostatni krok</p>
+                <h3 className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Uzupełnij datę przekazania</h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  Zapisze datę <strong>{protocolDate || '-'}</strong> do pola `Data przekazania` w zleceniu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleApplyHandoverDate()}
+                disabled={!protocolDate || isApplyingHandoverDate || order.handoverDate === protocolDate}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isApplyingHandoverDate ? 'Zapisywanie daty...' : order.handoverDate === protocolDate ? 'Data przekazania jest aktualna' : 'Uzupełnij datę przekazania'}
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 shrink-0 bg-gray-50/70 dark:bg-gray-900/70 rounded-b-3xl">
+          {isEditMode ? (
+            <>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+                disabled={isSaving}
+              >
+                Anuluj edycję
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveFlow()}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition shadow-sm disabled:opacity-60"
+                disabled={isSaving}
+              >
+                {isSaving ? 'Zapisywanie...' : 'Zapisz flow'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 transition"
+            >
+              Zamknij
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -3327,6 +4032,52 @@ const createOrderItemRow = (overrides?: Partial<OrderItem>): OrderItem => ({
   ...overrides,
 });
 
+const createOrderProtocolStep = (overrides?: {
+  id?: string;
+  description?: string;
+  linkUrl?: string;
+  linkLabel?: string;
+}) => ({
+  id: overrides?.id || createClientId(),
+  description: overrides?.description || '',
+  linkUrl: overrides?.linkUrl || '',
+  linkLabel: overrides?.linkLabel || '',
+});
+
+const normalizeOrderProtocolFlow = (flow?: Order['ppFlow'] | null) => ({
+  steps: Array.isArray(flow?.steps)
+    ? flow.steps.map(step => createOrderProtocolStep(step))
+    : [],
+  completedStepIds: Array.isArray(flow?.completedStepIds)
+    ? flow.completedStepIds.filter((stepId): stepId is string => typeof stepId === 'string' && stepId.trim().length > 0)
+    : [],
+  updatedAt: flow?.updatedAt,
+});
+
+const createEmptyEmailTemplate = (): EmailTemplate => ({
+  to: '',
+  cc: '',
+  subject: '',
+  body: '',
+  variables: {},
+});
+
+const createOrderProtocolEmailTemplateData = (
+  projectId: string,
+  template?: Partial<OrderProtocolEmailTemplateData> | null,
+): OrderProtocolEmailTemplateData => ({
+  projectId,
+  emailTemplate: {
+    ...createEmptyEmailTemplate(),
+    ...(template?.emailTemplate || {}),
+    variables: {
+      ...createEmptyEmailTemplate().variables,
+      ...(template?.emailTemplate?.variables || {}),
+    },
+  },
+  lastModified: template?.lastModified || new Date().toISOString(),
+});
+
 const buildOrderItemsFromTemplate = (template?: { names?: string[]; lastDate?: string } | null): OrderItem[] => {
   const names = (template?.names || []).map(name => name.trim()).filter(Boolean);
   if (names.length === 0) {
@@ -3340,6 +4091,97 @@ const formatOrderHours = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const toCalendarDateString = (value?: string) => {
+  if (!value) return '';
+  return value.includes('T') ? value.split('T')[0] : value;
+};
+const normalizeTemplateVariableKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+const suggestOrderProtocolDate = (order: Order) =>
+  order.handoverDate
+  || order.scheduleTo
+  || order.scheduleFrom
+  || format(new Date(), 'yyyy-MM-dd');
+
+const getOrderPpVariableDefinitions = (order: Order, overrides?: Partial<Record<string, string>>) => {
+  const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+  const productNames = order.items.map(item => item.name.trim()).filter(Boolean);
+  const resolvedDate = overrides?.data || suggestOrderProtocolDate(order);
+
+  return [
+    { token: 'nr', aliases: ['orderNumber', 'numer'], value: order.orderNumber || '' },
+    { token: 'tytul', aliases: ['tytuł', 'title'], value: order.title || '' },
+    { token: 'priorytet', aliases: ['priority'], value: order.priority || '' },
+    { token: 'opis_problemu', aliases: ['problemDescription', 'opisproblemu'], value: order.problemDescription || '' },
+    { token: 'stan_oczekiwany', aliases: ['expectedStateDescription', 'opisstanuoczekiwanego'], value: order.expectedStateDescription || '' },
+    { token: 'lokalizacja', aliases: ['location'], value: order.location || '' },
+    { token: 'metodyka_wymagana', aliases: ['methodologyRequired'], value: order.methodologyRequired ? 'TAK' : 'NIE' },
+    { token: 'zakres_metodyki', aliases: ['methodologyScope'], value: order.methodologyScope || '' },
+    { token: 'data_realizacji_od', aliases: ['scheduleFrom'], value: order.scheduleFrom || '' },
+    { token: 'data_realizacji_do', aliases: ['scheduleTo'], value: order.scheduleTo || '' },
+    { token: 'data_przekazania', aliases: ['handoverDate'], value: order.handoverDate || '' },
+    { token: 'data_odbioru', aliases: ['acceptanceDate'], value: order.acceptanceDate || '' },
+    { token: 'system_modul', aliases: ['systemModule', 'modul'], value: order.systemModule || '' },
+    { token: 'uwagi', aliases: ['notes'], value: order.notes || '' },
+    { token: 'data_utworzenia', aliases: ['createdAt'], value: toCalendarDateString(order.createdAt) },
+    { token: 'data', aliases: ['dzis', 'today'], value: resolvedDate },
+    { token: 'produkty', aliases: ['items'], value: productNames.join(', ') },
+    { token: 'liczba_pozycji', aliases: ['itemsCount'], value: String(order.items.length) },
+    { token: 'suma_godzin', aliases: ['totalHours'], value: formatOrderHours(totalHours) },
+  ];
+};
+
+const buildOrderPpVariableMap = (order: Order, overrides?: Partial<Record<string, string>>) => {
+  const map: Record<string, string> = {};
+
+  getOrderPpVariableDefinitions(order, overrides).forEach(({ token, aliases, value }) => {
+    [token, ...(aliases || [])].forEach(alias => {
+      map[normalizeTemplateVariableKey(alias)] = value;
+    });
+  });
+
+  return map;
+};
+
+const resolveOrderPpTemplate = (template: string, order: Order, overrides?: Partial<Record<string, string>>) => {
+  const variableMap = buildOrderPpVariableMap(order, overrides);
+  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, rawToken) => {
+    const normalizedToken = normalizeTemplateVariableKey(rawToken);
+    return Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
+      ? variableMap[normalizedToken]
+      : `{{${String(rawToken).trim()}}}`;
+  });
+};
+
+const renderResolvedTemplateWithHighlightedValues = (template: string, order: Order, overrides?: Partial<Record<string, string>>) => {
+  const variableMap = buildOrderPpVariableMap(order, overrides);
+  const segments = template.split(/(\{\{[^}]+\}\})/g);
+
+  return segments.map((segment, index) => {
+    const match = segment.match(/^\{\{\s*([^}]+)\s*\}\}$/);
+    if (match) {
+      const normalizedToken = normalizeTemplateVariableKey(match[1]);
+      const resolvedValue = Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
+        ? variableMap[normalizedToken]
+        : segment;
+
+      return (
+        <strong key={`${segment}-${index}`} className="font-extrabold text-gray-900 dark:text-white">
+          {resolvedValue}
+        </strong>
+      );
+    }
+
+    return <React.Fragment key={`${segment}-${index}`}>{segment}</React.Fragment>;
+  });
+};
+
 const parseCalendarDate = (value?: string) => {
   if (!value?.trim()) return null;
   const normalizedValue = value.includes('T') ? value : `${value}T00:00:00`;

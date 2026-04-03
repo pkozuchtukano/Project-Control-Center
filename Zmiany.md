@@ -78,6 +78,20 @@
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
 
 ## Rejestr zleceń
+- 2026-04-03 – Flow `PP` dla protokołu przekazania na liście zleceń
+  -- Na liście `Zlecenia` dodano przycisk `PP` z tooltipem `Protokół Przekazania`, który otwiera osobny modal przypisany do konkretnego zlecenia.
+  -- Modal pokazuje pionową listę kroków procesu, pozwala włączyć edycję ikoną w prawym górnym rogu, definiować kroki z opcjonalnym linkiem i opisem, zmieniać ich kolejność oraz używać zmiennych opartych o pola zlecenia i bieżącą datę, np. `{{nr}}`, `{{tytul}}`, `{{data}}`.
+  -- Na końcu modala dodano sekcję przygotowania wiadomości e-mail zapisywaną na poziomie projektu, z polami `Do`, `DW`, `Temat`, `Treść` oraz kopiowaniem gotowej treści po podstawieniu zmiennych dla aktualnego zlecenia.
+  -- W podglądzie opisów kroków oraz treści wiadomości pogrubiane są już podstawione wartości zmiennych, np. numer zlecenia, data lub tytuł, a nie sama składnia `{{...}}`.
+  -- Sekcja `Dostępne zmienne` w modalu `PP` jest domyślnie zwinięta i rozwija się dopiero po kliknięciu, dzięki czemu główny widok modala zajmuje mniej miejsca.
+  -- Z sekcji e-mail w modalu `PP` usunięto dodatkowy podgląd pod polem `Treść wiadomości`, aby nie dublować wpisywanego tekstu.
+  -- Na początku modala `PP` dodano edytowalne pole daty sterujące zmienną `{{data}}`, a jako ostatni krok dodano przycisk `Uzupełnij datę przekazania`, który zapisuje wybraną datę do pola `Data przekazania` zlecenia.
+  -- Sekcję `Uzupełnij datę przekazania` przeniesiono na sam koniec modala, za blok `Szablon wiadomości E-mail`, aby zachować kolejność kroków zgodną z procesem.
+  -- W widoku kroków `PP` dodano checkbox po lewej stronie każdego kroku; zaznaczony krok zapisuje stan wykonania w flow zlecenia i zwija się do pojedynczej linii, aby zajmował mniej miejsca.
+  -- Checkbox oznaczający wykonanie kroku przeniesiono na prawą stronę i nadano mu styl dopasowany kolorystycznie do modala; po najechaniu pokazuje tooltip `Wykonane`.
+- 2026-04-03 – Skrócenie nazwy zakładki rejestru zleceń
+  -- Zmieniono etykietę zakładki `Rejestr Zleceń` na `Zlecenia` w głównej nawigacji projektu oraz w nagłówku widoku.
+  -- Ujednolicono też nazwę tej zakładki na liście powiązań projektu, dzięki czemu interfejs pokazuje krótsze i spójne nazewnictwo w całym obszarze zleceń.
 - 2026-03-30 – Wzmocnienie kontrastu kolorów statusu zleceń
   -- Zwiększono nasycenie teł i stanów hover dla kolorowych wierszy w tabeli `Rejestr Zleceń`.
   -- Statusy terminów są teraz bardziej widoczne w widoku jasnym i ciemnym, bez zmiany logiki przypisywania kolorów.

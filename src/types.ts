@@ -54,6 +54,19 @@ export type OrderItem = {
   hours: number;
 };
 
+export type OrderProtocolStep = {
+  id: string;
+  description: string;
+  linkUrl?: string;
+  linkLabel?: string;
+};
+
+export type OrderProtocolFlow = {
+  steps: OrderProtocolStep[];
+  completedStepIds?: string[];
+  updatedAt?: string;
+};
+
 export type Order = {
   id: string;
   projectId: string;
@@ -73,6 +86,7 @@ export type Order = {
   systemModule?: string;
   notes?: string;
   createdAt: string;
+  ppFlow?: OrderProtocolFlow;
 };
 
 export type EstimationItem = {
@@ -91,6 +105,12 @@ export type EmailTemplate = {
   subject: string;
   body: string;
   variables: Record<string, string>;
+};
+
+export type OrderProtocolEmailTemplateData = {
+  projectId: string;
+  emailTemplate: EmailTemplate;
+  lastModified: string;
 };
 
 export type Estimation = {

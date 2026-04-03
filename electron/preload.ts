@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electron', {
     saveEstimation: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-estimation', data),
     getMeetingNotes: (projectId: string) => ipcRenderer.invoke('get-meeting-notes', projectId),
     saveMeetingNotes: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-meeting-notes', data),
+    getOrderProtocolEmailTemplate: (projectId: string) => ipcRenderer.invoke('get-order-protocol-email-template', projectId),
+    saveOrderProtocolEmailTemplate: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-order-protocol-email-template', data),
     getProjectLinks: (projectId: string) => ipcRenderer.invoke('get-project-links', projectId),
     saveProjectLink: (data: any) => ipcRenderer.invoke('save-project-link', data),
     deleteProjectLink: (id: string) => ipcRenderer.invoke('delete-project-link', id),

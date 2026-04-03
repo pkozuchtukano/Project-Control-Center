@@ -25,7 +25,7 @@ interface LinkModalProps {
 }
 
 const LINK_TAB_OPTIONS = [
-  { id: 'orders', label: 'Rejestr zlecen' },
+  { id: 'orders', label: 'Zlecenia' },
   { id: 'work', label: 'Rejestr pracy' },
   { id: 'settlements', label: 'Rozliczenia' },
   { id: 'status', label: 'Status' },
