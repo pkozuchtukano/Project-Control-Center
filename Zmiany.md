@@ -418,3 +418,23 @@
 - 2026-04-03 – Zmienne początku i końca miesiąca w rozliczeniu utrzymania
   -- Do zmiennych rozliczenia miesiąca dodano `{{poczatek_miesiaca}}` oraz `{{koniec_miesiaca}}` wraz z aliasami technicznymi dla szablonów i flow.
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
+
+## PCC Web
+- 2026-04-08 – Nowy projekt webowy dla Daily i Status
+  -- Dodano nowy projekt web-pcc oparty o React 19, TypeScript, Vite i Tailwind CSS 4 jako webową replikę modułów Daily i Status istniejącej aplikacji PCC.
+  -- Projekt zawiera shell aplikacji z sidebarem, routing widoków /daily i /projects/:projectId/status, obsługę motywu, konfigurację Netlify oraz repozytoria danych przygotowane pod Firebase Firestore.
+- 2026-04-08 – Webowa implementacja Daily z ustawieniami hubów
+  -- W module webowym dodano widok listy hubów Daily, konfigurację hubów i sekcji, stałą kolumnę Aktywności, filtry projektów i osób, zakres dat, notatki PM oraz trwałe stany zwinięcia kart i sekcji.
+  -- Daily korzysta z dwuetapowego pobierania danych z YouTrack przez funkcję Netlify, zapisuje notatki i stany w warstwie repozytorium oraz zachowuje logikę auto-collapse zgodną z aplikacją desktopową.
+- 2026-04-08 – Webowa implementacja Status z historią raportów
+  -- W module webowym dodano ekran Status per projekt z ręcznym odświeżaniem źródeł, edytorem TipTap-like, panelem źródeł, historią raportów, podglądem archiwum oraz dropdownem Linki filtrowanym po zakładce status.
+  -- Raporty statusowe zapisują pełny HTML i snapshot źródeł, draft roboczy jest autosave'owany lokalnie, a model danych został przygotowany pod przyszłą synchronizację notatek Daily i raportów między desktopem a webem.
+- 2026-04-08 – Integracja Netlify Functions, Firestore i testów
+  -- Dodano funkcję Netlify proxy do YouTrack, konfigurację środowiska dla Firebase i publicznego adresu YouTrack, seed danych startowych oraz zestaw testów jednostkowych i integracyjnych dla kluczowej logiki aplikacji.
+  -- Projekt przeszedł weryfikację 	sc oraz produkcyjny build ite build, co potwierdza spójność typów i gotowość bazowego wdrożenia na Netlify.
+- 2026-04-08 – Fallback do localStorage przy braku uprawnień Firestore
+  -- Warstwa repozytorium webowego została uzupełniona o obsługę błędu Missing or insufficient permissions z Firestore dla odczytu, zapisu i usuwania danych.
+  -- Gdy reguły Firebase blokują dostęp, aplikacja nie przerywa już startu i przechodzi na lokalny fallback w localStorage, co pozwala dalej pracować oraz testować UI bez gotowej autoryzacji Firestore.
+- 2026-04-08 – Logowanie Firebase Auth i izolacja danych per użytkownik
+  -- Webowa aplikacja web-pcc została rozszerzona o ekran logowania przez Google w Firebase Auth oraz pełne bramkowanie dostępu do modułów po aktywnej sesji użytkownika.
+  -- Repozytorium Firestore zapisuje teraz dokumenty z polem ownerUid i odczytuje wyłącznie dane zalogowanego użytkownika, a do projektu dodano gotowy plik irestore.rules z regułami wymagającymi logowania i zgodności ownerUid == auth.uid.
