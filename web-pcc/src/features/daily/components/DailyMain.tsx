@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronLeft, ChevronRight, Edit2, ExternalLink, LayoutDashboard, Loader2, MessageSquare, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { DailyHub, DailySection } from '@/types/domain';
 import type { IssueWithHistory } from '@/types/youtrack';
@@ -8,6 +8,16 @@ import { appStorageKeys, readLocalJson, writeLocalJson } from '@/lib/storage';
 import { createClientId, cn } from '@/lib/utils';
 import { getSmartDateRange, normalizeStatuses } from '@/features/daily/utils/dailyUtils';
 import { DailyIssueDetailsModal } from '@/features/daily/components/DailyIssueDetailsModal';
+
+const buildBoardStateFilters = (sections: DailySection[]) => {
+  const set = new Set<string>();
+  sections.forEach((section) => {
+    if (!section.respectDates) {
+      normalizeStatuses(section.youtrackStatuses).forEach((entry) => set.add(entry));
+    }
+  });
+  return Array.from(set);
+};
 
 const HubModal = ({ isOpen, hub, onClose, onSaved }: { isOpen: boolean; hub: DailyHub | null; onClose: () => void; onSaved: () => void }) => {
   const [name, setName] = useState('');
@@ -75,15 +85,19 @@ const IssueCard = ({ issue, localComment, isCollapsed, onToggleCollapse, onSaveC
   const [comment, setComment] = useState(localComment);
   const [isEditing, setIsEditing] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+
   useEffect(() => setComment(localComment), [localComment]);
+
   const periodActivities = useMemo(() => {
     const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
     const toTime = new Date(`${dateTo}T23:59:59`).getTime();
     return (issue.timeline || []).filter((entry) => entry.timestamp >= fromTime && entry.timestamp <= toTime).slice(-4);
   }, [dateFrom, dateTo, issue.timeline]);
+
   if (isCollapsed) {
     return <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white px-2.5 py-1.5 opacity-30 shadow-sm hover:opacity-100 dark:border-gray-800 dark:bg-gray-900"><div className="min-w-0 flex-1"><span className="mr-2 text-[10px] font-bold text-gray-400">{issue.idReadable}</span><span className="truncate text-xs text-gray-600 dark:text-gray-400">{issue.summary}</span></div><button onClick={() => onToggleCollapse(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronDown size={14} className="-rotate-90" /></button><DailyIssueDetailsModal issue={issue} isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} dateFrom={dateFrom} dateTo={dateTo} baseUrl={baseUrl} /></div>;
   }
+
   return (
     <div className="relative overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-lg dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between border-b bg-gray-50/50 px-3 py-2 dark:border-gray-800 dark:bg-gray-800/30"><div className="flex min-w-0 items-center gap-2"><a href={`${baseUrl}/issue/${issue.idReadable}`} target="_blank" rel="noreferrer" className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">{issue.idReadable}</a>{showState && issue.state && <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: issue.state.color.background, color: issue.state.color.foreground }}>{issue.state.name}</span>}</div><div className="flex items-center gap-1"><button onClick={() => setIsDetailOpen(true)} className="rounded p-1 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"><ExternalLink size={14} /></button><button onClick={() => onToggleCollapse(true)} className="rounded p-1 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"><ChevronDown size={14} className="rotate-90" /></button></div></div>
@@ -116,6 +130,7 @@ export const DailyMain = ({ youtrackBaseUrl }: { youtrackBaseUrl: string }) => {
   const [boardIssues, setBoardIssues] = useState<IssueWithHistory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const syncRequestIdRef = useRef(0);
 
   const loadBaseData = async () => {
     setHubs(await pccRepository.getDailyHubs());
@@ -123,39 +138,79 @@ export const DailyMain = ({ youtrackBaseUrl }: { youtrackBaseUrl: string }) => {
     setIssueStates(await pccRepository.getDailyIssueStates());
   };
 
-  useEffect(() => { void loadBaseData(); }, []);
-  useEffect(() => { writeLocalJson(appStorageKeys.dailyDateFilters, { from: dateFrom, to: dateTo }); }, [dateFrom, dateTo]);
-  useEffect(() => { writeLocalJson(appStorageKeys.dailyCollapsedSections, collapsedSections); }, [collapsedSections]);
-  useEffect(() => { if (selectedHub) void pccRepository.getDailySections(selectedHub.id).then(setSections); }, [selectedHub]);
+  const syncYouTrack = async (hubOverride?: DailyHub | null, sectionsOverride?: DailySection[]) => {
+    const hub = hubOverride ?? selectedHub;
+    if (!hub) return;
 
-  const boardStateFilters = useMemo(() => {
-    const set = new Set<string>();
-    sections.forEach((section) => { if (!section.respectDates) normalizeStatuses(section.youtrackStatuses).forEach((entry) => set.add(entry)); });
-    return Array.from(set);
-  }, [sections]);
-
-  const syncYouTrack = async () => {
-    if (!selectedHub) return;
+    const currentRequestId = ++syncRequestIdRef.current;
     setIsLoading(true);
     setError(null);
+
     try {
+      const boardStateFilters = buildBoardStateFilters(sectionsOverride ?? sections);
       const [activityData, boardData] = await Promise.all([
-        fetchIssuesActivity({ projectName: selectedHub.projectCodes, dateFrom, dateTo, tab: 'Aktywno\u015Bci', tabName: 'Aktywno\u015Bci' }),
-        fetchIssuesActivity({ projectName: selectedHub.projectCodes, dateFrom, dateTo, tab: 'Aktywno\u015Bci', customStatuses: boardStateFilters, tabName: 'Aktywno\u015Bci' }),
+        fetchIssuesActivity({ projectName: hub.projectCodes, dateFrom, dateTo, tab: 'Aktywności', tabName: 'Aktywności' }),
+        fetchIssuesActivity({ projectName: hub.projectCodes, dateFrom, dateTo, tab: 'Aktywności', customStatuses: boardStateFilters, tabName: 'Aktywności' }),
       ]);
+
+      if (syncRequestIdRef.current !== currentRequestId) {
+        return;
+      }
+
       setActivityIssues(activityData);
       setBoardIssues(boardData);
     } catch (caughtError) {
+      if (syncRequestIdRef.current !== currentRequestId) {
+        return;
+      }
+
       setError(caughtError instanceof Error ? caughtError.message : 'Nie udało się pobrać danych z YouTrack.');
     } finally {
-      setIsLoading(false);
+      if (syncRequestIdRef.current === currentRequestId) {
+        setIsLoading(false);
+      }
     }
   };
+
+  useEffect(() => { void loadBaseData(); }, []);
+  useEffect(() => { writeLocalJson(appStorageKeys.dailyDateFilters, { from: dateFrom, to: dateTo }); }, [dateFrom, dateTo]);
+  useEffect(() => { writeLocalJson(appStorageKeys.dailyCollapsedSections, collapsedSections); }, [collapsedSections]);
+
+  useEffect(() => {
+    syncRequestIdRef.current += 1;
+    setSections([]);
+    setActivityIssues([]);
+    setBoardIssues([]);
+    setSelectedProject(null);
+    setSelectedAssignee(null);
+    setShowOnlyCommented(false);
+    setIsGlobalExpanded(false);
+    setError(null);
+    setIsLoading(false);
+
+    if (!selectedHub) {
+      return;
+    }
+
+    const currentSelectionId = syncRequestIdRef.current;
+    void pccRepository.getDailySections(selectedHub.id).then((loadedSections) => {
+      if (syncRequestIdRef.current !== currentSelectionId) {
+        return;
+      }
+
+      setSections(loadedSections);
+      void syncYouTrack(selectedHub, loadedSections);
+    });
+  }, [selectedHub]);
 
   const combinedIssues = useMemo(() => {
     const merged = new Map<string, IssueWithHistory>();
     boardIssues.forEach((issue) => merged.set(issue.id, issue));
-    activityIssues.forEach((issue) => { if (!merged.has(issue.id)) merged.set(issue.id, issue); });
+    activityIssues.forEach((issue) => {
+      if (!merged.has(issue.id)) {
+        merged.set(issue.id, issue);
+      }
+    });
     return Array.from(merged.values());
   }, [activityIssues, boardIssues]);
 
@@ -165,8 +220,11 @@ export const DailyMain = ({ youtrackBaseUrl }: { youtrackBaseUrl: string }) => {
   const filterIssues = (items: IssueWithHistory[]) => items.filter((issue) => {
     if (selectedProject && issue.project?.shortName !== selectedProject) return false;
     if (selectedAssignee) {
-      if (selectedAssignee === '__unassigned__') { if (issue.assignee) return false; }
-      else if (issue.assignee?.login !== selectedAssignee) return false;
+      if (selectedAssignee === '__unassigned__') {
+        if (issue.assignee) return false;
+      } else if (issue.assignee?.login !== selectedAssignee) {
+        return false;
+      }
     }
     if (showOnlyCommented && !comments[issue.idReadable]) return false;
     return true;
@@ -179,6 +237,7 @@ export const DailyMain = ({ youtrackBaseUrl }: { youtrackBaseUrl: string }) => {
     const toTime = new Date(`${dateTo}T23:59:59`).getTime();
     return new Set(filteredActivityIssues.filter((issue) => issue.timeline.some((entry) => entry.timestamp >= fromTime && entry.timestamp <= toTime)).map((issue) => issue.idReadable));
   }, [dateFrom, dateTo, filteredActivityIssues]);
+
   if (!selectedHub) {
     return (
       <div className="flex-1 overflow-y-auto p-8">
@@ -191,7 +250,7 @@ export const DailyMain = ({ youtrackBaseUrl }: { youtrackBaseUrl: string }) => {
     );
   }
 
-  const columns = [{ id: 'fixed_aktywnosci', title: 'Aktywno\u015Bci', items: filteredActivityIssues.filter((issue) => activityIds.has(issue.idReadable)), showState: true }, ...sections.map((section) => ({ id: section.id, title: section.name, items: filteredBoardIssues.filter((issue) => { const currentState = typeof issue.state === 'string' ? issue.state : issue.state?.name; const statuses = normalizeStatuses(section.youtrackStatuses); if (!statuses.includes((currentState || '').toLowerCase())) return false; return section.respectDates ? activityIds.has(issue.idReadable) : true; }), showState: false }))];
+  const columns = [{ id: 'fixed_aktywnosci', title: 'Aktywności', items: filteredActivityIssues.filter((issue) => activityIds.has(issue.idReadable)), showState: true }, ...sections.map((section) => ({ id: section.id, title: section.name, items: filteredBoardIssues.filter((issue) => { const currentState = typeof issue.state === 'string' ? issue.state : issue.state?.name; const statuses = normalizeStatuses(section.youtrackStatuses); if (!statuses.includes((currentState || '').toLowerCase())) return false; return section.respectDates ? activityIds.has(issue.idReadable) : true; }), showState: false }))];
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">

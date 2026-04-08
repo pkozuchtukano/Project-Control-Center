@@ -1,4 +1,4 @@
-import axios from 'axios';
+ï»¿import axios from 'axios';
 
 type ProxyConfig = {
   baseUrl: string;
@@ -29,11 +29,11 @@ const buildQuery = (body: Record<string, unknown>) => {
   const tab = typeof body.tab === 'string' ? body.tab : '';
   const customStatuses = Array.isArray(body.customStatuses) ? body.customStatuses.filter((entry): entry is string => typeof entry === 'string') : [];
   const includeFilters = body.includeFilters === true;
-  const isZakonczone = tabName.toLowerCase() === 'zakoñczone';
+  const isZakonczone = tabName.toLowerCase() === 'zakoÅ„czone';
 
   if (customStatuses.length > 0) {
     const stateFilter = customStatuses.map((entry) => `{${entry}}`).join(', ');
-    if (tab === 'Aktywnoœci') {
+    if (tab === 'AktywnoÅ›ci') {
       return `project: ${projectName} updated: ${dateFrom} .. ${dateTo} or project: ${projectName} State: ${stateFilter}`;
     }
     let query = `project: ${projectName} State: ${stateFilter}`;
@@ -65,7 +65,7 @@ export const handleYouTrackRequest = async (rawBody: string | undefined, config:
     if (body.action === 'healthcheck') {
       return {
         statusCode: 200,
-        body: JSON.stringify({ success: true, baseUrlDetected: Boolean(config.baseUrl), message: 'Konfiguracja YouTrack jest dostêpna.' }),
+        body: JSON.stringify({ success: true, baseUrlDetected: Boolean(config.baseUrl), message: 'Konfiguracja YouTrack jest dostÄ™pna.' }),
       };
     }
 
@@ -216,7 +216,8 @@ export const handleYouTrackRequest = async (rawBody: string | undefined, config:
 
     return { statusCode: 200, body: JSON.stringify(hydrated) };
   } catch (error) {
-    const message = axios.isAxiosError(error) ? error.message : error instanceof Error ? error.message : 'Nieznany b³¹d';
+    const message = axios.isAxiosError(error) ? error.message : error instanceof Error ? error.message : 'Nieznany bÅ‚Ä…d';
     return { statusCode: 500, body: JSON.stringify({ message }) };
   }
 };
+

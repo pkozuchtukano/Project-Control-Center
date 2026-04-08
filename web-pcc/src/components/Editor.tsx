@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+ï»¿import { useEffect } from 'react';
 import { EditorContent, useEditor, type Editor as TiptapEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -31,7 +31,7 @@ const MenuButton = ({ title, onClick, isActive, disabled, children }: { title: s
   </button>
 );
 
-export const Editor = ({ content, onChange, placeholder = 'Zacznij pisaæ...', openLinksOnClick = false, minHeight = 380, onEditorReady }: EditorProps) => {
+export const Editor = ({ content, onChange, placeholder = 'Zacznij pisaÄ‡...', openLinksOnClick = false, minHeight = 380, onEditorReady }: EditorProps) => {
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -59,19 +59,19 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisaæ...', op
       <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50/70 p-2 dark:border-gray-700 dark:bg-gray-800/50">
         <MenuButton title="Pogrubienie" onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')}><Bold size={18} /></MenuButton>
         <MenuButton title="Kursywa" onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')}><Italic size={18} /></MenuButton>
-        <MenuButton title="Podkreœlenie" onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')}><UnderlineIcon size={18} /></MenuButton>
+        <MenuButton title="PodkreÅ›lenie" onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')}><UnderlineIcon size={18} /></MenuButton>
         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
         <MenuButton title="Akapit" onClick={() => editor.chain().focus().setParagraph().run()} isActive={editor.isActive('paragraph')}><Pilcrow size={18} /></MenuButton>
-        <MenuButton title="Nag³ówek 1" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive('heading', { level: 1 })}><Heading1 size={18} /></MenuButton>
-        <MenuButton title="Nag³ówek 2" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive('heading', { level: 2 })}><Heading2 size={18} /></MenuButton>
-        <MenuButton title="Nag³ówek 3" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive('heading', { level: 3 })}><Heading3 size={18} /></MenuButton>
+        <MenuButton title="NagÅ‚Ã³wek 1" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive('heading', { level: 1 })}><Heading1 size={18} /></MenuButton>
+        <MenuButton title="NagÅ‚Ã³wek 2" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive('heading', { level: 2 })}><Heading2 size={18} /></MenuButton>
+        <MenuButton title="NagÅ‚Ã³wek 3" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive('heading', { level: 3 })}><Heading3 size={18} /></MenuButton>
         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
         <MenuButton title="Lista punktowana" onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')}><List size={18} /></MenuButton>
         <MenuButton title="Lista numerowana" onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')}><ListOrdered size={18} /></MenuButton>
         <MenuButton title="Cytat" onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive('blockquote')}><Quote size={18} /></MenuButton>
         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
         <MenuButton title="Cofnij" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}><Undo size={18} /></MenuButton>
-        <MenuButton title="Ponów" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo size={18} /></MenuButton>
+        <MenuButton title="PonÃ³w" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo size={18} /></MenuButton>
       </div>
       <div className="cursor-text p-4" style={{ minHeight: `${minHeight + 20}px` }} onMouseDown={(event) => {
         const target = event.target as HTMLElement | null;
@@ -92,3 +92,4 @@ export const Editor = ({ content, onChange, placeholder = 'Zacznij pisaæ...', op
     </div>
   );
 };
+

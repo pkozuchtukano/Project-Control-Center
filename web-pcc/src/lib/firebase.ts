@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+ï»¿import { initializeApp } from 'firebase/app';
 import {
   GoogleAuthProvider,
   getAuth,
@@ -54,17 +54,17 @@ export const getFirebaseAuthErrorMessage = (error: unknown) => {
 
   switch (errorCode) {
     case 'auth/operation-not-allowed':
-      return 'Logowanie Google jest wy³¹czone w Firebase Authentication. W³¹cz provider Google w Firebase Console: Authentication -> Sign-in method.';
+      return 'Logowanie Google jest wyÅ‚Ä…czone w Firebase Authentication. WÅ‚Ä…cz provider Google w Firebase Console: Authentication -> Sign-in method.';
     case 'auth/popup-closed-by-user':
-      return 'Okno logowania zosta³o zamkniête przed zakoñczeniem logowania.';
+      return 'Okno logowania zostaÅ‚o zamkniÄ™te przed zakoÅ„czeniem logowania.';
     case 'auth/popup-blocked':
-      return 'Przegl¹darka zablokowa³a okno logowania. Zezwól na popup i spróbuj ponownie.';
+      return 'PrzeglÄ…darka zablokowaÅ‚a okno logowania. ZezwÃ³l na popup i sprÃ³buj ponownie.';
     case 'auth/cancelled-popup-request':
-      return 'Poprzednia próba logowania zosta³a przerwana przez now¹ próbê.';
+      return 'Poprzednia prÃ³ba logowania zostaÅ‚a przerwana przez nowÄ… prÃ³bÄ™.';
     case 'auth/network-request-failed':
-      return 'Nie uda³o siê po³¹czyæ z Firebase. SprawdŸ po³¹czenie sieciowe i konfiguracjê domeny autoryzowanej.';
+      return 'Nie udaÅ‚o siÄ™ poÅ‚Ä…czyÄ‡ z Firebase. SprawdÅº poÅ‚Ä…czenie sieciowe i konfiguracjÄ™ domeny autoryzowanej.';
     default:
-      return error instanceof Error ? error.message : 'Nie uda³o siê zalogowaæ przez Google.';
+      return error instanceof Error ? error.message : 'Nie udaÅ‚o siÄ™ zalogowaÄ‡ przez Google.';
   }
 };
 
@@ -79,3 +79,4 @@ export const signOutUser = async () => {
   if (!auth) return;
   await signOut(auth);
 };
+

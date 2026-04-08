@@ -13,3 +13,15 @@
 - 2026-04-08 - Dodano lokalny endpoint proxy YouTrack dla Vite Dev Server
   -- Wspólna logika proxy została przeniesiona do modułu `server/youtrackProxy.ts`, używanego przez funkcję Netlify i lokalny middleware Vite.
   -- Żądania `POST /api/youtrack` przestają zwracać 404 przy uruchomieniu przez `npm run dev`, więc test połączenia i pobieranie danych działają także lokalnie.
+
+- 2026-04-08 - Reset widoku Daily przy zmianie kafla
+  -- Komponent src/features/daily/components/DailyMain.tsx czyści aktywności, tablicę i filtry po przełączeniu na inny kafel Daily oraz ignoruje spóźnione odpowiedzi z poprzedniego ładowania.
+  -- Po zmianie kafla użytkownik nie widzi już danych z poprzedniego Daily; widok pokazuje pusty stan do czasu załadowania właściwych danych.
+
+## Kodowanie i lokalizacja
+
+- 2026-04-08 - Naprawiono kodowanie polskich znaków w interfejsie
+  -- Poprawiono uszkodzone polskie litery w etykietach, komunikatach i dokumentacji w plikach frontendu oraz pomocniczych modułach serwerowych.
+  -- Interfejs przestaje wyświetlać znaki zastępcze typu [replacement character], a teksty są ponownie czytelne dla użytkownika.
+
+

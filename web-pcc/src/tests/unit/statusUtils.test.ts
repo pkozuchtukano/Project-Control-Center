@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+ï»¿import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildDefaultStatusTitle, buildStatusStories } from '../../features/status/utils/statusUtils';
 
@@ -18,12 +18,13 @@ const issue = {
   links: [],
 };
 
-test('buildDefaultStatusTitle buduje polski tytu³', () => {
+test('buildDefaultStatusTitle buduje polski tytuÅ‚', () => {
   assert.match(buildDefaultStatusTitle('PMS', '2026-04-08'), /^Status projektu PMS - \d{2}\.\d{2}\.\d{4}$/);
 });
 
-test('buildStatusStories tworzy co najmniej jedn¹ historiê', () => {
+test('buildStatusStories tworzy co najmniej jednÄ… historiÄ™', () => {
   const stories = buildStatusStories([issue] as any, { 'PMS-1': 'Notatka Daily' }, 'https://youtrack.example.com', '2026-04-01', '2026-04-08');
   assert.equal(stories.length, 1);
   assert.equal(stories[0].issueReadableId, 'PMS-1');
 });
+

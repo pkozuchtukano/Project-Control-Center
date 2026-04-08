@@ -1,4 +1,4 @@
-import type { Project, DailyHub, DailySection } from '@/types/domain';
+Ôªøimport type { Project, DailyHub, DailySection } from '@/types/domain';
 
 export const defaultSeed: {
   projects: Project[];
@@ -8,7 +8,7 @@ export const defaultSeed: {
   projects: [
     { id: 'seed-pms', code: 'PMS', name: 'Programy masowe', youtrackQuery: 'PMS' },
     { id: 'seed-cbcp', code: 'CBCP', name: 'Centralna Baza Czyste Powietrze', youtrackQuery: 'CBCP' },
-    { id: 'seed-pfron', code: 'PFRON', name: 'PaÒstwowy Fundusz Rehabilitacji OsÛb Niepe≥nosprawnych', youtrackQuery: 'PFRON' },
+    { id: 'seed-pfron', code: 'PFRON', name: 'Pa≈Ñstwowy Fundusz Rehabilitacji Os√≥b Niepe≈Çnosprawnych', youtrackQuery: 'PFRON' },
     { id: 'seed-gwd', code: 'GWD', name: 'GWD', youtrackQuery: 'GWD' },
     { id: 'seed-sop', code: 'SOP', name: 'Narodowe Centrum Kultury', youtrackQuery: 'SOP' }
   ],
@@ -22,3 +22,4 @@ export const defaultSeed: {
     { id: 'section-testy', hubId: 'hub-pcc', name: 'Testy', youtrackStatuses: 'Tests', orderIndex: 2, respectDates: false }
   ]
 };
+
