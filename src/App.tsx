@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow
 } from './types';
 
 declare global {
@@ -36,6 +36,8 @@ declare global {
       saveMeetingNotes: (data: { projectId: string, data: any }) => Promise<{ success: boolean }>;
       getOrderProtocolEmailTemplate: (projectId: string) => Promise<OrderProtocolEmailTemplateData | null>;
       saveOrderProtocolEmailTemplate: (data: { projectId: string, data: OrderProtocolEmailTemplateData }) => Promise<{ success: boolean }>;
+      getOrderAcceptanceEmailTemplate: (projectId: string) => Promise<OrderAcceptanceEmailTemplateData | null>;
+      saveOrderAcceptanceEmailTemplate: (data: { projectId: string, data: OrderAcceptanceEmailTemplateData }) => Promise<{ success: boolean }>;
       getMaintenanceSettlementEmailTemplate: (projectId: string) => Promise<MaintenanceSettlementEmailTemplateData | null>;
       saveMaintenanceSettlementEmailTemplate: (data: { projectId: string, data: MaintenanceSettlementEmailTemplateData }) => Promise<{ success: boolean }>;
       getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
@@ -3035,10 +3037,12 @@ const OrdersRegistryView = () => {
   const [isReportsExpanded, setIsReportsExpanded] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [ppOrderId, setPpOrderId] = useState<string | null>(null);
+  const [poOrderId, setPoOrderId] = useState<string | null>(null);
 
   if (!selectedProject) return null;
 
   const ppOrder = ppOrderId ? orders.find(order => order.id === ppOrderId) || null : null;
+  const poOrder = poOrderId ? orders.find(order => order.id === poOrderId) || null : null;
 
   const handleOpenModal = () => {
     setEditingOrder(null);
@@ -3106,6 +3110,14 @@ const OrdersRegistryView = () => {
 
   const handleApplyPpHandoverDate = async (orderId: string, handoverDate: string) => {
     await updateOrder(orderId, { handoverDate });
+  };
+
+  const handleSavePoFlow = async (orderId: string, flow: NonNullable<Order['poFlow']>) => {
+    await updateOrder(orderId, { poFlow: flow });
+  };
+
+  const handleApplyPoAcceptanceDate = async (orderId: string, acceptanceDate: string) => {
+    await updateOrder(orderId, { acceptanceDate });
   };
 
   if (isLoading) {
@@ -3262,6 +3274,15 @@ const OrdersRegistryView = () => {
                         >
                           PP
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setPoOrderId(order.id)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 rounded-lg transition mr-1 border border-emerald-100 dark:border-emerald-800/60"
+                          title="Protokół Odbioru"
+                          aria-label={`Protokół Odbioru dla zlecenia ${order.orderNumber}`}
+                        >
+                          PO
+                        </button>
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
                           <Edit2 size={16} />
                         </button>
@@ -3300,7 +3321,16 @@ const OrdersRegistryView = () => {
         order={ppOrder}
         onClose={() => setPpOrderId(null)}
         onSave={handleSavePpFlow}
-        onApplyHandoverDate={handleApplyPpHandoverDate}
+        onApplyProtocolDate={handleApplyPpHandoverDate}
+        protocolType="PP"
+      />
+      <OrderProtocolFlowModal
+        isOpen={Boolean(poOrder)}
+        order={poOrder}
+        onClose={() => setPoOrderId(null)}
+        onSave={handleSavePoFlow}
+        onApplyProtocolDate={handleApplyPoAcceptanceDate}
+        protocolType="PO"
       />
     </div>
   );
@@ -3311,23 +3341,27 @@ const OrderProtocolFlowModal = ({
   order,
   onClose,
   onSave,
-  onApplyHandoverDate,
+  onApplyProtocolDate,
+  protocolType,
 }: {
   isOpen: boolean;
   order: Order | null;
   onClose: () => void;
-  onSave: (orderId: string, flow: NonNullable<Order['ppFlow']>) => Promise<void>;
-  onApplyHandoverDate: (orderId: string, handoverDate: string) => Promise<void>;
+  onSave: (orderId: string, flow: OrderProtocolFlow) => Promise<void>;
+  onApplyProtocolDate: (orderId: string, protocolDate: string) => Promise<void>;
+  protocolType: 'PP' | 'PO';
 }) => {
+  const { projects } = useProjectContext();
   const [isEditMode, setIsEditMode] = useState(false);
-  const [draftSteps, setDraftSteps] = useState(() => normalizeOrderProtocolFlow(order?.ppFlow).steps);
+  const [draftSteps, setDraftSteps] = useState(() => normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType)).steps);
   const [isSaving, setIsSaving] = useState(false);
   const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
   const [protocolDate, setProtocolDate] = useState('');
-  const [isApplyingHandoverDate, setIsApplyingHandoverDate] = useState(false);
-  const [emailTemplateData, setEmailTemplateData] = useState<OrderProtocolEmailTemplateData | null>(null);
+  const [isApplyingProtocolDate, setIsApplyingProtocolDate] = useState(false);
+  const [emailTemplateData, setEmailTemplateData] = useState<OrderProtocolEmailTemplateData | OrderAcceptanceEmailTemplateData | null>(null);
   const [isEmailTemplateLoading, setIsEmailTemplateLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [customVariableDrafts, setCustomVariableDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isOpen || !order) {
@@ -3336,20 +3370,21 @@ const OrderProtocolFlowModal = ({
       setIsSaving(false);
       setIsVariablesSectionExpanded(false);
       setProtocolDate('');
-      setIsApplyingHandoverDate(false);
+      setIsApplyingProtocolDate(false);
       setEmailTemplateData(null);
       setIsEmailTemplateLoading(false);
       setCopiedField(null);
+      setCustomVariableDrafts({});
       return;
     }
 
     setIsEditMode(false);
-    setDraftSteps(normalizeOrderProtocolFlow(order.ppFlow).steps);
+    setDraftSteps(normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType)).steps);
     setIsSaving(false);
     setIsVariablesSectionExpanded(false);
-    setProtocolDate(suggestOrderProtocolDate(order));
-    setIsApplyingHandoverDate(false);
-  }, [isOpen, order]);
+    setProtocolDate(suggestOrderProtocolDate(order, protocolType));
+    setIsApplyingProtocolDate(false);
+  }, [isOpen, order, protocolType]);
 
   useEffect(() => {
     if (!isOpen || !order) return;
@@ -3359,21 +3394,29 @@ const OrderProtocolFlowModal = ({
     const loadEmailTemplate = async () => {
       setIsEmailTemplateLoading(true);
       try {
-        if (!window.electron?.getOrderProtocolEmailTemplate) {
+        if (!window.electron) {
           if (!isCancelled) {
-            setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId));
+            const fallbackTemplateData = createOrderEmailTemplateData(order.projectId, protocolType);
+            setEmailTemplateData(fallbackTemplateData);
+            setCustomVariableDrafts(fallbackTemplateData.emailTemplate.variables || {});
           }
           return;
         }
 
-        const savedTemplate = await window.electron.getOrderProtocolEmailTemplate(order.projectId);
+        const savedTemplate = protocolType === 'PP'
+          ? await window.electron.getOrderProtocolEmailTemplate?.(order.projectId)
+          : await window.electron.getOrderAcceptanceEmailTemplate?.(order.projectId);
         if (!isCancelled) {
-          setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId, savedTemplate));
+          const loadedTemplateData = createOrderEmailTemplateData(order.projectId, protocolType, savedTemplate);
+          setEmailTemplateData(loadedTemplateData);
+          setCustomVariableDrafts(loadedTemplateData.emailTemplate.variables || {});
         }
       } catch (error) {
-        console.error('Błąd pobierania szablonu e-mail PP:', error);
+        console.error(`Błąd pobierania szablonu e-mail ${protocolType}:`, error);
         if (!isCancelled) {
-          setEmailTemplateData(createOrderProtocolEmailTemplateData(order.projectId));
+          const fallbackTemplateData = createOrderEmailTemplateData(order.projectId, protocolType);
+          setEmailTemplateData(fallbackTemplateData);
+          setCustomVariableDrafts(fallbackTemplateData.emailTemplate.variables || {});
         }
       } finally {
         if (!isCancelled) {
@@ -3387,36 +3430,86 @@ const OrderProtocolFlowModal = ({
     return () => {
       isCancelled = true;
     };
-  }, [isOpen, order]);
+  }, [isOpen, order, protocolType]);
 
   useEffect(() => {
     if (!isOpen || !order || !emailTemplateData || isEmailTemplateLoading) return;
     const electronApi = window.electron;
-    if (!electronApi?.saveOrderProtocolEmailTemplate) return;
+    const saveTemplate = protocolType === 'PP'
+      ? electronApi?.saveOrderProtocolEmailTemplate
+      : electronApi?.saveOrderAcceptanceEmailTemplate;
+    if (!saveTemplate) return;
 
     const timer = setTimeout(() => {
-      void electronApi.saveOrderProtocolEmailTemplate({
+      void saveTemplate({
         projectId: order.projectId,
         data: {
           ...emailTemplateData,
           projectId: order.projectId,
+          emailTemplate: {
+            ...emailTemplateData.emailTemplate,
+            variables: {
+              ...(emailTemplateData.emailTemplate?.variables || {}),
+              ...customVariableDrafts,
+            },
+          },
           lastModified: new Date().toISOString(),
         },
       });
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [emailTemplateData, isEmailTemplateLoading, isOpen, order]);
+  }, [customVariableDrafts, emailTemplateData, isEmailTemplateLoading, isOpen, order, protocolType]);
 
   if (!isOpen || !order) return null;
 
-  const variableOverrides = { data: protocolDate || suggestOrderProtocolDate(order) };
-  const availableVariables = getOrderPpVariableDefinitions(order, variableOverrides);
-  const normalizedFlow = normalizeOrderProtocolFlow(order.ppFlow);
+  const project = projects.find((item) => item.id === order.projectId) || null;
+  const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
+  const customVariableValues = customVariableDrafts;
+  const variableOverrides = {
+    data: protocolDate || suggestOrderProtocolDate(order, protocolType),
+    ...customVariableValues,
+  };
+  const availableVariables = getOrderProtocolVariableDefinitions(order, project, protocolType, variableOverrides)
+    .slice()
+    .sort((left, right) => left.token.localeCompare(right.token, 'pl', { sensitivity: 'base' }));
+  const normalizedFlow = normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType));
   const persistedSteps = normalizedFlow.steps;
   const completedStepIds = normalizedFlow.completedStepIds;
   const stepsToRender = isEditMode ? draftSteps : persistedSteps;
-  const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
+  const protocolLabels = getOrderProtocolLabels(protocolType);
+  const availableFunctions = [
+    {
+      signature: '{{slownie(wartosc_brutto)}}',
+      description: 'Zamienia kwotę na polski zapis słowny z jednostkami zł i gr.',
+    },
+    {
+      signature: '{{slownie(wartosc_netto)}}',
+      description: 'Działa tak samo dla wartości netto zlecenia.',
+    },
+  ].slice().sort((left, right) => left.signature.localeCompare(right.signature, 'pl', { sensitivity: 'base' }));
+  const knownVariableKeys = new Set(
+    availableVariables.flatMap((variable) => [variable.token, ...(variable.aliases || [])]).map(item => normalizeTemplateVariableKey(item))
+  );
+  const customVariableFields = Array.from(
+    new Map(
+      [
+        ...stepsToRender.flatMap((step) => [
+          ...extractTemplateVariableReferences(step.description || ''),
+          ...extractTemplateVariableReferences(step.linkLabel || ''),
+          ...extractTemplateVariableReferences(step.linkUrl || ''),
+        ]),
+        ...extractTemplateVariableReferences(projectEmailTemplate.to || ''),
+        ...extractTemplateVariableReferences(projectEmailTemplate.cc || ''),
+        ...extractTemplateVariableReferences(projectEmailTemplate.subject || ''),
+        ...extractTemplateVariableReferences(projectEmailTemplate.body || ''),
+      ]
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .filter((token) => !knownVariableKeys.has(normalizeTemplateVariableKey(token)))
+        .map((token) => [normalizeTemplateVariableKey(token), token])
+    ).values()
+  ).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
 
   const handleOpenEditMode = () => {
     setDraftSteps((current) => {
@@ -3503,7 +3596,7 @@ const OrderProtocolFlowModal = ({
   };
 
   const updateProjectEmailTemplate = (updates: Partial<EmailTemplate>) => {
-    setEmailTemplateData(prev => createOrderProtocolEmailTemplateData(order.projectId, {
+    setEmailTemplateData(prev => createOrderEmailTemplateData(order.projectId, protocolType, {
       ...(prev || { projectId: order.projectId }),
       emailTemplate: {
         ...(prev?.emailTemplate || createEmptyEmailTemplate()),
@@ -3518,21 +3611,34 @@ const OrderProtocolFlowModal = ({
   };
 
   const handleCopyEmailField = async (text: string, id: string) => {
-    await navigator.clipboard.writeText(resolveOrderPpTemplate(text, order, variableOverrides));
+    await navigator.clipboard.writeText(resolveOrderProtocolTemplate(text, order, project, protocolType, variableOverrides));
     setCopiedField(id);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleApplyHandoverDate = async () => {
+  const handleCopyTemplateSnippet = async (snippet: string, id: string) => {
+    await navigator.clipboard.writeText(snippet);
+    setCopiedField(id);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  function handleCustomVariableChange(token: string, value: string) {
+    setCustomVariableDrafts((current) => ({
+      ...current,
+      [token]: value,
+    }));
+  }
+
+  const handleApplyProtocolDate = async () => {
     if (!protocolDate) {
       return;
     }
 
-    setIsApplyingHandoverDate(true);
+    setIsApplyingProtocolDate(true);
     try {
-      await onApplyHandoverDate(order.id, protocolDate);
+      await onApplyProtocolDate(order.id, protocolDate);
     } finally {
-      setIsApplyingHandoverDate(false);
+      setIsApplyingProtocolDate(false);
     }
   };
 
@@ -3555,7 +3661,7 @@ const OrderProtocolFlowModal = ({
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <Briefcase className="text-indigo-500" size={20} />
-              PP dla zlecenia {order.orderNumber}
+              {protocolType} dla zlecenia {order.orderNumber}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {order.title}
@@ -3570,8 +3676,8 @@ const OrderProtocolFlowModal = ({
                   ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
                   : 'border-gray-200 bg-white text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700'
               }`}
-              title="Edycja flow protokołu przekazania"
-              aria-label="Edytuj flow protokołu przekazania"
+              title={`Edycja flow ${protocolLabels.protocolNameLower}`}
+              aria-label={`Edytuj flow ${protocolLabels.protocolNameLower}`}
             >
               <Edit2 size={18} />
             </button>
@@ -3579,7 +3685,7 @@ const OrderProtocolFlowModal = ({
               type="button"
               onClick={onClose}
               className="p-2.5 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition"
-              aria-label="Zamknij modal protokołu przekazania"
+              aria-label={`Zamknij modal ${protocolLabels.protocolNameLower}`}
             >
               <X size={18} />
             </button>
@@ -3588,21 +3694,42 @@ const OrderProtocolFlowModal = ({
 
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           <section className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data dla zmiennej <code>{`{{data}}`}</code></h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Ta data jest używana w krokach `PP`, w treści e-mail oraz w akcji uzupełnienia daty przekazania.
-                </p>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data dla zmiennej <code>{`{{data}}`}</code></h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Ta data jest używana w krokach <code>{protocolType}</code>, w treści e-mail oraz w akcji uzupełnienia pola daty protokołu.
+                  </p>
+                </div>
+                <div className="w-full md:w-64">
+                  <input
+                    type="date"
+                    value={protocolDate}
+                    onChange={(event) => setProtocolDate(event.target.value)}
+                    className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                </div>
               </div>
-              <div className="w-full md:w-64">
-                <input
-                  type="date"
-                  value={protocolDate}
-                  onChange={(event) => setProtocolDate(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
-                />
-              </div>
+
+              {customVariableFields.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                  <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Dodatkowe zmienne wykryte w flow</h3>
+                  <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+                    Te pola pojawiają się automatycznie, gdy w krokach lub szablonie wpiszesz nową zmienną typu <code>{`{{twoja_zmienna}}`}</code>.
+                  </p>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {customVariableFields.map((token) => (
+                      <DynamicProtocolVariableField
+                        key={token}
+                        token={token}
+                        value={customVariableValues[token] || ''}
+                        onChange={handleCustomVariableChange}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -3614,9 +3741,9 @@ const OrderProtocolFlowModal = ({
               aria-expanded={isVariablesSectionExpanded}
             >
               <div>
-                <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Dostępne zmienne</h3>
+                <h3 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Dostępne zmienne i funkcje</h3>
                 <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-1">
-                  Rozwiń, gdy potrzebujesz sprawdzić listę tokenów.
+                  Rozwiń, gdy potrzebujesz sprawdzić listę tokenów i składnię funkcji szablonu.
                 </p>
               </div>
               <ChevronDown size={18} className={`text-indigo-500 transition-transform ${isVariablesSectionExpanded ? 'rotate-180' : ''}`} />
@@ -3625,17 +3752,50 @@ const OrderProtocolFlowModal = ({
               <>
                 <div className="flex flex-wrap gap-2 mt-4">
                   {availableVariables.map(variable => (
-                    <span
+                    <button
+                      type="button"
                       key={variable.token}
-                      className="inline-flex items-center rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300"
-                      title={variable.value ? `Aktualna wartość: ${variable.value}` : 'Brak wartości w tym zleceniu'}
+                      onClick={() => void handleCopyTemplateSnippet(`{{${variable.token}}}`, `token:${variable.token}`)}
+                      className="group inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/30"
+                      title={variable.value ? `Aktualna wartość: ${variable.value}. Kliknij, aby skopiować {{${variable.token}}}.` : `Kliknij, aby skopiować {{${variable.token}}}.`}
                     >
                       {`{{${variable.token}}}`}
-                    </span>
+                      {copiedField === `token:${variable.token}` ? (
+                        <span className="text-[10px] font-bold text-emerald-500">Skopiowano</span>
+                      ) : (
+                        <Copy size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
+                      )}
+                    </button>
                   ))}
                 </div>
+                <div className="mt-4 rounded-2xl border border-indigo-200/80 bg-white/80 p-4 dark:border-indigo-900/60 dark:bg-gray-900/40">
+                  <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">Dostępne funkcje</h4>
+                  <div className="mt-3 space-y-2">
+                    {availableFunctions.map((item) => (
+                      <button
+                        type="button"
+                        key={item.signature}
+                        onClick={() => void handleCopyTemplateSnippet(item.signature, `function:${item.signature}`)}
+                        className="group flex w-full items-start justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-left transition hover:border-indigo-300 hover:bg-indigo-100/70 dark:border-indigo-900/50 dark:bg-indigo-950/20 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/30"
+                        title={`Kliknij, aby skopiować ${item.signature}`}
+                      >
+                        <div className="min-w-0">
+                          <code className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">{item.signature}</code>
+                          <p className="mt-1 text-xs text-indigo-700/80 dark:text-indigo-300/80">{item.description}</p>
+                        </div>
+                        <div className="shrink-0 pt-0.5 text-indigo-500 dark:text-indigo-300">
+                          {copiedField === `function:${item.signature}` ? (
+                            <span className="text-[10px] font-bold text-emerald-500">Skopiowano</span>
+                          ) : (
+                            <Copy size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-3">
-                  Zmienne są podstawiane z pól formularza zlecenia oraz z bieżącej daty <code>{`{{data}}`}</code>.
+                  Zmienne są podstawiane z pól formularza zlecenia oraz z bieżącej daty <code>{`{{data}}`}</code>. Funkcje możesz łączyć z dostępnymi tokenami wewnątrz nawiasów.
                 </p>
               </>
             )}
@@ -3645,7 +3805,7 @@ const OrderProtocolFlowModal = ({
             <section className="space-y-4">
               {draftSteps.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-sm text-gray-500 dark:text-gray-400 text-center">
-                  Flow nie ma jeszcze żadnych kroków. Dodaj pierwszy krok, aby zdefiniować proces PP dla tego zlecenia.
+                  Flow nie ma jeszcze żadnych kroków. Dodaj pierwszy krok, aby zdefiniować proces <code>{protocolType}</code> dla tego zlecenia.
                 </div>
               ) : (
                 draftSteps.map((step, index) => (
@@ -3722,7 +3882,7 @@ const OrderProtocolFlowModal = ({
                       />
                       {step.description && (
                         <div className="mt-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/50 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                          {renderResolvedTemplateWithHighlightedValues(step.description, order)}
+                          {renderResolvedTemplateWithHighlightedValues(step.description, order, project, protocolType)}
                         </div>
                       )}
                     </div>
@@ -3743,16 +3903,16 @@ const OrderProtocolFlowModal = ({
             <section className="space-y-4">
               {stepsToRender.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Brak zdefiniowanego flow PP</h3>
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Brak zdefiniowanego flow {protocolType}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Użyj ikony edycji w prawym górnym rogu, aby dodać kroki protokołu przekazania dla tego zlecenia.
+                    Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla {protocolLabels.protocolNameLower} tego zlecenia.
                   </p>
                 </div>
               ) : (
                 stepsToRender.map((step, index) => {
-                  const resolvedDescription = resolveOrderPpTemplate(step.description || '', order, variableOverrides);
-                  const resolvedLinkLabel = resolveOrderPpTemplate(step.linkLabel || '', order, variableOverrides);
-                  const resolvedLinkUrl = resolveOrderPpTemplate(step.linkUrl || '', order, variableOverrides);
+                  const resolvedDescription = resolveOrderProtocolTemplate(step.description || '', order, project, protocolType, variableOverrides);
+                  const resolvedLinkLabel = resolveOrderProtocolTemplate(step.linkLabel || '', order, project, protocolType, variableOverrides);
+                  const resolvedLinkUrl = resolveOrderProtocolTemplate(step.linkUrl || '', order, project, protocolType, variableOverrides);
                   const isCompleted = completedStepIds.includes(step.id);
 
                   return (
@@ -3797,7 +3957,7 @@ const OrderProtocolFlowModal = ({
                             </div>
                           ) : (
                             <p className="text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-                              {resolvedDescription ? renderResolvedTemplateWithHighlightedValues(step.description || '', order, variableOverrides) : 'Brak opisu kroku.'}
+                              {resolvedDescription ? renderResolvedTemplateWithHighlightedValues(step.description || '', order, project, protocolType, variableOverrides) : 'Brak opisu kroku.'}
                             </p>
                           )}
                         </div>
@@ -3931,18 +4091,18 @@ const OrderProtocolFlowModal = ({
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Ostatni krok</p>
-                <h3 className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Uzupełnij datę przekazania</h3>
+                <h3 className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{protocolLabels.applySectionTitle}</h3>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  Zapisze datę <strong>{protocolDate || '-'}</strong> do pola `Data przekazania` w zleceniu.
+                  Zapisze datę <strong>{protocolDate || '-'}</strong> do pola <code>{protocolLabels.orderDateFieldLabel}</code> w zleceniu.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => void handleApplyHandoverDate()}
-                disabled={!protocolDate || isApplyingHandoverDate || order.handoverDate === protocolDate}
+                onClick={() => void handleApplyProtocolDate()}
+                disabled={!protocolDate || isApplyingProtocolDate || getOrderProtocolDateValue(order, protocolType) === protocolDate}
                 className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isApplyingHandoverDate ? 'Zapisywanie daty...' : order.handoverDate === protocolDate ? 'Data przekazania jest aktualna' : 'Uzupełnij datę przekazania'}
+                {isApplyingProtocolDate ? 'Zapisywanie daty...' : getOrderProtocolDateValue(order, protocolType) === protocolDate ? protocolLabels.currentDateCta : protocolLabels.applyDateCta}
               </button>
             </div>
           </section>
@@ -4047,7 +4207,31 @@ const createOrderProtocolStep = (overrides?: {
   linkLabel: overrides?.linkLabel || '',
 });
 
-const normalizeOrderProtocolFlow = (flow?: Order['ppFlow'] | null) => ({
+const getOrderFlowByType = (order: Order | null | undefined, protocolType: 'PP' | 'PO') =>
+  protocolType === 'PP' ? order?.ppFlow : order?.poFlow;
+
+const getOrderProtocolDateValue = (order: Order, protocolType: 'PP' | 'PO') =>
+  protocolType === 'PP' ? order.handoverDate || '' : order.acceptanceDate || '';
+
+const getOrderProtocolLabels = (protocolType: 'PP' | 'PO') => (
+  protocolType === 'PP'
+    ? {
+        protocolNameLower: 'protokołu przekazania',
+        applySectionTitle: 'Uzupełnij datę przekazania',
+        orderDateFieldLabel: 'Data przekazania',
+        applyDateCta: 'Uzupełnij datę przekazania',
+        currentDateCta: 'Data przekazania jest aktualna',
+      }
+    : {
+        protocolNameLower: 'protokołu odbioru',
+        applySectionTitle: 'Uzupełnij datę odbioru',
+        orderDateFieldLabel: 'Data odbioru',
+        applyDateCta: 'Uzupełnij datę odbioru',
+        currentDateCta: 'Data odbioru jest aktualna',
+      }
+);
+
+const normalizeOrderProtocolFlow = (flow?: OrderProtocolFlow | null) => ({
   steps: Array.isArray(flow?.steps)
     ? flow.steps.map(step => createOrderProtocolStep(step))
     : [],
@@ -4081,6 +4265,32 @@ const createOrderProtocolEmailTemplateData = (
   lastModified: template?.lastModified || new Date().toISOString(),
 });
 
+const createOrderAcceptanceEmailTemplateData = (
+  projectId: string,
+  template?: Partial<OrderAcceptanceEmailTemplateData> | null,
+): OrderAcceptanceEmailTemplateData => ({
+  projectId,
+  emailTemplate: {
+    ...createEmptyEmailTemplate(),
+    ...(template?.emailTemplate || {}),
+    variables: {
+      ...createEmptyEmailTemplate().variables,
+      ...(template?.emailTemplate?.variables || {}),
+    },
+  },
+  lastModified: template?.lastModified || new Date().toISOString(),
+});
+
+const createOrderEmailTemplateData = (
+  projectId: string,
+  protocolType: 'PP' | 'PO',
+  template?: Partial<OrderProtocolEmailTemplateData> | Partial<OrderAcceptanceEmailTemplateData> | null,
+) => (
+  protocolType === 'PP'
+    ? createOrderProtocolEmailTemplateData(projectId, template as Partial<OrderProtocolEmailTemplateData> | null)
+    : createOrderAcceptanceEmailTemplateData(projectId, template as Partial<OrderAcceptanceEmailTemplateData> | null)
+);
+
 const createMaintenanceSettlementEmailTemplateData = (
   projectId: string,
   template?: Partial<MaintenanceSettlementEmailTemplateData> | null,
@@ -4110,6 +4320,10 @@ const formatOrderHours = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatNullableNumber = (value?: number | null) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '';
 const toCalendarDateString = (value?: string) => {
   if (!value) return '';
   return value.includes('T') ? value.split('T')[0] : value;
@@ -4122,18 +4336,56 @@ const normalizeTemplateVariableKey = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
-const suggestOrderProtocolDate = (order: Order) =>
-  order.handoverDate
+const suggestOrderProtocolDate = (order: Order, protocolType: 'PP' | 'PO' = 'PP') =>
+  getOrderProtocolDateValue(order, protocolType)
   || order.scheduleTo
   || order.scheduleFrom
   || format(new Date(), 'yyyy-MM-dd');
 
-const getOrderPpVariableDefinitions = (order: Order, overrides?: Partial<Record<string, string>>) => {
+const getOrderProtocolVariableDefinitions = (
+  order: Order,
+  project: Project | null | undefined,
+  protocolType: 'PP' | 'PO' = 'PP',
+  overrides?: Partial<Record<string, string>>,
+) => {
   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
   const productNames = order.items.map(item => item.name.trim()).filter(Boolean);
-  const resolvedDate = overrides?.data || suggestOrderProtocolDate(order);
+  const resolvedDate = overrides?.data || suggestOrderProtocolDate(order, protocolType);
+  const totalNetValue = totalHours * (project?.rateNetto || 0);
+  const totalGrossValue = totalHours * (project?.rateBrutto || 0);
+  const totalNetValueWords = formatCurrencyAmountInWords(formatCurrencyValue(totalNetValue));
+  const totalGrossValueWords = formatCurrencyAmountInWords(formatCurrencyValue(totalGrossValue));
+  const taskTypeNames = (project?.taskTypes || []).map(taskType => taskType.name.trim()).filter(Boolean);
+  const stakeholderNames = (project?.stakeholders || []).map(stakeholder => stakeholder.name.trim()).filter(Boolean);
+  const stakeholderDetails = (project?.stakeholders || [])
+    .map(stakeholder => [stakeholder.name, stakeholder.role].filter(Boolean).join(' - ').trim())
+    .filter(Boolean);
 
   return [
+    { token: 'projekt_id', aliases: ['projectId'], value: project?.id || order.projectId || '' },
+    { token: 'kod_projektu', aliases: ['projectCode', 'code'], value: project?.code || '' },
+    { token: 'nazwa_projektu', aliases: ['projectName', 'name'], value: project?.name || '' },
+    { token: 'nr_umowy', aliases: ['contractNo', 'contractNumber'], value: project?.contractNo || '' },
+    { token: 'przedmiot_umowy', aliases: ['contractSubject'], value: project?.contractSubject || '' },
+    { token: 'projekt_data_od', aliases: ['projectDateFrom'], value: project?.dateFrom || '' },
+    { token: 'projekt_data_do', aliases: ['projectDateTo'], value: project?.dateTo || '' },
+    { token: 'min_godzin', aliases: ['projectMinHours', 'minHours'], value: formatNullableNumber(project?.minHours) },
+    { token: 'max_godzin', aliases: ['projectMaxHours', 'maxHours'], value: formatNullableNumber(project?.maxHours) },
+    { token: 'stawka_netto', aliases: ['projectRateNetto', 'rateNetto'], value: formatNullableNumber(project?.rateNetto) },
+    { token: 'stawka_brutto', aliases: ['projectRateBrutto', 'rateBrutto'], value: formatNullableNumber(project?.rateBrutto) },
+    { token: 'stawka_vat', aliases: ['projectVatRate', 'vatRate'], value: formatNullableNumber(project?.vatRate) },
+    { token: 'czy_utrzymanie', aliases: ['hasMaintenance'], value: project ? (project.hasMaintenance ? 'TAK' : 'NIE') : '' },
+    { token: 'utrzymanie_kwota_netto', aliases: ['maintenanceNetAmount'], value: formatNullableNumber(project?.maintenanceNetAmount) },
+    { token: 'utrzymanie_stawka_vat', aliases: ['maintenanceVatRate'], value: formatNullableNumber(project?.maintenanceVatRate) },
+    { token: 'utrzymanie_kwota_brutto', aliases: ['maintenanceGrossAmount'], value: formatNullableNumber(project?.maintenanceGrossAmount) },
+    { token: 'cel_marzy_proc', aliases: ['targetProfitPct', 'targetProfitPercent'], value: formatNullableNumber(project?.targetProfitPct) },
+    { token: 'youtrack_query', aliases: ['youtrackQuery'], value: project?.youtrackQuery || '' },
+    { token: 'google_doc_link', aliases: ['googleDocLink'], value: project?.googleDocLink || '' },
+    { token: 'typy_zadan', aliases: ['taskTypes', 'taskTypeNames'], value: taskTypeNames.join(', ') },
+    { token: 'liczba_typow_zadan', aliases: ['taskTypesCount'], value: String(taskTypeNames.length) },
+    { token: 'interesariusze', aliases: ['stakeholders', 'stakeholderNames'], value: stakeholderNames.join(', ') },
+    { token: 'interesariusze_szczegoly', aliases: ['stakeholderDetails'], value: stakeholderDetails.join(', ') },
+    { token: 'liczba_interesariuszy', aliases: ['stakeholdersCount'], value: String((project?.stakeholders || []).length) },
     { token: 'nr', aliases: ['orderNumber', 'numer'], value: order.orderNumber || '' },
     { token: 'tytul', aliases: ['tytuł', 'title'], value: order.title || '' },
     { token: 'priorytet', aliases: ['priority'], value: order.priority || '' },
@@ -4153,6 +4405,10 @@ const getOrderPpVariableDefinitions = (order: Order, overrides?: Partial<Record<
     { token: 'produkty', aliases: ['items'], value: productNames.join(', ') },
     { token: 'liczba_pozycji', aliases: ['itemsCount'], value: String(order.items.length) },
     { token: 'suma_godzin', aliases: ['totalHours'], value: formatOrderHours(totalHours) },
+    { token: 'wartosc_netto', aliases: ['netValue', 'orderNetValue'], value: formatCurrencyValue(totalNetValue) },
+    { token: 'wartosc_brutto', aliases: ['grossValue', 'orderGrossValue'], value: formatCurrencyValue(totalGrossValue) },
+    { token: 'wartosc_netto_slownie', aliases: ['netValueWords', 'orderNetValueWords'], value: totalNetValueWords },
+    { token: 'wartosc_brutto_slownie', aliases: ['grossValueWords', 'orderGrossValueWords'], value: totalGrossValueWords },
   ];
 };
 
@@ -4190,13 +4446,25 @@ const getMaintenanceSettlementVariableDefinitions = (
   ];
 };
 
-const buildOrderPpVariableMap = (order: Order, overrides?: Partial<Record<string, string>>) => {
+const buildOrderProtocolVariableMap = (
+  order: Order,
+  project: Project | null | undefined,
+  protocolType: 'PP' | 'PO' = 'PP',
+  overrides?: Partial<Record<string, string>>,
+) => {
   const map: Record<string, string> = {};
 
-  getOrderPpVariableDefinitions(order, overrides).forEach(({ token, aliases, value }) => {
+  getOrderProtocolVariableDefinitions(order, project, protocolType, overrides).forEach(({ token, aliases, value }) => {
     [token, ...(aliases || [])].forEach(alias => {
       map[normalizeTemplateVariableKey(alias)] = value;
     });
+  });
+
+  Object.entries(overrides || {}).forEach(([token, value]) => {
+    const normalizedToken = normalizeTemplateVariableKey(token);
+    if (normalizedToken) {
+      map[normalizedToken] = String(value ?? '');
+    }
   });
 
   return map;
@@ -4215,35 +4483,269 @@ const buildMaintenanceSettlementVariableMap = (
     });
   });
 
+  Object.entries(overrides || {}).forEach(([token, value]) => {
+    const normalizedToken = normalizeTemplateVariableKey(token);
+    if (normalizedToken) {
+      map[normalizedToken] = String(value ?? '');
+    }
+  });
+
   return map;
 };
 
-const resolveOrderPpTemplate = (template: string, order: Order, overrides?: Partial<Record<string, string>>) => {
-  const variableMap = buildOrderPpVariableMap(order, overrides);
-  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, rawToken) => {
-    const normalizedToken = normalizeTemplateVariableKey(rawToken);
-    return Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
-      ? variableMap[normalizedToken]
-      : `{{${String(rawToken).trim()}}}`;
-  });
+const POLISH_NUMBER_UNITS = ['', 'jeden', 'dwa', 'trzy', 'cztery', 'pięć', 'sześć', 'siedem', 'osiem', 'dziewięć'];
+const POLISH_NUMBER_TEENS = ['dziesięć', 'jedenaście', 'dwanaście', 'trzynaście', 'czternaście', 'piętnaście', 'szesnaście', 'siedemnaście', 'osiemnaście', 'dziewiętnaście'];
+const POLISH_NUMBER_TENS = ['', 'dziesięć', 'dwadzieścia', 'trzydzieści', 'czterdzieści', 'pięćdziesiąt', 'sześćdziesiąt', 'siedemdziesiąt', 'osiemdziesiąt', 'dziewięćdziesiąt'];
+const POLISH_NUMBER_HUNDREDS = ['', 'sto', 'dwieście', 'trzysta', 'czterysta', 'pięćset', 'sześćset', 'siedemset', 'osiemset', 'dziewięćset'];
+const POLISH_NUMBER_GROUPS: [string, string, string][] = [
+  ['', '', ''],
+  ['tysiąc', 'tysiące', 'tysięcy'],
+  ['milion', 'miliony', 'milionów'],
+  ['miliard', 'miliardy', 'miliardów'],
+];
+
+const getPolishPluralForm = (value: number, forms: [string, string, string]) => {
+  const mod100 = value % 100;
+  const mod10 = value % 10;
+  if (value === 1) return forms[0];
+  if (mod100 >= 12 && mod100 <= 14) return forms[2];
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 10 && mod100 <= 19)) return forms[1];
+  return forms[2];
 };
 
-const renderResolvedTemplateWithHighlightedValues = (template: string, order: Order, overrides?: Partial<Record<string, string>>) => {
-  const variableMap = buildOrderPpVariableMap(order, overrides);
+const convertTripletToPolishWords = (value: number) => {
+  if (value === 0) return '';
+
+  const hundreds = Math.floor(value / 100);
+  const tensUnits = value % 100;
+  const tens = Math.floor(tensUnits / 10);
+  const units = tensUnits % 10;
+  const parts: string[] = [];
+
+  if (hundreds > 0) {
+    parts.push(POLISH_NUMBER_HUNDREDS[hundreds]);
+  }
+
+  if (tensUnits >= 10 && tensUnits < 20) {
+    parts.push(POLISH_NUMBER_TEENS[tensUnits - 10]);
+  } else {
+    if (tens > 0) {
+      parts.push(POLISH_NUMBER_TENS[tens]);
+    }
+    if (units > 0) {
+      parts.push(POLISH_NUMBER_UNITS[units]);
+    }
+  }
+
+  return parts.join(' ').trim();
+};
+
+const convertIntegerToPolishWords = (value: number) => {
+  if (!Number.isFinite(value) || value === 0) return 'zero';
+
+  const parts: string[] = [];
+  let remaining = Math.floor(Math.abs(value));
+  let groupIndex = 0;
+
+  while (remaining > 0) {
+    const triplet = remaining % 1000;
+    if (triplet > 0) {
+      const groupForms = POLISH_NUMBER_GROUPS[groupIndex] || ['', '', ''];
+      const words = convertTripletToPolishWords(triplet);
+
+      if (groupIndex === 1 && triplet === 1) {
+        parts.unshift(groupForms[0]);
+      } else {
+        const groupWord = groupForms[0] ? getPolishPluralForm(triplet, groupForms) : '';
+        parts.unshift([words, groupWord].filter(Boolean).join(' ').trim());
+      }
+    }
+
+    remaining = Math.floor(remaining / 1000);
+    groupIndex += 1;
+  }
+
+  const normalized = parts.filter(Boolean).join(' ').trim();
+  return value < 0 ? `minus ${normalized}` : normalized;
+};
+
+const normalizeCurrencyStringToNumber = (value: string) => {
+  const normalized = value.replace(/\s/g, '').replace(/\u00a0/g, '').replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatCurrencyAmountInWords = (value: string) => {
+  const numericValue = normalizeCurrencyStringToNumber(value);
+  if (numericValue === null) return '';
+
+  const absoluteValue = Math.abs(numericValue);
+  const zlotyValue = Math.floor(absoluteValue);
+  const groszValue = Math.round((absoluteValue - zlotyValue) * 100);
+  const carryToZloty = groszValue === 100 ? 1 : 0;
+  const normalizedZlotyValue = zlotyValue + carryToZloty;
+  const normalizedGroszValue = carryToZloty ? 0 : groszValue;
+  const zlotyWords = convertIntegerToPolishWords(normalizedZlotyValue);
+  const zlotyLabel = getPolishPluralForm(normalizedZlotyValue, ['złoty', 'złote', 'złotych']);
+  const groszLabel = getPolishPluralForm(normalizedGroszValue, ['grosz', 'grosze', 'groszy']);
+  const amountInWords = `${zlotyWords} ${zlotyLabel} ${String(normalizedGroszValue).padStart(2, '0')}/100 ${groszLabel}`;
+
+  return numericValue < 0 ? `minus ${amountInWords}` : amountInWords;
+};
+
+const unwrapTemplateExpression = (value: string) => {
+  const trimmedValue = value.trim();
+  const wrappedMatch = trimmedValue.match(/^\{\{\s*(.+?)\s*\}\}$/);
+  return wrappedMatch ? wrappedMatch[1].trim() : trimmedValue;
+};
+
+const isUnresolvedTemplateValue = (value: string) => /^\{\{.+\}\}$/.test(value.trim());
+
+const extractTemplateVariableReferences = (template: string) => {
+  const references: string[] = [];
+  const matches = template.matchAll(/{{\s*([^}]+)\s*}}/g);
+
+  for (const match of matches) {
+    const expression = unwrapTemplateExpression(match[1] || '');
+    const functionMatch = expression.match(/^slownie\s*\((.*)\)$/i);
+    if (functionMatch) {
+      const nestedExpression = unwrapTemplateExpression(functionMatch[1] || '');
+      if (nestedExpression) {
+        references.push(...extractTemplateVariableReferences(`{{${nestedExpression}}}`));
+      }
+      continue;
+    }
+
+    if (expression) {
+      references.push(expression);
+    }
+  }
+
+  return references;
+};
+
+const resolveTemplateExpression = (rawExpression: string, variableMap: Record<string, string>) => {
+  const expression = String(rawExpression).trim();
+  const functionMatch = expression.match(/^slownie\s*\((.*)\)$/i);
+
+  if (functionMatch) {
+    const argumentExpression = unwrapTemplateExpression(functionMatch[1]);
+    const normalizedArgument = normalizeTemplateVariableKey(argumentExpression);
+    const directArgumentValue = Object.prototype.hasOwnProperty.call(variableMap, normalizedArgument)
+      ? variableMap[normalizedArgument]
+      : argumentExpression;
+    const recursivelyResolvedArgument = resolveTemplateExpression(argumentExpression, variableMap);
+    const argumentValue = isUnresolvedTemplateValue(recursivelyResolvedArgument)
+      ? directArgumentValue
+      : recursivelyResolvedArgument;
+    const amountInWords = formatCurrencyAmountInWords(argumentValue);
+    return amountInWords || `{{${expression}}}`;
+  }
+
+  const normalizedToken = normalizeTemplateVariableKey(expression);
+  return Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
+    ? variableMap[normalizedToken]
+    : `{{${expression}}}`;
+};
+
+const resolveTemplateFunctions = (template: string, variableMap: Record<string, string>) =>
+  template.replace(/{{\s*(slownie\s*\((?:[^()]|\([^()]*\))*\))\s*}}/gi, (_match, rawExpression) =>
+    resolveTemplateExpression(String(rawExpression), variableMap)
+  );
+
+const resolveOrderProtocolTemplate = (
+  template: string,
+  order: Order,
+  project: Project | null | undefined,
+  protocolType: 'PP' | 'PO' = 'PP',
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const variableMap = buildOrderProtocolVariableMap(order, project, protocolType, overrides);
+  const templateWithResolvedFunctions = resolveTemplateFunctions(template, variableMap);
+  return templateWithResolvedFunctions.replace(/{{\s*([^{}]+?)\s*}}/g, (_match, rawToken) => resolveTemplateExpression(rawToken, variableMap));
+};
+
+const ResolvedTemplateToken = ({
+  source,
+  resolvedValue,
+}: {
+  source: string;
+  resolvedValue: string;
+}) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(resolvedValue);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="group inline-flex items-center gap-1 rounded-md px-1 py-0.5 font-bold text-gray-900 transition hover:bg-indigo-100/80 hover:font-extrabold dark:text-white dark:hover:bg-indigo-900/30"
+      title={`Kliknij, aby skopiować ${resolvedValue}`}
+    >
+      <span>{resolvedValue}</span>
+      {isCopied ? (
+        <span className="text-[10px] font-bold text-emerald-500">Skopiowano</span>
+      ) : (
+        <Copy size={11} className="opacity-0 transition-opacity group-hover:opacity-100" />
+      )}
+    </button>
+  );
+};
+
+const DynamicProtocolVariableField = ({
+  token,
+  value,
+  onChange,
+}: {
+  token: string;
+  value: string;
+  onChange: (token: string, value: string) => void;
+}) => {
+  return (
+    <div className="relative z-20 block pointer-events-auto">
+      <label
+        htmlFor={`dynamic-protocol-variable-${token}`}
+        className="mb-1 block text-xs font-bold uppercase tracking-[0.16em] text-amber-800 dark:text-amber-200"
+      >
+        {`{{${token}}}`}
+      </label>
+      <input
+        id={`dynamic-protocol-variable-${token}`}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(token, event.target.value)}
+        placeholder={`Wpisz wartość dla {{${token}}}`}
+        autoComplete="off"
+        spellCheck={false}
+        className="relative z-20 block w-full pointer-events-auto rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-amber-400 dark:border-amber-900/60 dark:bg-gray-900 dark:text-white dark:focus:ring-amber-500"
+      />
+    </div>
+  );
+};
+
+const renderResolvedTemplateWithHighlightedValues = (
+  template: string,
+  order: Order,
+  project: Project | null | undefined,
+  protocolType: 'PP' | 'PO' = 'PP',
+  overrides?: Partial<Record<string, string>>,
+) => {
+  const variableMap = buildOrderProtocolVariableMap(order, project, protocolType, overrides);
   const segments = template.split(/(\{\{[^}]+\}\})/g);
 
   return segments.map((segment, index) => {
     const match = segment.match(/^\{\{\s*([^}]+)\s*\}\}$/);
     if (match) {
-      const normalizedToken = normalizeTemplateVariableKey(match[1]);
-      const resolvedValue = Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
-        ? variableMap[normalizedToken]
-        : segment;
+      const resolvedValue = resolveTemplateExpression(match[1], variableMap);
 
       return (
-        <strong key={`${segment}-${index}`} className="font-extrabold text-gray-900 dark:text-white">
-          {resolvedValue}
-        </strong>
+        <ResolvedTemplateToken key={`${segment}-${index}`} source={segment} resolvedValue={resolvedValue} />
       );
     }
 
@@ -4288,15 +4790,10 @@ const renderResolvedMaintenanceSettlementTemplate = (
   return segments.map((segment, index) => {
     const match = segment.match(/^\{\{\s*([^}]+)\s*\}\}$/);
     if (match) {
-      const normalizedToken = normalizeTemplateVariableKey(match[1]);
-      const resolvedValue = Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
-        ? variableMap[normalizedToken]
-        : segment;
+      const resolvedValue = resolveTemplateExpression(match[1], variableMap);
 
       return (
-        <strong key={`${segment}-${index}`} className="font-extrabold text-gray-900 dark:text-white">
-          {resolvedValue}
-        </strong>
+        <ResolvedTemplateToken key={`${segment}-${index}`} source={segment} resolvedValue={resolvedValue} />
       );
     }
 
@@ -4931,6 +5428,13 @@ const MaintenanceSettlementFlowModal = ({
         ...updates,
       },
       lastModified: new Date().toISOString(),
+    }));
+  };
+
+  const handleCustomVariableChange = (token: string, value: string) => {
+    setCustomVariableDrafts((current) => ({
+      ...current,
+      [token]: value,
     }));
   };
 

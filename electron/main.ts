@@ -78,6 +78,10 @@ db.exec(`
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS order_acceptance_email_templates (
+        projectId TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS maintenance_settlement_email_templates (
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
@@ -220,6 +224,10 @@ const initializeDatabase = () => {
             data TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS order_protocol_email_templates (
+            projectId TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS order_acceptance_email_templates (
             projectId TEXT PRIMARY KEY,
             data TEXT NOT NULL
         );
@@ -1160,6 +1168,30 @@ ipcMain.handle('save-order-protocol-email-template', async (_, { projectId, data
         return { success: true };
     } catch (error) {
         console.error('Błąd zapisu szablonu e-mail PP:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-order-acceptance-email-template', async (_, projectId: string) => {
+    try {
+        const row = db.prepare('SELECT data FROM order_acceptance_email_templates WHERE projectId = ?').get(projectId) as { data: string } | undefined;
+        return row ? JSON.parse(row.data) : null;
+    } catch (error) {
+        console.error('Błąd pobierania szablonu e-mail PO:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-order-acceptance-email-template', async (_, { projectId, data }: { projectId: string, data: any }) => {
+    try {
+        db.prepare(`
+            INSERT INTO order_acceptance_email_templates (projectId, data)
+            VALUES (?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET data = excluded.data
+        `).run(projectId, JSON.stringify(data));
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu szablonu e-mail PO:', error);
         throw error;
     }
 });

@@ -78,6 +78,28 @@
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
 
 ## Rejestr zleceń
+- 2026-04-09 – Flow `PO` dla protokołu odbioru na liście zleceń
+  -- Na liście `Zlecenia` dodano przycisk `PO` z tooltipem `Protokół Odbioru`, który otwiera modal dla konkretnego zlecenia obok istniejącego `PP`.
+  -- Modal `PO` działa na tej samej zasadzie co `PP`: pozwala definiować kroki, opcjonalne linki, kolejność działań, stany wykonania oraz projektowy szablon e-mail z podstawianiem zmiennych z bieżącego zlecenia.
+  -- Dla `PO` dodano osobny zapis flow w zleceniu (`poFlow`) oraz osobny magazyn szablonu e-mail na poziomie projektu, dzięki czemu konfiguracja odbioru nie nadpisuje ustawień przekazania.
+  -- Ostatni krok modala `PO` zapisuje wybraną datę do pola `Data odbioru`, zachowując dotychczasowe działanie `PP` dla pola `Data przekazania`.
+  -- Lista zmiennych w `PP` i `PO` została rozszerzona o parametry projektu, m.in. kod i nazwę projektu, numer i przedmiot umowy, zakres dat, limity godzin, stawki, ustawienia utrzymania, cel marży, query YouTrack, link do Google Docs oraz skróty danych o typach zadań i interesariuszach.
+  -- Do zmiennych protokołów dodano także `wartosc_netto` i `wartosc_brutto`, liczone z `sumy_godzin` zlecenia oraz stawek projektu, aby kwoty mogły być używane bezpośrednio w treści kroków i e-maili.
+  -- Resolver zmiennych protokołów obsługuje teraz funkcję `{{slownie(...)}}`, np. `{{slownie(wartosc_brutto)}}`, która zamienia wartość liczbową na polski zapis słowny kwoty z jednostkami `złote/złotych` i `grosze/groszy`.
+  -- Parser funkcji `slownie(...)` został dodatkowo uodporniony na warianty zapisu argumentu, dzięki czemu poprawnie rozwiązuje zarówno tokeny protokołu, jak i bardziej swobodne formy wywołania z odstępami lub bezpośrednią liczbą.
+  -- Do protokołów dodano też pomocnicze tokeny `wartosc_netto_slownie` i `wartosc_brutto_slownie`, a resolver najpierw rozwiązuje funkcje typu `slownie(...)`, a dopiero potem zwykłe tokeny, co stabilizuje podstawianie kwot słownie.
+  -- W sekcji `Dostępne zmienne` w modalu protokołów dodano także listę `Dostępne funkcje`, aby użytkownik widział bezpośrednio w interfejsie przykłady składni takie jak `{{slownie(wartosc_brutto)}}`.
+  -- Elementy w sekcji `Dostępne zmienne i funkcje` są teraz klikalne: po najechaniu pokazują ikonę kopiowania, a kliknięcie zapisuje do schowka dokładny zapis tokenu lub funkcji, np. `{{nr}}` albo `{{slownie(wartosc_brutto)}}`.
+  -- Listy `Dostępne zmienne` i `Dostępne funkcje` są teraz porządkowane alfabetycznie, a ikona kopiowania pozostaje ukryta do momentu najechania kursorem na dany element.
+  -- W podglądzie treści kroków i szablonów podstawione zmienne oraz wyniki funkcji są renderowane jako interaktywne znaczniki; po najechaniu wyróżniają się i kopiują już wartość po podstawieniu, a nie sam zapis źródłowy `{{...}}`.
+  -- Jeśli w krokach flow albo w szablonie e-mail pojawi się nieznana jeszcze zmienna w formacie `{{twoja_zmienna}}`, modal pokazuje nad flow automatyczne pole do wpisania jej wartości obok sekcji `Data dla zmiennej {{data}}`; wpisana wartość jest potem używana przy podglądzie i kopiowaniu treści.
+  -- Dynamiczne pola własnych zmiennych korzystają teraz z osobnego stanu roboczego modala, dzięki czemu można w nich normalnie pisać bez konfliktu z autosave szablonu i ponownymi renderami.
+  -- Inicjalizacja wartości dynamicznych zmiennych odbywa się teraz tylko po załadowaniu modala i szablonu, a nie przy każdej zmianie templateki, co usuwa resetowanie aktywnego pola podczas wpisywania.
+  -- Wartości własnych zmiennych nie aktualizują już na bieżąco obiektu templateki podczas wpisywania; są trzymane lokalnie w modalu i scalane dopiero przy autosave, co stabilizuje fokus i edycję pola.
+  -- Każde dynamiczne pole własnej zmiennej zostało dodatkowo wydzielone do osobnego komponentu z lokalnym stanem wpisywania i zapisem przy `blur`, co ma zapobiegać przechwytywaniu wpisu przez render rodzica lub zdarzenia modala.
+  -- Dynamiczne pola własnych zmiennych zostały uproszczone do zwykłych kontrolowanych inputów sterowanych bezpośrednio stanem modala zlecenia, bez pośredniego draftu w komponencie pola i bez zapisu dopiero przy `blur`.
+  -- Handler dynamicznych pól w modalu zlecenia został dodatkowo przepięty na lokalną deklarację funkcyjną, aby uniknąć błędu runtime `handleCustomVariableChange is not defined` po odświeżeniach HMR.
+  -- Mapa zmiennych używana do podglądu i kopiowania treści została rozszerzona o dynamiczne wartości wpisywane w dodatkowych polach, dzięki czemu własne tokeny typu `{{moja_zmienna}}` są teraz faktycznie podstawiane w krokach i szablonach e-mail.
 - 2026-04-03 – Flow `PP` dla protokołu przekazania na liście zleceń
   -- Na liście `Zlecenia` dodano przycisk `PP` z tooltipem `Protokół Przekazania`, który otwiera osobny modal przypisany do konkretnego zlecenia.
   -- Modal pokazuje pionową listę kroków procesu, pozwala włączyć edycję ikoną w prawym górnym rogu, definiować kroki z opcjonalnym linkiem i opisem, zmieniać ich kolejność oraz używać zmiennych opartych o pola zlecenia i bieżącą datę, np. `{{nr}}`, `{{tytul}}`, `{{data}}`.

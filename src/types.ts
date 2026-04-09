@@ -87,6 +87,7 @@ export type Order = {
   notes?: string;
   createdAt: string;
   ppFlow?: OrderProtocolFlow;
+  poFlow?: OrderProtocolFlow;
 };
 
 export type EstimationItem = {
@@ -108,6 +109,12 @@ export type EmailTemplate = {
 };
 
 export type OrderProtocolEmailTemplateData = {
+  projectId: string;
+  emailTemplate: EmailTemplate;
+  lastModified: string;
+};
+
+export type OrderAcceptanceEmailTemplateData = {
   projectId: string;
   emailTemplate: EmailTemplate;
   lastModified: string;
