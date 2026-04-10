@@ -1474,6 +1474,18 @@ const formatTimelineActivity = (activity: DailyReportIssue['timeline'][number]) 
     return `${activity.author.name}: ${activity.added || activity.text || 'Aktualizacja'}`;
 };
 
+const shouldIncludeDailyActivity = (activity: DailyReportIssue['timeline'][number]) => {
+    if (activity.type === 'comment') return true;
+    if (activity.type === 'work-item') return true;
+    if (activity.type === 'field-change') {
+        const fieldName = (activity.field || '').trim().toLowerCase();
+        if (!fieldName || !(activity.added || activity.removed)) return false;
+        if (fieldName.includes('spent time')) return false;
+        return true;
+    }
+    return activity.type === 'issue-created';
+};
+
 const mapWithConcurrency = async <T, R>(
     items: T[],
     limit: number,
@@ -1802,7 +1814,11 @@ const renderDailyIssueLines = (issue: DailyReportIssue, comments: Record<string,
     if (includeActivities) {
         const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
         const toTime = new Date(`${dateTo}T23:59:59`).getTime();
-        const periodActivities = issue.timeline.filter((activity) => activity.timestamp >= fromTime && activity.timestamp <= toTime);
+        const periodActivities = issue.timeline.filter((activity) =>
+            activity.timestamp >= fromTime
+            && activity.timestamp <= toTime
+            && shouldIncludeDailyActivity(activity),
+        );
 
         if (periodActivities.length > 0) {
             lines.push('  AktywnoĹ›Ä‡:');
@@ -1833,10 +1849,7 @@ const renderDailyIssueCardHtml = (
     const periodActivities = includeActivities
         ? issue.timeline.filter((activity) => {
             if (activity.timestamp < fromTime || activity.timestamp > toTime) return false;
-            if (activity.type === 'comment') return true;
-            if (activity.type === 'work-item') return true;
-            if (activity.type === 'field-change') return !!(activity.field && (activity.added || activity.removed));
-            return false;
+            return shouldIncludeDailyActivity(activity);
         })
         : [];
     const commentActivities = periodActivities.filter((activity) => activity.type === 'comment');
@@ -1844,12 +1857,12 @@ const renderDailyIssueCardHtml = (
 
     const activityHtml = includeActivities && visibleActivities.length > 0
         ? `
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid rgba(148,163,184,0.22);">
+            <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(148,163,184,0.22);">
                 <div style="margin-bottom:8px; font-size:10px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:#94a3b8;">
                     Aktywnosc (${visibleActivities.length})
                 </div>
                 ${visibleActivities.map((activity) => `
-                    <div style="display:flex; gap:8px; align-items:flex-start; margin-top:0; margin-bottom:7px;">
+                    <div style="display:flex; gap:7px; align-items:flex-start; margin-top:0; margin-bottom:6px;">
                         <span style="display:inline-block; width:6px; height:6px; margin-top:5px; border-radius:999px; background:#818cf8;"></span>
                         <div style="font-size:11px; line-height:1.45; color:#64748b;">${formatTimelineActivityHtml(activity)}</div>
                     </div>
@@ -1859,12 +1872,12 @@ const renderDailyIssueCardHtml = (
         : '';
     const commentsHtml = includeActivities && commentActivities.length > 0
         ? `
-            <div style="margin-top:12px; padding:10px 12px; border:1px solid rgba(148,163,184,0.24); border-radius:12px; background:#f8fafc;">
+            <div style="margin-top:10px; padding:8px 10px; border:1px solid rgba(148,163,184,0.24); border-radius:10px; background:#f8fafc;">
                 <div style="margin-bottom:8px; font-size:10px; font-weight:900; letter-spacing:0.14em; text-transform:uppercase; color:#64748b;">
                     Komentarze (${commentActivities.length})
                 </div>
                 ${commentActivities.map((activity) => `
-                    <div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:#ffffff; border:1px solid rgba(226,232,240,0.9);">
+                    <div style="margin-bottom:6px; padding:7px 8px; border-radius:9px; background:#ffffff; border:1px solid rgba(226,232,240,0.9);">
                         <div style="margin-bottom:4px; font-size:11px; font-weight:700; color:#475569;">${escapeHtmlOptional(activity.author.name)}</div>
                         <div style="font-size:11px; line-height:1.5; color:#64748b; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word;">${escapeHtml(sanitizeDailyCommentText(activity.text)) || '[pusty komentarz]'}</div>
                     </div>
@@ -1878,8 +1891,8 @@ const renderDailyIssueCardHtml = (
     const projectLabel = resolveDailyProjectCode(issue);
 
     return `
-        <div style="margin-bottom:16px; border:1px solid rgba(148,163,184,0.18); border-radius:16px; overflow:hidden; background:#ffffff; box-shadow:0 10px 28px rgba(15,23,42,0.08);">
-            <div style="padding:10px 12px; border-bottom:1px solid rgba(148,163,184,0.18); background:#f8fafc;">
+        <div style="margin-bottom:12px; border:1px solid rgba(148,163,184,0.18); border-radius:14px; overflow:hidden; background:#ffffff; box-shadow:0 10px 28px rgba(15,23,42,0.08);">
+            <div style="padding:8px 10px; border-bottom:1px solid rgba(148,163,184,0.18); background:#f8fafc;">
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
                     <div>
                         <div style="margin-bottom:8px;">
@@ -1896,7 +1909,7 @@ const renderDailyIssueCardHtml = (
                     </div>
                 </div>
             </div>
-            <div style="padding:14px 12px 12px 12px;">
+            <div style="padding:10px 10px 10px 10px;">
                 <div style="margin:0 0 10px 0; font-size:14px; font-weight:800; line-height:1.35; color:#0f172a;">
                     ${issueUrl
             ? `<a href="${escapeHtml(issueUrl)}" style="color:#0f172a; text-decoration:none;">${escapeHtml(issue.summary)}</a>`
@@ -1909,14 +1922,14 @@ const renderDailyIssueCardHtml = (
                     ${progress.barHtml}
                 ` : ''}
                 ${comment ? `
-                    <div style="margin-top:12px; padding:10px; border:1px solid rgba(251,191,36,0.24); border-radius:12px; background:#fffbeb;">
+                    <div style="margin-top:10px; padding:8px; border:1px solid rgba(251,191,36,0.24); border-radius:10px; background:#fffbeb;">
                         <div style="margin-bottom:5px; font-size:10px; font-weight:900; letter-spacing:0.14em; text-transform:uppercase; color:#d97706;">Brudnopis PM</div>
                         <div style="font-size:12px; line-height:1.55; color:#92400e;">${escapeHtml(comment)}</div>
                     </div>
                 ` : ''}
                 ${activityHtml}
                 ${commentsHtml}
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:14px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px;">
                     <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                         <span style="display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:999px; background:#eef2ff; color:#4f46e5; font-size:10px; font-weight:800;">${escapeHtml(assigneeInitial)}</span>
                         <span style="font-size:11px; font-weight:700; color:#475569;">${escapeHtml(assigneeLabel)}</span>
@@ -2038,27 +2051,27 @@ const renderDailyContentSourceHtml = async (
             ? orderedProjectCodes.map((projectCode) => {
                 const projectIssues = groupedByProject.get(projectCode) || [];
                 return `
-                    <div style="display:block; width:100%; margin-bottom:18px; padding:14px; border:1px solid rgba(99,102,241,0.14); border-radius:18px; background:linear-gradient(180deg, rgba(238,242,255,0.92) 0%, rgba(255,255,255,0.98) 100%); box-sizing:border-box;">
-                        <div style="display:block; width:100%; margin-bottom:14px; padding:12px 14px; border-radius:14px; background:linear-gradient(135deg, #4338ca 0%, #6366f1 100%); box-shadow:0 10px 24px rgba(79,70,229,0.22); box-sizing:border-box;">
+                    <div style="display:block; width:100%; margin-bottom:12px; padding:10px; border:1px solid rgba(99,102,241,0.14); border-radius:14px; background:linear-gradient(180deg, rgba(238,242,255,0.92) 0%, rgba(255,255,255,0.98) 100%); box-sizing:border-box;">
+                        <div style="display:block; width:100%; margin-bottom:10px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg, #4338ca 0%, #6366f1 100%); box-shadow:0 10px 24px rgba(79,70,229,0.22); box-sizing:border-box;">
                             <div style="font-size:11px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.78);">Projekt</div>
                             <div style="margin-top:4px; font-size:20px; font-weight:900; letter-spacing:0.08em; color:#ffffff;">${escapeHtml(projectCode)}</div>
                         </div>
-                        <div style="height:3px; margin:0 0 14px 0; border-radius:999px; background:linear-gradient(90deg, #4338ca 0%, #a5b4fc 100%);"></div>
+                        <div style="height:3px; margin:0 0 10px 0; border-radius:999px; background:linear-gradient(90deg, #4338ca 0%, #a5b4fc 100%);"></div>
                         ${projectIssues.map((issue) => renderDailyIssueCardHtml(issue, comments, section.id === 'fixed_aktywnosci', from, to)).join('')}
                     </div>
                 `;
             }).join('')
             : `
-                <div style="padding:32px 16px; text-align:center; border:1px dashed rgba(148,163,184,0.28); border-radius:14px; background:rgba(255,255,255,0.48);">
+                <div style="padding:20px 12px; text-align:center; border:1px dashed rgba(148,163,184,0.28); border-radius:12px; background:rgba(255,255,255,0.48);">
                     <span style="font-size:10px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:#94a3b8;">Brak</span>
                 </div>
             `;
 
         return `
-            <section style="margin:0 0 28px 0;">
+            <section style="margin:0 0 20px 0;">
                 ${section.id === 'fixed_aktywnosci' ? '' : `
-                <div style="margin-bottom:14px;">
-                    <div style="display:block; width:100%; padding:12px 14px; border-radius:14px; background:linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%); box-shadow:inset 0 0 0 1px rgba(99,102,241,0.10); box-sizing:border-box;">
+                <div style="margin-bottom:10px;">
+                    <div style="display:block; width:100%; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%); box-shadow:inset 0 0 0 1px rgba(99,102,241,0.10); box-sizing:border-box;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-size:14px; color:#6366f1;">&#9662;</span>
@@ -2077,13 +2090,13 @@ const renderDailyContentSourceHtml = async (
     }).join('');
 
     return `
-        <section style="margin:0 0 28px 0; padding:24px; border-radius:24px; background:linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); border:1px solid rgba(148,163,184,0.18); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
-            <div style="margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid rgba(148,163,184,0.22);">
+        <section style="margin:0 0 20px 0; padding:14px; border-radius:18px; background:linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); border:1px solid rgba(148,163,184,0.18); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
+            <div style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid rgba(148,163,184,0.22);">
                 <div style="margin-bottom:8px; font-size:28px; font-weight:900; line-height:1.15; color:#0f172a;">Daily Stand-up Command Center</div>
                 <div style="margin-bottom:10px; font-size:18px; font-weight:800; color:#334155;">${escapeHtml(hub.name)}</div>
                 <div style="margin-bottom:14px; font-size:13px; color:#64748b;">Zakres: <strong style="color:#334155;">${escapeHtml(from)}</strong> -> <strong style="color:#334155;">${escapeHtml(to)}</strong></div>
             </div>
-            <div style="display:block; width:100%; margin:0 0 20px 0; padding:14px 16px; border-radius:16px; background:linear-gradient(135deg, #020617 0%, #334155 100%); box-shadow:0 14px 28px rgba(15,23,42,0.22); box-sizing:border-box;">
+            <div style="display:block; width:100%; margin:0 0 14px 0; padding:10px 12px; border-radius:14px; background:linear-gradient(135deg, #020617 0%, #334155 100%); box-shadow:0 14px 28px rgba(15,23,42,0.22); box-sizing:border-box;">
                 <div style="font-size:11px; font-weight:900; letter-spacing:0.18em; text-transform:uppercase; color:rgba(255,255,255,0.72);">Sekcja startowa</div>
                 <div style="margin-top:4px; font-size:22px; font-weight:900; letter-spacing:0.08em; color:#ffffff;">AKTYWNOŚCI</div>
             </div>
@@ -2125,7 +2138,7 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
     }
 
     const htmlBody = htmlBlocks.length > 0
-        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:32px; background:#eef2ff; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:100%; min-width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
+        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:12px; background:#eef2ff; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:100%; min-width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
         : '';
 
     return {
