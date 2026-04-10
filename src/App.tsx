@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType
 } from './types';
 
 declare global {
@@ -40,6 +40,10 @@ declare global {
       saveOrderAcceptanceEmailTemplate: (data: { projectId: string, data: OrderAcceptanceEmailTemplateData }) => Promise<{ success: boolean }>;
       getMaintenanceSettlementEmailTemplate: (projectId: string) => Promise<MaintenanceSettlementEmailTemplateData | null>;
       saveMaintenanceSettlementEmailTemplate: (data: { projectId: string, data: MaintenanceSettlementEmailTemplateData }) => Promise<{ success: boolean }>;
+      getScheduledTasks: () => Promise<ScheduledTask[]>;
+      saveScheduledTask: (data: ScheduledTask) => Promise<{ success: boolean }>;
+      deleteScheduledTask: (id: string) => Promise<{ success: boolean }>;
+      runScheduledTaskNow: (id: string) => Promise<{ success: boolean; task: ScheduledTask }>;
       getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
       saveProjectLink: (data: ProjectLink) => Promise<{ success: boolean }>;
       deleteProjectLink: (id: string) => Promise<{ success: boolean }>;
@@ -85,7 +89,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send
 } from 'lucide-react';
 
 import { 
@@ -7300,6 +7304,635 @@ const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clien
   );
 };
 
+const scheduledTaskTypeOptions: { value: GlobalScheduleType; label: string }[] = [
+  { value: 'daily', label: 'Codziennie' },
+  { value: 'weekdays', label: 'Codziennie oprócz sobót i niedziel' },
+  { value: 'weekly', label: 'Raz w tygodniu' },
+  { value: 'monthly', label: 'Raz w miesiącu' },
+  { value: 'custom', label: 'Niestandardowe data i godzina' },
+];
+
+const scheduledTaskDayOptions = [
+  { value: 1, label: 'Poniedziałek' },
+  { value: 2, label: 'Wtorek' },
+  { value: 3, label: 'Środa' },
+  { value: 4, label: 'Czwartek' },
+  { value: 5, label: 'Piątek' },
+  { value: 6, label: 'Sobota' },
+  { value: 0, label: 'Niedziela' },
+];
+
+const createScheduledTaskDraft = (): ScheduledTask => {
+  const now = new Date().toISOString();
+
+  return {
+    id: createClientId(),
+    name: 'Nowe zadanie harmonogramu',
+    isActive: true,
+    actionType: 'email',
+    schedule: {
+      type: 'daily',
+      time: '22:00',
+      dayOfWeek: 1,
+      dayOfMonth: 1,
+      dateTime: '',
+    },
+    emailTemplate: createEmptyEmailTemplate(),
+    contentSources: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const GlobalSchedulerSection = () => {
+  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+  const [dailyHubs, setDailyHubs] = useState<DailyHub[]>([]);
+  const [dailySectionsByHub, setDailySectionsByHub] = useState<Record<string, DailySection[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDailyConfigLoading, setIsDailyConfigLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+
+  const getScheduleRangeLabel = (scheduleType: GlobalScheduleType) => {
+    switch (scheduleType) {
+      case 'daily':
+      case 'weekdays':
+      case 'custom':
+        return 'dzisiaj';
+      case 'weekly':
+        return 'ostatnie 7 dni';
+      case 'monthly':
+        return 'ostatnie 30 dni';
+      default:
+        return 'aktualny zakres';
+    }
+  };
+
+  const sortDailySections = (sections: DailySection[]) => (
+    [...sections].sort((left, right) => left.orderIndex - right.orderIndex || left.name.localeCompare(right.name, 'pl'))
+  );
+
+  const ensureDailySectionsLoaded = async (hubId: string) => {
+    if (!hubId) return [];
+    if (dailySectionsByHub[hubId]) return dailySectionsByHub[hubId];
+    if (!window.electron?.getDailySections) return [];
+
+    const loadedSections = sortDailySections(await window.electron.getDailySections(hubId) || []);
+    setDailySectionsByHub((current) => ({ ...current, [hubId]: loadedSections }));
+    return loadedSections;
+  };
+
+  const loadDailyConfig = async () => {
+    if (!window.electron?.getDailyHubs) {
+      setDailyHubs([]);
+      return;
+    }
+
+    setIsDailyConfigLoading(true);
+    try {
+      const loadedHubs = await window.electron.getDailyHubs();
+      setDailyHubs([...(loadedHubs || [])].sort((left, right) => left.name.localeCompare(right.name, 'pl')));
+    } catch (loadError: any) {
+      setError(loadError?.message || 'Nie udało się pobrać konfiguracji Daily.');
+    } finally {
+      setIsDailyConfigLoading(false);
+    }
+  };
+
+  const loadTasks = async () => {
+    if (!window.electron?.getScheduledTasks) {
+      setTasks([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    try {
+      const loadedTasks = await window.electron.getScheduledTasks();
+      setTasks(loadedTasks || []);
+
+      const hubIdsToLoad = Array.from(new Set((loadedTasks || [])
+        .flatMap((task) => (task.contentSources || [])
+          .filter((source) => source.type === 'daily' && source.hubId)
+          .map((source) => source.hubId))));
+
+      for (const hubId of hubIdsToLoad) {
+        await ensureDailySectionsLoaded(hubId);
+      }
+    } catch (loadError: any) {
+      setError(loadError?.message || 'Nie udało się pobrać globalnego harmonogramu.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDailyConfig();
+    void loadTasks();
+  }, []);
+
+  const updateTask = (taskId: string, updater: (current: ScheduledTask) => ScheduledTask) => {
+    setTasks((currentTasks) => currentTasks.map((task) => (
+      task.id === taskId
+        ? {
+            ...updater(task),
+            updatedAt: new Date().toISOString(),
+          }
+        : task
+    )));
+  };
+
+  const handleSaveTask = async (task: ScheduledTask) => {
+    if (!window.electron?.saveScheduledTask) return;
+
+    setPendingTaskId(task.id);
+    setError('');
+    try {
+      await window.electron.saveScheduledTask({
+        ...task,
+        updatedAt: new Date().toISOString(),
+      });
+      await loadTasks();
+    } catch (saveError: any) {
+      setError(saveError?.message || 'Nie udało się zapisać zadania harmonogramu.');
+    } finally {
+      setPendingTaskId(null);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!window.electron?.deleteScheduledTask) return;
+
+    const shouldDelete = window.confirm('Czy usunąć wybrane zadanie harmonogramu?');
+    if (!shouldDelete) return;
+
+    setPendingTaskId(taskId);
+    setError('');
+    try {
+      await window.electron.deleteScheduledTask(taskId);
+      await loadTasks();
+    } catch (deleteError: any) {
+      setError(deleteError?.message || 'Nie udało się usunąć zadania harmonogramu.');
+    } finally {
+      setPendingTaskId(null);
+    }
+  };
+
+  const handleRunTaskNow = async (taskId: string) => {
+    if (!window.electron?.runScheduledTaskNow) return;
+
+    setPendingTaskId(taskId);
+    setError('');
+    try {
+      await window.electron.runScheduledTaskNow(taskId);
+      await loadTasks();
+    } catch (runError: any) {
+      setError(runError?.message || 'Nie udało się wykonać zadania harmonogramu.');
+      await loadTasks();
+    } finally {
+      setPendingTaskId(null);
+    }
+  };
+
+  const handleAddDailySource = (taskId: string) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      contentSources: [
+        ...(current.contentSources || []),
+        {
+          id: createClientId(),
+          type: 'daily',
+          hubId: '',
+          sectionIds: [],
+        },
+      ],
+    }));
+  };
+
+  const handleRemoveContentSource = (taskId: string, sourceId: string) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      contentSources: (current.contentSources || []).filter((source) => source.id !== sourceId),
+    }));
+  };
+
+  const handleDailySourceHubChange = async (taskId: string, sourceId: string, hubId: string) => {
+    const loadedSections = hubId ? await ensureDailySectionsLoaded(hubId) : [];
+
+    updateTask(taskId, (current) => ({
+      ...current,
+      contentSources: (current.contentSources || []).map((source) => (
+        source.id === sourceId
+          ? {
+              ...source,
+              hubId,
+              sectionIds: loadedSections.map((section) => section.id),
+            }
+          : source
+      )),
+    }));
+  };
+
+  const handleDailySectionToggle = (taskId: string, sourceId: string, sectionId: string, isChecked: boolean) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      contentSources: (current.contentSources || []).map((source) => {
+        if (source.id !== sourceId || source.type !== 'daily') {
+          return source;
+        }
+
+        const nextIds = new Set(source.sectionIds);
+        if (isChecked) {
+          nextIds.add(sectionId);
+        } else {
+          nextIds.delete(sectionId);
+        }
+
+        return {
+          ...source,
+          sectionIds: Array.from(nextIds),
+        };
+      }),
+    }));
+  };
+
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Globalny harmonogram</h3>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-6">
+            Zadania wykonują się, gdy aplikacja jest uruchomiona, także po schowaniu do traya. Pierwszy typ akcji to automatyczna wysyłka e-mail.
+          </p>
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            Jeśli Google było autoryzowane wcześniej, po dodaniu harmonogramu e-mail może być potrzebne wylogowanie i ponowna autoryzacja, aby nadać uprawnienie Gmail Send.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setTasks((current) => [createScheduledTaskDraft(), ...current])}
+          className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition"
+        >
+          <Plus size={16} />
+          Nowe zadanie
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="mt-5 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <Loader2 size={16} className="animate-spin" />
+          Wczytywanie harmonogramu...
+        </div>
+      ) : (
+        <div className="mt-5 space-y-4">
+          {tasks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-5 py-6 text-sm leading-6 text-gray-500 dark:text-gray-400">
+              Brak zdefiniowanych zadań. Dodaj pierwszy harmonogram, odbiorców, tytuł oraz źródła treści wiadomości.
+            </div>
+          ) : tasks.map((task) => (
+            <div key={task.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-5 space-y-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nazwa zadania</span>
+                    <input
+                      type="text"
+                      value={task.name}
+                      onChange={(event) => updateTask(task.id, (current) => ({ ...current, name: event.target.value }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </label>
+
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Typ akcji</span>
+                    <div className="mt-1.5 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                      <Mail size={15} className="text-indigo-500" />
+                      Wysyłka wiadomości e-mail
+                    </div>
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={task.isActive}
+                    onChange={(event) => updateTask(task.id, (current) => ({ ...current, isActive: event.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Aktywne
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <label className="block xl:col-span-2">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tryb harmonogramu</span>
+                  <select
+                    value={task.schedule.type}
+                    onChange={(event) => updateTask(task.id, (current) => ({
+                      ...current,
+                      schedule: {
+                        ...current.schedule,
+                        type: event.target.value as GlobalScheduleType,
+                      },
+                    }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    {scheduledTaskTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {task.schedule.type === 'custom' ? (
+                  <label className="block xl:col-span-2">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Data i godzina</span>
+                    <input
+                      type="datetime-local"
+                      value={task.schedule.dateTime || ''}
+                      onChange={(event) => updateTask(task.id, (current) => ({
+                        ...current,
+                        schedule: {
+                          ...current.schedule,
+                          dateTime: event.target.value,
+                        },
+                      }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </label>
+                ) : (
+                  <>
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Godzina</span>
+                      <input
+                        type="time"
+                        value={task.schedule.time || '22:00'}
+                        onChange={(event) => updateTask(task.id, (current) => ({
+                          ...current,
+                          schedule: {
+                            ...current.schedule,
+                            time: event.target.value,
+                          },
+                        }))}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </label>
+
+                    {task.schedule.type === 'weekly' && (
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dzień tygodnia</span>
+                        <select
+                          value={task.schedule.dayOfWeek ?? 1}
+                          onChange={(event) => updateTask(task.id, (current) => ({
+                            ...current,
+                            schedule: {
+                              ...current.schedule,
+                              dayOfWeek: Number(event.target.value),
+                            },
+                          }))}
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          {scheduledTaskDayOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    {task.schedule.type === 'monthly' && (
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dzień miesiąca</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={31}
+                          value={task.schedule.dayOfMonth ?? 1}
+                          onChange={(event) => updateTask(task.id, (current) => ({
+                            ...current,
+                            schedule: {
+                              ...current.schedule,
+                              dayOfMonth: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
+                            },
+                          }))}
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </label>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-950/20 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Źródła treści wiadomości</h4>
+                    <p className="mt-1 text-xs leading-5 text-indigo-700/80 dark:text-indigo-300/80">
+                      Wybierasz tutaj zadania, których wynik ma zostać dołączony do wiadomości. Zakres dla tego harmonogramu to {getScheduleRangeLabel(task.schedule.type)}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddDailySource(task.id)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-indigo-950/30"
+                  >
+                    <Plus size={15} />
+                    Dodaj Daily
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {(task.contentSources || []).length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/40 bg-white/70 dark:bg-gray-900/40 px-4 py-4 text-sm text-indigo-800/80 dark:text-indigo-200/80">
+                      Brak wybranych źródeł. Dodaj `Daily`, jeśli wynik ma zostać automatycznie wstawiony do wiadomości.
+                    </div>
+                  ) : (
+                    (task.contentSources || []).map((source, sourceIndex) => {
+                      const dynamicSections = source.type === 'daily' && source.hubId
+                        ? (dailySectionsByHub[source.hubId] || [])
+                        : [];
+
+                      return (
+                        <div key={source.id} className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/40 bg-white/90 dark:bg-gray-900/50 p-4">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="grid flex-1 grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="rounded-lg border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-950/20 px-3 py-2.5">
+                                <span className="block text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Typ źródła</span>
+                                <div className="mt-1.5 flex items-center gap-2 text-sm font-medium text-indigo-950 dark:text-indigo-100">
+                                  <Mail size={15} className="text-indigo-500" />
+                                  Wyślij Daily #{sourceIndex + 1}
+                                </div>
+                              </div>
+
+                              <label className="block">
+                                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Wybór Daily</span>
+                                <select
+                                  value={source.hubId}
+                                  onChange={(event) => void handleDailySourceHubChange(task.id, source.id, event.target.value)}
+                                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                >
+                                  <option value="">Wybierz zdefiniowane Daily</option>
+                                  {dailyHubs.map((hub) => (
+                                    <option key={hub.id} value={hub.id}>{hub.name}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContentSource(task.id, source.id)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-950/20"
+                            >
+                              <Trash2 size={14} />
+                              Usuń źródło
+                            </button>
+                          </div>
+
+                          <div className="mt-4 rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/70 dark:bg-emerald-950/20 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+                            Sekcja <span className="font-semibold">Aktywności</span> jest zawsze dołączana. Poniżej zaznaczasz tylko dodatkowe sekcje dynamiczne z wybranego Daily.
+                          </div>
+
+                          {source.hubId ? (
+                            <div className="mt-4">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dodatkowe sekcje do wysłania</p>
+                              {dynamicSections.length === 0 ? (
+                                <div className="mt-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                  {isDailyConfigLoading ? 'Wczytywanie sekcji Daily...' : 'To Daily nie ma jeszcze zdefiniowanych sekcji dynamicznych.'}
+                                </div>
+                              ) : (
+                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {dynamicSections.map((section) => (
+                                    <label key={section.id} className="inline-flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm text-gray-700 dark:text-gray-200">
+                                      <input
+                                        type="checkbox"
+                                        checked={source.sectionIds.includes(section.id)}
+                                        onChange={(event) => handleDailySectionToggle(task.id, source.id, section.id, event.target.checked)}
+                                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="flex-1">
+                                        <span className="block font-medium text-gray-900 dark:text-white">{section.name}</span>
+                                        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                                          {section.respectDates ? 'Uwzględnia tylko elementy z aktywnością w zakresie dat.' : 'Uwzględnia wszystkie aktualnie widoczne elementy tej sekcji.'}
+                                        </span>
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">DO</span>
+                  <input
+                    type="text"
+                    value={task.emailTemplate.to}
+                    onChange={(event) => updateTask(task.id, (current) => ({
+                      ...current,
+                      emailTemplate: { ...current.emailTemplate, to: event.target.value },
+                    }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">DW</span>
+                  <input
+                    type="text"
+                    value={task.emailTemplate.cc}
+                    onChange={(event) => updateTask(task.id, (current) => ({
+                      ...current,
+                      emailTemplate: { ...current.emailTemplate, cc: event.target.value },
+                    }))}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tytuł wiadomości</span>
+                <input
+                  type="text"
+                  value={task.emailTemplate.subject}
+                  onChange={(event) => updateTask(task.id, (current) => ({
+                    ...current,
+                    emailTemplate: { ...current.emailTemplate, subject: event.target.value },
+                  }))}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Treść wiadomości / wstęp przed raportem</span>
+                <textarea
+                  rows={7}
+                  value={task.emailTemplate.body}
+                  onChange={(event) => updateTask(task.id, (current) => ({
+                    ...current,
+                    emailTemplate: { ...current.emailTemplate, body: event.target.value },
+                  }))}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </label>
+
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                  <div>Ostatnie wykonanie: {task.lastRunAt ? new Date(task.lastRunAt).toLocaleString('pl-PL') : 'jeszcze nie uruchomiono'}</div>
+                  <div>Status: {task.lastRunStatus === 'success' ? 'sukces' : task.lastRunStatus === 'error' ? 'błąd' : 'brak'}</div>
+                  {task.lastRunError ? <div className="text-red-500 dark:text-red-400">Błąd: {task.lastRunError}</div> : null}
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTask(task.id)}
+                    disabled={pendingTaskId === task.id}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-950/20 disabled:opacity-60"
+                  >
+                    <Trash2 size={15} />
+                    Usuń
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRunTaskNow(task.id)}
+                    disabled={pendingTaskId === task.id}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:bg-gray-800 dark:text-emerald-400 dark:hover:bg-emerald-950/20 disabled:opacity-60"
+                  >
+                    {pendingTaskId === task.id ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                    Wykonaj teraz
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveTask(task)}
+                    disabled={pendingTaskId === task.id}
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {pendingTaskId === task.id ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+                    Zapisz zadanie
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ExecutiveSettlementReportModal = ({
   isOpen,
   onClose,
@@ -8021,7 +8654,7 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-6xl max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <SettingsIcon size={20} className="text-indigo-500" />
@@ -8032,13 +8665,17 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           <div className="space-y-4">
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Cloud (Docs API)</h3>
               <div className="space-y-4">
                 <GoogleAuthSection clientId={settings?.googleClientId || ''} clientSecret={settings?.googleClientSecret || ''} />
               </div>
+            </div>
+
+            <div className="border-t border-gray-100 dark:border-gray-700 pt-6">
+              <GlobalSchedulerSection />
             </div>
           </div>
 

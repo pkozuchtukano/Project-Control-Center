@@ -1,4 +1,20 @@
 ﻿## Daily Command Center
+- 2026-04-10 – HTML dla wysyłki Daily z harmonogramu
+  -- Wysyłka `Daily` z globalnego harmonogramu przestała generować wyłącznie tekst i buduje teraz także wariant HTML odwzorowujący układ widoku daily: kolumny sekcji, karty zadań, badge typu/priorytetu/statusu, pasek postępu czasu, przypisaną osobę oraz notatkę PM.
+  -- W części HTML dodano również sekcję aktywności z ostatnimi zmianami z wybranego zakresu dat, dzięki czemu wiadomość e-mail pokazuje komentarze, zmiany pól i logi czasu w formie zbliżonej do kart `Aktywności` w aplikacji.
+  -- Transport Gmail został rozszerzony do formatu `multipart/alternative`, więc odbiorca dostaje bogaty mail HTML z zachowaniem tekstowego fallbacku dla klientów, które nie renderują HTML.
+  -- Karty zadań w mailu dostały bezpośrednie linki do YouTrack, a sekcje HTML grupują teraz elementy wyraźniej po projektach z mocno zaakcentowanym nagłówkiem projektu i czytelnym oddzieleniem między grupami.
+  -- Układ maila został dopasowany do poczty: sekcje daily renderują się pionowo bez sztywnych szerokości kolumn, dzięki czemu dalsze projekty nie są ściskane, a każdy projekt dostaje ten sam wyróżniony nagłówek.
+  -- W aktywnościach znormalizowano prezentację wartości pól czasu i dat, więc zmiany typu `Spent time`, `Estimation` oraz pola dat nie pokazują już surowych liczb z API YouTrack.
+  -- Z kart usunięto dodatkowy link `Otwórz w YouTrack`, bo przejście do zgłoszenia pozostaje już dostępne po kliknięciu kodu zadania, a wpisy logowania czasu w aktywnościach pokazują teraz wprost, ile czasu zostało dodane.
+  -- Na początku raportu sekcja `Aktywności` dostała mocniejszy, pełnoszerokościowy nagłówek i pozostaje grupowana po projektach tak samo jak dalsze sekcje typu `In Progress`, dzięki czemu start wiadomości jest czytelniejszy.
+  -- Grupowanie po projektach zostało uodpornione na brak `project.shortName` w odpowiedzi YouTrack przez fallback do prefiksu z numeru zadania, np. `PMS-61`, a sam początek raportu ma teraz osobny tytuł `AKTYWNOŚCI`, żeby pierwsza sekcja nie znikała wizualnie w mailu.
+  -- Z sanitizacji wstępu maila usunięto surowe linie markdown obrazków z `emailTemplate.body`, np. `![](obraz.png){width=70%}`, więc początek wiadomości nie pokazuje już literalnych znaczników zamiast właściwego raportu daily.
+  -- Komentarze z aktywności YouTrack zostały odizolowane od głównej listy aktywności w HTML maila i trafiają do osobnego, bezpiecznego bloku `Komentarze`, z oczyszczeniem markdown obrazków oraz tagów `<img>`, aby treść komentarza nie psuła struktury sekcji `AKTYWNOŚCI` ani grup projektowych.
+  -- Każda wysyłka maila z harmonogramu zapisuje teraz lokalnie debugowy podgląd wygenerowanej treści `HTML`, `TXT` i metadanych w katalogu `debug-email-output`, dzięki czemu można zweryfikować dokładnie to, co opuszcza generator przed przekazaniem do Gmaila.
+  -- Transport Gmail dla harmonogramu został uszczelniony przez kodowanie nagłówka `Subject` i obu części MIME (`text/plain`, `text/html`) do `base64`, co eliminuje ryzyko zniekształcenia polskich znaków oraz błędnej interpretacji wieloczęściowej wiadomości przez Gmail i eksport PDF.
+  -- Naprawiono też składanie samej wiadomości MIME: puste linie rozdzielające nagłówki i części `multipart/alternative` nie są już usuwane przy budowie maila, dzięki czemu Gmail znowu poprawnie rozpoznaje treść wiadomości zamiast pokazywać pusty korpus.
+  -- Pobieranie danych do maila `Daily` zostało odchudzone: aktywności YouTrack są pobierane z limitem równoległości zamiast pełnego `Promise.all`, a jeden przebieg wysyłki współdzieli ten sam zestaw danych dla wariantu tekstowego i HTML, co ogranicza skoki pamięci i zmniejsza ryzyko błędu `Java heap space`.
 - 2026-03-16 – Zakres dat i konfiguracja sekcji
   -- W pierwszej linii filtrów dodano kompaktowe pola wyboru dat z przyciskiem resetu (ikona), a sekcja "Aktywności" jest zawsze prezentowana w zadanym zakresie.
   -- W konfiguracji sekcji dodano przełącznik "Uwzględniaj daty" (domyślnie wyłączony); kolumny z aktywną opcją filtrują zadania po dacie, a zgłoszenia widoczne w "Aktywnościach" pozostają tam rozwinięte (z ręcznym zwijaniem) i automatycznie pokazują się jako zwinięte/przyciemnione w pozostałych kolumnach.
@@ -15,6 +31,9 @@
 - 2026-03-18 – Korekta ignorowania lokalnych plików sekretów
   -- Rozszerzono `.gitignore` o rzeczywiste lokalne nazwy plików `env` oraz `google-tokens.json`, które były używane w repo obok wariantów z kropką.
   -- Git przestaje śledzić lokalne pliki z sekretami w używanym nazewnictwie, co usuwa blokadę push spowodowaną przez GitHub Push Protection.
+- 2026-04-10 – Wykluczenie lokalnych podglądów maili z Git
+  -- Do `.gitignore` dodano katalog `debug-email-output` z lokalnymi plikami diagnostycznymi wygenerowanych maili harmonogramu.
+  -- Podglądy HTML i TXT nie zaśmiecają repozytorium, ale pozostają dostępne lokalnie do analizy błędów renderowania wiadomości.
 - 2026-03-18 – Konfiguracja YouTrack i Google tylko z pliku `.env`
   -- Usunięto z aplikacji zapis `youtrackBaseUrl`, `youtrackToken`, `googleClientId` i `googleClientSecret` do SQLite oraz `localStorage`, a źródłem tych danych pozostaje wyłącznie plik `.env`.
   -- Odczyt ustawień w UI i w procesie Electron został przepięty na wartości z `.env`, a legacy tabela `settings` jest usuwana przy inicjalizacji bazy, aby stare sekrety nie pozostawały w pliku SQLite.
@@ -82,6 +101,17 @@
   -- Ikona w trayu została zastąpiona wyraźniejszym znakiem aplikacji z kontrastowym monogramem i akcentem statusowym, aby łatwiej było rozpoznać PCC wśród innych ikon systemowych.
   -- Po testowym użyciu uproszczono znak traya do geometrycznej, wysokokontrastowej wersji bez gradientów i bez drobnego tekstu, żeby pozostawał czytelny także w małym rozmiarze zasobnika Windows.
   -- Docelowo tray został przepięty na wskazany plik `electron/tray-icon.png`, ładowany jako realny asset PNG z fallbackiem do wewnętrznego SVG, dzięki czemu aplikacja może używać przekazanej grafiki zamiast generowanej ikony zastępczej.
+
+## Ustawienia główne
+- 2026-04-10 – Globalny harmonogram z pierwszym typem akcji `e-mail`
+  -- Dodano trwały, globalny harmonogram zadań zapisywany w SQLite, z konfiguracją cyklu `codziennie`, `dni robocze`, `raz w tygodniu`, `raz w miesiącu` oraz `niestandardowa data i godzina`.
+  -- W `Ustawieniach Głównych` pojawiła się sekcja do definiowania aktywnych zadań harmonogramu, ich odbiorców, tytułu i treści wiadomości e-mail oraz podglądu ostatniego wykonania i błędów.
+  -- Proces Electron uruchamia teraz cykliczny runner sprawdzający zadania podczas działania aplikacji, także po schowaniu do traya; pierwsza obsługiwana akcja to automatyczna wysyłka e-mail przez Google API.
+  -- Zakres autoryzacji Google został rozszerzony o Gmail Send, więc po wcześniejszej autoryzacji może być potrzebne ponowne zalogowanie do Google, aby nadać nowy scope wysyłki wiadomości.
+  -- Przy każdym zadaniu dodano przycisk `Wykonaj teraz`, który uruchamia akcję natychmiast bez względu na ustawiony harmonogram i aktualizuje status ostatniego wykonania.
+  -- Poprawiono błąd runtime w interfejsie harmonogramu: przycisk `Wykonaj teraz` dostał brakujący import ikony `Send`, co usuwa wyjątek `Send is not defined`.
+  -- Harmonogram e-mail dostał listę źródeł treści: pierwszym zadaniem jest `Wyślij Daily`, które pozwala wybrać konkretne zdefiniowane Daily oraz zaznaczyć, które sekcje dynamiczne mają zostać dołączone do wiadomości obok zawsze obecnej sekcji `Aktywności`.
+  -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
 - 2026-04-09 – Flow `PO` dla protokołu odbioru na liście zleceń
@@ -491,3 +521,5 @@
 - 2026-04-08 – Logowanie Firebase Auth i izolacja danych per użytkownik
   -- Webowa aplikacja web-pcc została rozszerzona o ekran logowania przez Google w Firebase Auth oraz pełne bramkowanie dostępu do modułów po aktywnej sesji użytkownika.
   -- Repozytorium Firestore zapisuje teraz dokumenty z polem ownerUid i odczytuje wyłącznie dane zalogowanego użytkownika, a do projektu dodano gotowy plik irestore.rules z regułami wymagającymi logowania i zgodności ownerUid == auth.uid.
+
+

@@ -108,6 +108,40 @@ export type EmailTemplate = {
   variables: Record<string, string>;
 };
 
+export type GlobalScheduleType = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'custom';
+
+export type ScheduledTaskSchedule = {
+  type: GlobalScheduleType;
+  time: string;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  dateTime?: string;
+};
+
+export type ScheduledTask = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  actionType: 'email';
+  schedule: ScheduledTaskSchedule;
+  emailTemplate: EmailTemplate;
+  contentSources?: ScheduledTaskContentSource[];
+  createdAt: string;
+  updatedAt: string;
+  lastRunAt?: string;
+  lastRunStatus?: 'success' | 'error';
+  lastRunError?: string;
+};
+
+export type ScheduledTaskDailyContentSource = {
+  id: string;
+  type: 'daily';
+  hubId: string;
+  sectionIds: string[];
+};
+
+export type ScheduledTaskContentSource = ScheduledTaskDailyContentSource;
+
 export type OrderProtocolEmailTemplateData = {
   projectId: string;
   emailTemplate: EmailTemplate;

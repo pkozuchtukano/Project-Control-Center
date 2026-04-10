@@ -55,6 +55,7 @@ export class GoogleDocsService {
       scope: [
         'https://www.googleapis.com/auth/documents',
         'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/gmail.send',
       ],
       prompt: 'consent'
     });
@@ -206,6 +207,79 @@ export class GoogleDocsService {
     await docs.documents.batchUpdate({
       documentId: docId,
       requestBody: { requests }
+    });
+
+    return { success: true };
+  }
+
+  private encodeMimeHeader(value: string) {
+    return `=?UTF-8?B?${Buffer.from(value || '', 'utf8').toString('base64')}?=`;
+  }
+
+  private encodeMimePart(value: string) {
+    const encoded = Buffer.from(value || '', 'utf8').toString('base64');
+    return encoded.replace(/.{1,76}/g, '$&\r\n').trim();
+  }
+
+  private buildMimeMessage(message: { to: string; cc?: string; subject: string; body: string; htmlBody?: string }) {
+    const hasHtmlBody = !!message.htmlBody?.trim();
+    const boundary = `pcc-boundary-${Date.now()}`;
+    const encodedSubject = this.encodeMimeHeader(message.subject);
+    const encodedTextBody = this.encodeMimePart(message.body || '');
+    const encodedHtmlBody = this.encodeMimePart(message.htmlBody || '');
+    const lines: string[] = [
+      `To: ${message.to}`,
+    ];
+
+    if (message.cc?.trim()) {
+      lines.push(`Cc: ${message.cc}`);
+    }
+
+    lines.push(`Subject: ${encodedSubject}`);
+    lines.push('MIME-Version: 1.0');
+
+    if (hasHtmlBody) {
+      lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+      lines.push('');
+      lines.push(`--${boundary}`);
+      lines.push('Content-Type: text/plain; charset=UTF-8');
+      lines.push('Content-Transfer-Encoding: base64');
+      lines.push('');
+      lines.push(encodedTextBody);
+      lines.push('');
+      lines.push(`--${boundary}`);
+      lines.push('Content-Type: text/html; charset=UTF-8');
+      lines.push('Content-Transfer-Encoding: base64');
+      lines.push('');
+      lines.push(encodedHtmlBody);
+      lines.push('');
+      lines.push(`--${boundary}--`);
+      return lines.join('\r\n');
+    }
+
+    lines.push('Content-Type: text/plain; charset=UTF-8');
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push('');
+    lines.push(encodedTextBody);
+    return lines.join('\r\n');
+  }
+
+  async sendEmail(message: { to: string; cc?: string; subject: string; body: string; htmlBody?: string }) {
+    if (!this.oauth2Client) throw new Error('Not authenticated');
+
+    const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    const mimeMessage = this.buildMimeMessage(message);
+    const raw = Buffer.from(mimeMessage, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw,
+      },
     });
 
     return { success: true };

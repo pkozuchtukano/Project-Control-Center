@@ -26,6 +26,7 @@ dist-ssr
 # Electron builds
 dist-electron
 release
+debug-email-output
 
 # Local secrets and runtime data
 .env
