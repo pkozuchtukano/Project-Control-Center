@@ -369,6 +369,31 @@
 - 2026-03-26 – Odświeżanie parametrów daty przy wejściu do notatek
   -- W module notatek dodano odświeżanie zmiennych szablonu rozpoznawanych jako daty, takich jak `{{data}}`, `{{data+3d}}` i `{{data-1w}}`, już podczas otwierania widoku projektu.
   -- Po wejściu do zakładki `Notatki` pola dat nie zachowują już poprzednio zapisanej wartości z wcześniejszego dnia, tylko ustawiają się na bieżącą datę wynikającą z tokenu.
+- 2026-04-09 – Zakładka notatek przebudowana do formy flow
+  -- Główna część zakładki `Notatki` została przebudowana z pojedynczego edytora treści na uporządkowany flow kroków i ustaleń, z trybem podglądu, trybem edycji, dodawaniem/usuwaniem kroków, zmianą kolejności, linkami oraz oznaczaniem wykonania.
+  -- Nowy flow jest zapisywany w danych notatki bezstratnie obok dotychczasowego pola `content`, a przy wczytaniu starszych notatek bez flow aplikacja tworzy strukturę kroków na podstawie istniejącej treści, nie usuwając zapisanych danych historycznych.
+  -- Eksport do Word i synchronizacja z Google Docs korzystają teraz z renderowanej treści flow, dzięki czemu uporządkowana forma notatki przechodzi także do dokumentów wyjściowych.
+  -- Pod flow przywrócono klasyczny edytor treści notatki, a sam wygląd kroków i formularza edycji flow został dopasowany do stylu znanego z `PP`, aby zachować spójny układ pracy: najpierw kroki, potem pełna notatka.
+  -- W generatorze eksportu Word dla notatek poprawiono definicję szerokości tabeli uczestników na bezpieczny format `DXA`, ponieważ analizowany plik `.docx` miał poprawny ZIP i XML, ale zawierał podejrzany zapis szerokości tabeli jako procent, który mógł blokować otwarcie dokumentu w Wordzie.
+  -- Dla zgodności z Word Online doprecyzowano także szerokość obu kolumn tabeli uczestników, ustawiając każdą komórkę na połowę szerokości tabeli; wcześniej Word Online potrafił ścisnąć kolumny do bardzo wąskiej siatki mimo poprawnego widoku w lokalnym Wordzie.
+  -- Dodatkowo tabela uczestników dostała jawny `tableLayout: fixed` oraz `columnWidths` dla dwóch kolumn, aby Word Online korzystał z siatki 50/50 zamiast próbować samodzielnie wyliczać bardzo wąskie kolumny.
+  -- Domyślny styl dokumentu eksportowanego do Word został ustawiony na język `pl-PL`, aby Word Online rozpoznawał treść notatki jako polską i nie podkreślał jej jak tekstu angielskiego.
+  -- Po analizie regresji po przebudowie notatek poprawiono też eksport list z flow do Worda: zamiast numerowania `docx` wymagającego zdefiniowanego odniesienia `main-numbering`, eksport zapisuje elementy flow jako zwykłe akapity z prefiksem `1.`, `2.` albo `•`, co eliminuje błąd otwierania dokumentu po dodaniu flow do notatek.
+  -- Wynikowa notatka eksportowana do Word i wysyłana do Google Docs wróciła do klasycznego zakresu `tytuł + uczestnicy + treść notatki`; pomocniczy flow nie jest już dokładany do dokumentu wyjściowego.
+  -- W samej zakładce `Notatki` zmieniono kolejność sekcji na: `Zmienne`, `Flow`, `Tytuł`, `Treść notatki`, `Szablon e-mail`, a formularz szablonu e-mail został przeniesiony do głównej kolumny pod edytor notatki.
+  -- Dodano przycisk `Nowa notatka`, który odświeża zmienne daty do bieżącego dnia, czyści samą treść notatki, resetuje ukończenie kroków flow do stanu początkowego i pozostawia bez zmian tytuł oraz szablon wiadomości.
+  -- Poprawiono tekst okna potwierdzenia dla akcji `Nowa notatka`, aby polskie znaki były wyświetlane poprawnie i nie zależały od uszkodzonego kodowania wcześniejszego literału.
+  -- Z nagłówka zakładki `Notatki` usunięto osobny przycisk `Wyczyść notatkę`, aby jedyną akcją resetującą bieżący wpis pozostała kontrolowana operacja `Nowa notatka`.
+  -- Poprawiono synchronizację edytora po akcji `Nowa notatka`, aby pusty dokument nie wpadał w pętlę resetów i pozwalał od razu dalej pisać treść.
+  -- Widoczne etykiety sekcji `Szablon e-mail` oraz komunikat potwierdzenia `Nowa notatka` zapisano w bezpiecznej formie zgodnej z Unicode, aby nie wracały problemy z polskimi znakami.
+  -- Dodatkowo po `Nowa notatka` edytor dostaje jawny pusty akapit `<p></p>` oraz nowy klucz renderowania, aby TipTap resetował się do świeżej, edytowalnej instancji zamiast pozostawać w zablokowanym stanie po wyczyszczeniu treści.
+  -- Ograniczono synchronizację `setContent(...)` w edytorze notatek tylko do rzeczywistych zmian przychodzących z zewnątrz, dzięki czemu render wewnętrzny TipTapa po wpisaniu znaku nie nadpisuje już treści starą wartością i pole pozostaje edytowalne po `Nowa notatka`.
+  -- Reset `Nowa notatka` został przepięty na jawny sygnał `resetVersion` do komponentu `Editor`, który czyści treść wewnątrz TipTapa, ustawia pusty akapit i przywraca fokus po resecie bez remountowania całego edytora.
+  -- W edytorze notatek usunięto bieżącą synchronizację `content -> setContent` przy każdym renderze; po załadowaniu danych treść jest inicjalizowana tylko raz, a późniejsze czyszczenie po `Nowa notatka` wykonuje wyłącznie dedykowany reset TipTapa. Dzięki temu wpisywany tekst nie jest już nadpisywany przez stan rodzica po rozpoczęciu nowej notatki.
+  -- Reset `Nowa notatka` uproszczono ponownie do pełnego odtworzenia komponentu `Editor` przez zmianę `key`, tak aby edytor po tej akcji zachowywał się identycznie jak przy pierwszym wejściu do zakładki, gdzie wpisywanie działa poprawnie.
+  -- W konfiguracji `Editor` wyłączono `link` i `underline` w `StarterKit`, pozostawiając ich jawne rozszerzenia tylko raz. To usuwa ostrzeżenia TipTapa o zduplikowanych rozszerzeniach i stabilizuje ponowne tworzenie instancji edytora po `Nowa notatka`.
+  -- Po `Nowa notatka` dodano jawne przywrócenie fokusu do świeżo zamontowanego edytora przez `onEditorReady`, aby po zamknięciu okna potwierdzenia kursor od razu wracał do pola `Treść notatki` bez potrzeby klikania w inne elementy interfejsu.
+  -- Aktywna akcja `Nowa notatka` została odłączona od natywnego `confirm(...)` i wykonuje reset bez systemowego okna potwierdzenia, ponieważ to okno w Electronie pozostawiało po sobie stan blokujący fokus i interakcję z polami formularza do czasu użycia innej natywnej kontrolki.
 
 ## Ustawienia projektu
 - 2026-04-01 – Konfiguracja utrzymania i abonamentów projektu

@@ -60,15 +60,27 @@ export const Editor = ({
   minHeight = 380,
   onEditorReady
 }: EditorProps) => {
+  const normalizeEditorHtml = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed === '' || trimmed === '<p></p>' ? '' : trimmed;
+  };
+
+  const effectivePlaceholder = placeholder.includes('Ä')
+    ? 'Zacznij pisa\u0107 notatki...'
+    : placeholder;
+
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        link: false,
+        underline: false,
+      }),
       Underline,
       Link.configure({
         openOnClick: openLinksOnClick,
       }),
       Placeholder.configure({
-        placeholder,
+        placeholder: effectivePlaceholder,
       }),
       Mention.configure({
         HTMLAttributes: {
@@ -88,16 +100,11 @@ export const Editor = ({
       }),
     ],
     content,
+    editable: true,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
   });
-
-  useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content);
-    }
-  }, [content, editor]);
 
   useEffect(() => {
     onEditorReady?.(editor ?? null);

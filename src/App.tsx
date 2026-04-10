@@ -4667,10 +4667,8 @@ const resolveOrderProtocolTemplate = (
 };
 
 const ResolvedTemplateToken = ({
-  source,
   resolvedValue,
 }: {
-  source: string;
   resolvedValue: string;
 }) => {
   const [isCopied, setIsCopied] = useState(false);
@@ -4745,7 +4743,7 @@ const renderResolvedTemplateWithHighlightedValues = (
       const resolvedValue = resolveTemplateExpression(match[1], variableMap);
 
       return (
-        <ResolvedTemplateToken key={`${segment}-${index}`} source={segment} resolvedValue={resolvedValue} />
+        <ResolvedTemplateToken key={`${segment}-${index}`} resolvedValue={resolvedValue} />
       );
     }
 
@@ -4793,7 +4791,7 @@ const renderResolvedMaintenanceSettlementTemplate = (
       const resolvedValue = resolveTemplateExpression(match[1], variableMap);
 
       return (
-        <ResolvedTemplateToken key={`${segment}-${index}`} source={segment} resolvedValue={resolvedValue} />
+        <ResolvedTemplateToken key={`${segment}-${index}`} resolvedValue={resolvedValue} />
       );
     }
 
@@ -5428,13 +5426,6 @@ const MaintenanceSettlementFlowModal = ({
         ...updates,
       },
       lastModified: new Date().toISOString(),
-    }));
-  };
-
-  const handleCustomVariableChange = (token: string, value: string) => {
-    setCustomVariableDrafts((current) => ({
-      ...current,
-      [token]: value,
     }));
   };
 

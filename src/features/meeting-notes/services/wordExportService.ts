@@ -10,12 +10,19 @@ import {
   BorderStyle, 
   AlignmentType, 
   HeadingLevel,
+  TableLayoutType,
   VerticalAlign,
   ShadingType
 } from 'docx';
 import { saveAs } from 'file-saver';
 import { format } from 'date-fns';
-import { type Project, type Stakeholder } from '../../../App';
+import type { Project, Stakeholder } from '../../../types';
+
+const POLISH_WORD_LANGUAGE = {
+  value: 'pl-PL',
+  eastAsia: 'pl-PL',
+  bidirectional: 'pl-PL',
+} as const;
 
 /**
  * Basic HTML to DOCX converter for Tiptap content.
@@ -39,11 +46,18 @@ const parseHtmlToDocx = (html: string): Paragraph[] => {
         }));
       } else if (element.tagName === 'UL' || element.tagName === 'OL') {
         const listItems = element.querySelectorAll('li');
-        listItems.forEach((li) => {
+        listItems.forEach((li, index) => {
+          const listPrefix = element.tagName === 'OL' ? `${index + 1}. ` : '• ';
           nodeParagraphs.push(new Paragraph({
-            children: processChildren(li as HTMLElement),
-            bullet: element.tagName === 'UL' ? { level: 0 } : undefined,
-            numbering: element.tagName === 'OL' ? { reference: 'main-numbering', level: 0, instance: 0 } : undefined,
+            children: [
+              new TextRun({
+                text: listPrefix,
+                font: "Calibri",
+                size: 24,
+                language: POLISH_WORD_LANGUAGE,
+              }),
+              ...processChildren(li as HTMLElement),
+            ],
             spacing: { after: 120 }
           }));
         });
@@ -76,7 +90,8 @@ const parseHtmlToDocx = (html: string): Paragraph[] => {
         runs.push(new TextRun({ 
           text: child.textContent || '',
           font: "Calibri",
-          size: 24 // 12pt
+          size: 24, // 12pt
+          language: POLISH_WORD_LANGUAGE,
         }));
       } else if (child.nodeType === Node.ELEMENT_NODE) {
         const el = child as HTMLElement;
@@ -87,7 +102,8 @@ const parseHtmlToDocx = (html: string): Paragraph[] => {
           italics: el.tagName === 'EM' || el.tagName === 'I',
           underline: el.tagName === 'U' ? {} : undefined,
           font: "Calibri",
-          size: 24 // 12pt
+          size: 24, // 12pt
+          language: POLISH_WORD_LANGUAGE,
         }));
       }
     });
@@ -123,6 +139,8 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
 
   // Table rows for participants
   const participantRows: TableRow[] = [];
+  const fullWidthTableInTwips = 9072;
+  const halfWidthTableInTwips = Math.floor(fullWidthTableInTwips / 2);
 
   const cellMargins = { top: 120, bottom: 120, left: 120, right: 120 };
 
@@ -134,6 +152,7 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
           children: [new TextRun({ text: 'Po stronie Zamawiającego:', bold: true, size: 28, font: "Calibri" })],
           spacing: { before: 80, after: 80 }
         })],
+        width: { size: halfWidthTableInTwips, type: WidthType.DXA },
         shading: { fill: 'E2EFD9', type: ShadingType.CLEAR, color: 'auto' },
         verticalAlign: VerticalAlign.CENTER,
         margins: cellMargins
@@ -143,6 +162,7 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
           children: [new TextRun({ text: 'Po stronie Tukano Software House:', bold: true, size: 28, font: "Calibri" })],
           spacing: { before: 80, after: 80 }
         })],
+        width: { size: halfWidthTableInTwips, type: WidthType.DXA },
         shading: { fill: 'E2EFD9', type: ShadingType.CLEAR, color: 'auto' },
         verticalAlign: VerticalAlign.CENTER,
         margins: cellMargins
@@ -160,6 +180,7 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
               spacing: { before: 60, after: 60 }
             }))
           : [new Paragraph({ text: '' })],
+        width: { size: halfWidthTableInTwips, type: WidthType.DXA },
         margins: cellMargins,
         verticalAlign: VerticalAlign.TOP
       }),
@@ -170,6 +191,7 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
               spacing: { before: 60, after: 60 }
             }))
           : [new Paragraph({ text: '' })],
+        width: { size: halfWidthTableInTwips, type: WidthType.DXA },
         margins: cellMargins,
         verticalAlign: VerticalAlign.TOP
       }),
@@ -177,6 +199,15 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
   }));
 
   const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: {
+            language: POLISH_WORD_LANGUAGE,
+          },
+        },
+      },
+    },
     sections: [{
       properties: {},
       children: [
@@ -208,7 +239,10 @@ export const exportNoteToWord = async (project: Project, noteData: { titleTempla
 
         // Table
         new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
+          // Word is stricter than XML parsers here; a fixed DXA width is safer than pct values in generated OOXML.
+          layout: TableLayoutType.FIXED,
+          width: { size: fullWidthTableInTwips, type: WidthType.DXA },
+          columnWidths: [halfWidthTableInTwips, halfWidthTableInTwips],
           rows: participantRows,
           borders: {
             top: { style: BorderStyle.SINGLE, size: 6, color: 'auto' },
