@@ -1,6 +1,6 @@
 import electron from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-const { app, BrowserWindow, ipcMain, shell, dialog } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import { randomBytes } from 'crypto';
@@ -420,6 +420,7 @@ const replaceLocalDatabaseFromFile = async (sourcePath: string) => {
 };
 
 let mainWindow: BrowserWindowType | null = null;
+let appTray: InstanceType<typeof Tray> | null = null;
 
 // Re-implementing __dirname safely for ESM context in Electron
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -448,7 +449,7 @@ async function createWindow() {
     mainWindow.on('close', (event) => {
         if (allowMainWindowClose) return;
         event.preventDefault();
-        void handleMainWindowCloseRequest();
+        void handleMainWindowCloseRequestWithTrayChoice();
     });
 
     mainWindow.maximize();
@@ -461,13 +462,71 @@ async function createWindow() {
     }
 }
 
+const createTrayIcon = () => {
+    const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+            <rect width="64" height="64" rx="14" fill="#1f2937"/>
+            <text x="32" y="41" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700" fill="#ffffff">P</text>
+        </svg>
+    `.trim();
+
+    return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+};
+
+const showMainWindow = () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+};
+
+const hideMainWindowToTray = () => {
+    if (!mainWindow) return;
+    mainWindow.hide();
+};
+
+const ensureTray = () => {
+    if (appTray) return appTray;
+
+    appTray = new Tray(createTrayIcon());
+    appTray.setToolTip('PCC');
+    appTray.setContextMenu(Menu.buildFromTemplate([
+        {
+            label: 'Pokaż',
+            click: () => showMainWindow(),
+        },
+        {
+            type: 'separator',
+        },
+        {
+            label: 'Wyjdź',
+            click: () => {
+                if (!mainWindow) {
+                    app.quit();
+                    return;
+                }
+                allowMainWindowClose = true;
+                mainWindow.destroy();
+            },
+        },
+    ]));
+    appTray.on('double-click', () => showMainWindow());
+
+    return appTray;
+};
+
 app.whenReady().then(async () => {
     await maybeOfferRemoteDatabaseImport();
     await createWindow();
+    ensureTray();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             createWindow();
+        } else {
+            showMainWindow();
         }
     });
 });
@@ -1092,6 +1151,42 @@ const handleCloseExportFailure = async (error: unknown) => {
     return response.response === 0;
 };
 
+const handleMainWindowCloseRequestWithTrayChoice = async () => {
+    if (!mainWindow || allowMainWindowClose || closePromptInProgress) return;
+
+    closePromptInProgress = true;
+    try {
+        const response = await dialog.showMessageBox(mainWindow, {
+            type: 'question',
+            buttons: ['Zamknij i eksport bazy', 'Do Tray'],
+            defaultId: 0,
+            cancelId: 1,
+            message: 'Co zrobi\u0107 przy zamykaniu aplikacji?',
+            detail: 'Wybierz zamkni\u0119cie z eksportem bazy danych do Google Drive albo ukrycie aplikacji do traya.',
+        });
+
+        if (response.response === 1) {
+            ensureTray();
+            hideMainWindowToTray();
+            return;
+        }
+
+        if (response.response !== 0) return;
+
+        try {
+            await exportDatabaseBackupToGoogleDrive();
+        } catch (error) {
+            const shouldCloseWithoutExport = await handleCloseExportFailure(error);
+            if (!shouldCloseWithoutExport) return;
+        }
+
+        allowMainWindowClose = true;
+        mainWindow.destroy();
+    } finally {
+        closePromptInProgress = false;
+    }
+};
+
 const handleMainWindowCloseRequest = async () => {
     if (!mainWindow || allowMainWindowClose || closePromptInProgress) return;
 
@@ -1099,22 +1194,26 @@ const handleMainWindowCloseRequest = async () => {
     try {
         const response = await dialog.showMessageBox(mainWindow, {
             type: 'question',
-            buttons: ['Tak', 'Nie', 'Anuluj'],
+            buttons: ['Zamknij i eksport bazy', 'Do Tray'],
             defaultId: 0,
-            cancelId: 2,
+            cancelId: 1,
             message: 'Wyeksportować bazę?',
             detail: 'Wybranie "Tak" zapisze aktualną bazę danych do współdzielonego folderu Google Drive przed zamknięciem aplikacji.',
         });
 
-        if (response.response === 2) return;
+        if (response.response === 1) {
+            ensureTray();
+            hideMainWindowToTray();
+            return;
+        }
 
-        if (response.response === 0) {
-            try {
-                await exportDatabaseBackupToGoogleDrive();
-            } catch (error) {
-                const shouldCloseWithoutExport = await handleCloseExportFailure(error);
-                if (!shouldCloseWithoutExport) return;
-            }
+        if (response.response !== 0) return;
+
+        try {
+            await exportDatabaseBackupToGoogleDrive();
+        } catch (error) {
+            const shouldCloseWithoutExport = await handleCloseExportFailure(error);
+            if (!shouldCloseWithoutExport) return;
         }
 
         allowMainWindowClose = true;

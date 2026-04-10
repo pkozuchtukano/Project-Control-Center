@@ -76,6 +76,9 @@
 - 2026-03-20 – Wersjonowane kopie bazy danych i import najnowszego backupu
   -- Zmieniono nazewnictwo ręcznego i automatycznego eksportu bazy do Google Drive: każda kopia jest teraz zapisywana jako osobny plik z datą i godziną w nazwie, np. `pcc-baza_danych_2026-03-20_14-30-00.db`.
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
+- 2026-04-10 – Dodatkowa opcja `Do Tray` przy zamykaniu aplikacji
+  -- Przy przechwyceniu zamykania głównego okna dodano nowe okno wyboru z dwoma akcjami: `Zamknij i eksport bazy` oraz `Do Tray`.
+  -- Wybranie `Do Tray` nie zamyka już aplikacji, tylko ukrywa główne okno do zasobnika systemowego; z traya można ją ponownie pokazać albo całkowicie zakończyć przez menu kontekstowe.
 
 ## Rejestr zleceń
 - 2026-04-09 – Flow `PO` dla protokołu odbioru na liście zleceń
