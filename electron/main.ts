@@ -463,14 +463,34 @@ async function createWindow() {
 }
 
 const createTrayIcon = () => {
+    const trayIconCandidates = [
+        path.join(appDir, 'electron', 'tray-icon.png'),
+        path.join(__dirname, '../electron/tray-icon.png'),
+        path.join(__dirname, 'tray-icon.png'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'tray-icon.png'),
+    ];
+
+    for (const trayIconPath of trayIconCandidates) {
+        const icon = nativeImage.createFromPath(trayIconPath);
+        if (!icon.isEmpty()) {
+            return icon.resize({ width: 16, height: 16 });
+        }
+    }
+
     const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-            <rect width="64" height="64" rx="14" fill="#1f2937"/>
-            <text x="32" y="41" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="700" fill="#ffffff">P</text>
+            <rect width="64" height="64" rx="16" fill="#1f2937"/>
+            <rect x="6" y="6" width="52" height="52" rx="12" fill="none" stroke="#9cc45a" stroke-width="4"/>
+            <rect x="18" y="18" width="10" height="28" rx="3" fill="#ffffff"/>
+            <rect x="32" y="18" width="14" height="10" rx="3" fill="#9cc45a"/>
+            <rect x="32" y="32" width="14" height="14" rx="3" fill="#ffffff"/>
+            <circle cx="50" cy="50" r="6" fill="#9cc45a"/>
         </svg>
     `.trim();
 
-    return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+    return nativeImage
+        .createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`)
+        .resize({ width: 16, height: 16 });
 };
 
 const showMainWindow = () => {

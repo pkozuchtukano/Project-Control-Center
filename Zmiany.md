@@ -79,6 +79,9 @@
 - 2026-04-10 – Dodatkowa opcja `Do Tray` przy zamykaniu aplikacji
   -- Przy przechwyceniu zamykania głównego okna dodano nowe okno wyboru z dwoma akcjami: `Zamknij i eksport bazy` oraz `Do Tray`.
   -- Wybranie `Do Tray` nie zamyka już aplikacji, tylko ukrywa główne okno do zasobnika systemowego; z traya można ją ponownie pokazać albo całkowicie zakończyć przez menu kontekstowe.
+  -- Ikona w trayu została zastąpiona wyraźniejszym znakiem aplikacji z kontrastowym monogramem i akcentem statusowym, aby łatwiej było rozpoznać PCC wśród innych ikon systemowych.
+  -- Po testowym użyciu uproszczono znak traya do geometrycznej, wysokokontrastowej wersji bez gradientów i bez drobnego tekstu, żeby pozostawał czytelny także w małym rozmiarze zasobnika Windows.
+  -- Docelowo tray został przepięty na wskazany plik `electron/tray-icon.png`, ładowany jako realny asset PNG z fallbackiem do wewnętrznego SVG, dzięki czemu aplikacja może używać przekazanej grafiki zamiast generowanej ikony zastępczej.
 
 ## Rejestr zleceń
 - 2026-04-09 – Flow `PO` dla protokołu odbioru na liście zleceń
