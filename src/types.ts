@@ -274,3 +274,31 @@ export type MaintenanceEntry = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type PendingSettlementEntry = {
+  id: string;
+  projectId: string;
+  externalId: string;
+  requester: string;
+  requestDate: string;
+  requestChannel: string;
+  module: string;
+  title: string;
+  details: string;
+  priority: 'wysoki' | 'normalny' | 'niski';
+  estimatedHours: number;
+  isEstimated: boolean;
+  estimationDate?: string;
+  isAccepted: boolean;
+  acceptanceDate?: string;
+  acceptanceChannel?: string;
+  preAcceptanceWorkHours: number;
+  preAcceptanceWorkDescription: string;
+  isInProgress: boolean;
+  isCompleted: boolean;
+  isSentToSettlement: boolean;
+  isSettled: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};

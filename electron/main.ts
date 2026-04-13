@@ -123,6 +123,33 @@ db.exec(`
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS pending_settlement_entries (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        externalId TEXT NOT NULL,
+        requester TEXT NOT NULL,
+        requestDate TEXT NOT NULL,
+        requestChannel TEXT,
+        module TEXT,
+        title TEXT NOT NULL,
+        details TEXT,
+        priority TEXT NOT NULL,
+        estimatedHours REAL NOT NULL DEFAULT 0,
+        isEstimated INTEGER NOT NULL DEFAULT 0,
+        estimationDate TEXT,
+        isAccepted INTEGER NOT NULL DEFAULT 0,
+        acceptanceDate TEXT,
+        acceptanceChannel TEXT,
+        preAcceptanceWorkHours REAL NOT NULL DEFAULT 0,
+        preAcceptanceWorkDescription TEXT,
+        isInProgress INTEGER NOT NULL DEFAULT 0,
+        isCompleted INTEGER NOT NULL DEFAULT 0,
+        isSentToSettlement INTEGER NOT NULL DEFAULT 0,
+        isSettled INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS daily_hubs (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -157,6 +184,7 @@ try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch (e) { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -277,6 +305,33 @@ const initializeDatabase = () => {
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS pending_settlement_entries (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            externalId TEXT NOT NULL,
+            requester TEXT NOT NULL,
+            requestDate TEXT NOT NULL,
+            requestChannel TEXT,
+            module TEXT,
+            title TEXT NOT NULL,
+            details TEXT,
+            priority TEXT NOT NULL,
+            estimatedHours REAL NOT NULL DEFAULT 0,
+            isEstimated INTEGER NOT NULL DEFAULT 0,
+            estimationDate TEXT,
+            isAccepted INTEGER NOT NULL DEFAULT 0,
+            acceptanceDate TEXT,
+            acceptanceChannel TEXT,
+            preAcceptanceWorkHours REAL NOT NULL DEFAULT 0,
+            preAcceptanceWorkDescription TEXT,
+            isInProgress INTEGER NOT NULL DEFAULT 0,
+            isCompleted INTEGER NOT NULL DEFAULT 0,
+            isSentToSettlement INTEGER NOT NULL DEFAULT 0,
+            isSettled INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS daily_hubs (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -316,11 +371,12 @@ const initializeDatabase = () => {
     `);
     db.exec('DROP TABLE IF EXISTS settings');
 
-    try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
-    try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
-    try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch { }
-    try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
-    try {
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch { }
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
+try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch { }
+try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch { }
+try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
         if (!hasRespectDates) {
@@ -2833,6 +2889,154 @@ ipcMain.handle('delete-maintenance-entry', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d usuwania wpisu utrzymania:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) => {
+    try {
+        return db.prepare(`
+            SELECT
+                id,
+                projectId,
+                externalId,
+                requester,
+                requestDate,
+                requestChannel,
+                module,
+                title,
+                details,
+                priority,
+                estimatedHours,
+                isEstimated,
+                estimationDate,
+                isAccepted,
+                acceptanceDate,
+                acceptanceChannel,
+                preAcceptanceWorkHours,
+                preAcceptanceWorkDescription,
+                isInProgress,
+                isCompleted,
+                isSentToSettlement,
+                isSettled,
+                notes,
+                createdAt,
+                updatedAt
+            FROM pending_settlement_entries
+            WHERE projectId = ?
+            ORDER BY requestDate DESC, createdAt DESC
+        `).all(projectId).map((row: any) => ({
+            ...row,
+            estimatedHours: Number(row.estimatedHours) || 0,
+            isEstimated: row.isEstimated === 1,
+            isAccepted: row.isAccepted === 1,
+            preAcceptanceWorkHours: Number(row.preAcceptanceWorkHours) || 0,
+            isInProgress: row.isInProgress === 1,
+            isCompleted: row.isCompleted === 1,
+            isSentToSettlement: row.isSentToSettlement === 1,
+            isSettled: row.isSettled === 1,
+        }));
+    } catch (error) {
+        console.error('Błąd pobierania wpisów do rozliczenia:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
+    try {
+        db.prepare(`
+            INSERT INTO pending_settlement_entries (
+                id,
+                projectId,
+                externalId,
+                requester,
+                requestDate,
+                requestChannel,
+                module,
+                title,
+                details,
+                priority,
+                estimatedHours,
+                isEstimated,
+                estimationDate,
+                isAccepted,
+                acceptanceDate,
+                acceptanceChannel,
+                preAcceptanceWorkHours,
+                preAcceptanceWorkDescription,
+                isInProgress,
+                isCompleted,
+                isSentToSettlement,
+                isSettled,
+                notes,
+                createdAt,
+                updatedAt
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                externalId = excluded.externalId,
+                requester = excluded.requester,
+                requestDate = excluded.requestDate,
+                requestChannel = excluded.requestChannel,
+                module = excluded.module,
+                title = excluded.title,
+                details = excluded.details,
+                priority = excluded.priority,
+                estimatedHours = excluded.estimatedHours,
+                isEstimated = excluded.isEstimated,
+                estimationDate = excluded.estimationDate,
+                isAccepted = excluded.isAccepted,
+                acceptanceDate = excluded.acceptanceDate,
+                acceptanceChannel = excluded.acceptanceChannel,
+                preAcceptanceWorkHours = excluded.preAcceptanceWorkHours,
+                preAcceptanceWorkDescription = excluded.preAcceptanceWorkDescription,
+                isInProgress = excluded.isInProgress,
+                isCompleted = excluded.isCompleted,
+                isSentToSettlement = excluded.isSentToSettlement,
+                isSettled = excluded.isSettled,
+                notes = excluded.notes,
+                updatedAt = excluded.updatedAt
+        `).run(
+            data.id,
+            data.projectId,
+            data.externalId,
+            data.requester,
+            data.requestDate,
+            data.requestChannel || '',
+            data.module || '',
+            data.title,
+            data.details || '',
+            data.priority,
+            Number(data.estimatedHours) || 0,
+            data.isEstimated ? 1 : 0,
+            data.estimationDate || null,
+            data.isAccepted ? 1 : 0,
+            data.acceptanceDate || null,
+            data.acceptanceChannel || '',
+            Number(data.preAcceptanceWorkHours) || 0,
+            data.preAcceptanceWorkDescription || '',
+            data.isInProgress ? 1 : 0,
+            data.isCompleted ? 1 : 0,
+            data.isSentToSettlement ? 1 : 0,
+            data.isSettled ? 1 : 0,
+            data.notes || '',
+            data.createdAt,
+            data.updatedAt
+        );
+
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu wpisu do rozliczenia:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-pending-settlement-entry', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM pending_settlement_entries WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania wpisu do rozliczenia:', error);
         throw error;
     }
 });

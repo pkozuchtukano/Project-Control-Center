@@ -116,6 +116,15 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-13 – Zakładka `Do rozliczenia` dla zleceń uruchomionych przed dokumentami
+-- Dodano nową zakładkę projektową `Do rozliczenia` z własną tabelą, formularzem i trwałym zapisem w SQLite dla zgłoszeń, które zostały zlecone do wykonania zanim pojawiły się formalne dokumenty.
+-- Formularz obsługuje pola operacyjne i rozliczeniowe, m.in. `ID`, zgłaszającego, daty, kanały, moduł, tytuł, szczegóły, priorytet, wycenę, akceptację, prace wykonane przed akceptacją, statusy realizacji i rozliczenia oraz uwagi; podpowiedzi korzystają z interesariuszy projektu i wcześniej wpisanych wartości w tym samym projekcie.
+- 2026-04-13 – Automatyczne nadawanie ID w `Do rozliczenia`
+-- Pole `ID` w formularzu `Do rozliczenia` jest teraz wypełniane automatycznie przy tworzeniu nowej pozycji na podstawie kodu projektu, roku zgłoszenia i kolejnego numeru porządkowego.
+-- Numer pozostaje stabilny podczas edycji wpisu, a użytkownik widzi go w formularzu jako wartość tylko do odczytu zamiast uzupełniać ręcznie.
+- 2026-04-13 – Checkboxy dla pól Tak/Nie i dodatkowe pole `Realizacja`
+-- Formularz `Do rozliczenia` dostał nowe pole `Realizacja` zapisane w bazie bezstratnie przez dodanie nowej kolumny migracyjnej `isInProgress`.
+-- Wszystkie pola binarne `Tak/Nie` w formularzu zostały zamienione z list rozwijanych na checkboxy, co upraszcza obsługę i przyspiesza wprowadzanie danych.
 - 2026-04-13 – Sortowanie po kolumnach `Nr` i `Daty` w liście zleceń
   -- Nagłówki `Nr` i `Daty` w tabeli `Zlecenia` są teraz klikalne i przełączają kierunek sortowania rosnąco/malejąco.
   -- Sortowanie dla kolumny `Daty` opiera się na polu `Data do`, a dla kolumny `Nr` używany jest porządek alfabetyczny dokładnie według zapisu numeru; domyślny stan widoku startuje teraz od `Data do` malejąco.

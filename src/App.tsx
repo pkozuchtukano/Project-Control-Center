@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType
 } from './types';
 
 declare global {
@@ -53,6 +53,9 @@ declare global {
       getMaintenanceEntries: (projectId: string) => Promise<MaintenanceEntry[]>;
       saveMaintenanceEntry: (data: MaintenanceEntry) => Promise<{ success: boolean }>;
       deleteMaintenanceEntry: (id: string) => Promise<{ success: boolean }>;
+      getPendingSettlementEntries: (projectId: string) => Promise<PendingSettlementEntry[]>;
+      savePendingSettlementEntry: (data: PendingSettlementEntry) => Promise<{ success: boolean }>;
+      deletePendingSettlementEntry: (id: string) => Promise<{ success: boolean }>;
       writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
@@ -843,7 +846,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'work' | 'settlements' | 'maintenance' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
@@ -862,7 +865,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       return;
     }
 
-    const allowedTabs = ['dashboard', 'orders', 'work', 'settlements', 'maintenance', 'status', 'youtrack', 'estimation', 'notes'];
+    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'status', 'youtrack', 'estimation', 'notes'];
     if (allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab as typeof activeTab);
       return;
@@ -1724,6 +1727,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'orders' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             Zlecenia
+          </button>
+          <button
+            onClick={() => setActiveTab('pendingSettlement')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'pendingSettlement' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Do rozliczenia
           </button>
           <button
             onClick={() => setActiveTab('work')}
@@ -2994,6 +3003,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'maintenance' && selectedProject.hasMaintenance && (
           <MaintenanceView project={selectedProject} />
+        )}
+
+        {activeTab === 'pendingSettlement' && (
+          <PendingSettlementView project={selectedProject} />
         )}
 
         {activeTab === '__status_placeholder__' && (
@@ -5320,6 +5333,622 @@ const MaintenanceEntryModal = ({
   );
 };
 
+const PendingSettlementView = ({ project }: { project: Project }) => {
+  const [entries, setEntries] = useState<PendingSettlementEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
+
+  const loadEntries = async () => {
+    if (!window.electron?.getPendingSettlementEntries) {
+      setEntries([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await window.electron.getPendingSettlementEntries(project.id);
+      setEntries(result);
+    } catch (err: any) {
+      setError(err.message || 'Nie udało się pobrać pozycji do rozliczenia.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadEntries();
+  }, [project.id]);
+
+  const handleSave = async (entry: PendingSettlementEntry) => {
+    if (!window.electron?.savePendingSettlementEntry) return;
+
+    await window.electron.savePendingSettlementEntry(entry);
+    setIsModalOpen(false);
+    setEditingEntry(null);
+    await loadEntries();
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!window.electron?.deletePendingSettlementEntry) return;
+    if (!window.confirm('Czy na pewno chcesz usunąć tę pozycję do rozliczenia?')) {
+      return;
+    }
+
+    await window.electron.deletePendingSettlementEntry(entryId);
+    if (editingEntry?.id === entryId) {
+      setEditingEntry(null);
+      setIsModalOpen(false);
+    }
+    await loadEntries();
+  };
+
+  const estimatedCount = entries.filter((entry) => entry.isEstimated).length;
+  const acceptedCount = entries.filter((entry) => entry.isAccepted).length;
+  const settledCount = entries.filter((entry) => entry.isSettled).length;
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
+            <FileText className="text-indigo-500" /> Do rozliczenia
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Ewidencja zleceń uruchomionych operacyjnie przed pojawieniem się pełnych dokumentów dla projektu: {project.code}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            setEditingEntry(null);
+            setIsModalOpen(true);
+          }}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm"
+        >
+          <Plus size={16} /> Dodaj pozycję
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Pozycji</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{entries.length}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wycenione</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{estimatedCount}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zaakceptowane</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{acceptedCount}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Rozliczone</p>
+          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{settledCount}</p>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+        {isLoading ? (
+          <div className="flex justify-center p-12">
+            <Loader2 className="animate-spin text-indigo-500" size={32} />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
+              <FileText size={28} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak pozycji do rozliczenia</h3>
+            <p className="text-gray-500 dark:text-gray-400">Dodaj pierwsze zgłoszenie zrealizowane przed pojawieniem się dokumentów formalnych.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
+                <tr>
+                  <th className="px-6 py-4 whitespace-nowrap">ID</th>
+                  <th className="px-6 py-4">Tytuł zadania</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Zgłaszający</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Data zgłoszenia</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Priorytet</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Wycena</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Akceptacja</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 text-center">Akcje</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{entry.externalId}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
+                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entry.module || 'Bez modułu'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{entry.requester}</td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        entry.priority === 'wysoki'
+                          ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                          : entry.priority === 'normalny'
+                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}>
+                        {entry.priority}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      {entry.isEstimated ? `${formatOrderHours(entry.estimatedHours)} h` : 'Nie'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      {entry.isAccepted ? (entry.acceptanceDate || 'Tak') : 'Nie'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {entry.isInProgress && <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Realizacja</span>}
+                        {entry.isCompleted && <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Zrealizowano</span>}
+                        {entry.isSentToSettlement && <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">Przekazano</span>}
+                        {entry.isSettled && <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Rozliczono</span>}
+                        {!entry.isInProgress && !entry.isCompleted && !entry.isSentToSettlement && !entry.isSettled && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">W toku</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => void handleDelete(entry.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <PendingSettlementEntryModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingEntry(null);
+        }}
+        project={project}
+        entries={entries}
+        entryToEdit={editingEntry}
+        onSave={handleSave}
+        onDelete={handleDelete}
+      />
+    </div>
+  );
+};
+
+const PendingSettlementEntryModal = ({
+  isOpen,
+  onClose,
+  project,
+  entries,
+  entryToEdit,
+  onSave,
+  onDelete,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  project: Project;
+  entries: PendingSettlementEntry[];
+  entryToEdit: PendingSettlementEntry | null;
+  onSave: (entry: PendingSettlementEntry) => Promise<void>;
+  onDelete: (entryId: string) => Promise<void>;
+}) => {
+  const [formData, setFormData] = useState<PendingSettlementEntry>(() => createPendingSettlementDraft(project, entries));
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError('');
+    if (entryToEdit) {
+      setFormData(entryToEdit);
+      return;
+    }
+    setFormData(createPendingSettlementDraft(project, entries));
+  }, [entries, entryToEdit, isOpen, project.id]);
+
+  const requesterSuggestions = Array.from(new Set([
+    ...(project.stakeholders || []).map((stakeholder) => stakeholder.name.trim()),
+    ...entries.map((entry) => entry.requester.trim()),
+  ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+  const requestChannelSuggestions = Array.from(new Set(entries.map((entry) => entry.requestChannel.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+  const moduleSuggestions = Array.from(new Set(entries.map((entry) => entry.module.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+  const acceptanceChannelSuggestions = Array.from(new Set(entries.map((entry) => (entry.acceptanceChannel || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = event.target;
+    const nextValue = type === 'checkbox'
+      ? (event.target as HTMLInputElement).checked
+      : type === 'number'
+        ? parseFloat(value) || 0
+        : value;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: nextValue,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+
+    if (!formData.requester.trim()) {
+      setError('Uzupełnij zgłaszającego.');
+      return;
+    }
+
+    if (!formData.title.trim()) {
+      setError('Uzupełnij tytuł zadania.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        ...formData,
+        projectId: project.id,
+        externalId: formData.externalId.trim() || generatePendingSettlementExternalId(project, entries, formData.requestDate, formData.id),
+        requester: formData.requester.trim(),
+        requestChannel: formData.requestChannel.trim(),
+        module: formData.module.trim(),
+        title: formData.title.trim(),
+        details: formData.details.trim(),
+        acceptanceChannel: formData.acceptanceChannel?.trim() || '',
+        preAcceptanceWorkDescription: formData.preAcceptanceWorkDescription.trim(),
+        notes: formData.notes?.trim() || '',
+        updatedAt: new Date().toISOString(),
+      });
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Wystąpił błąd zapisu pozycji do rozliczenia.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-left">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-5xl flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+            {entryToEdit ? 'Edytuj pozycję do rozliczenia' : 'Dodaj pozycję do rozliczenia'}
+          </h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+          <div className="p-6 overflow-y-auto flex-1 space-y-6">
+            {error && (
+              <div className="p-4 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-center gap-2">
+                <AlertTriangle size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ID *</label>
+                <input
+                  name="externalId"
+                  value={formData.externalId}
+                  readOnly
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 px-3 py-2 text-sm font-medium text-gray-900 dark:text-white outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Numer jest nadawany automatycznie przy tworzeniu pozycji.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zgłaszający *</label>
+                <input
+                  required
+                  list="pending-settlement-requesters"
+                  name="requester"
+                  value={formData.requester}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  placeholder="Wybierz z interesariuszy lub wpisz ręcznie"
+                />
+                <datalist id="pending-settlement-requesters">
+                  {requesterSuggestions.map((value) => <option key={value} value={value} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data zgłoszenia</label>
+                <input
+                  type="date"
+                  name="requestDate"
+                  value={formData.requestDate}
+                  onChange={handleChange}
+                  onKeyDown={handleDateInputTabNavigation}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kanał zgłoszenia</label>
+                <input
+                  list="pending-settlement-request-channels"
+                  name="requestChannel"
+                  value={formData.requestChannel}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+                <datalist id="pending-settlement-request-channels">
+                  {requestChannelSuggestions.map((value) => <option key={value} value={value} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Moduł</label>
+                <input
+                  list="pending-settlement-modules"
+                  name="module"
+                  value={formData.module}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+                <datalist id="pending-settlement-modules">
+                  {moduleSuggestions.map((value) => <option key={value} value={value} />)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priorytet</label>
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                >
+                  <option value="wysoki">wysoki</option>
+                  <option value="normalny">normalny</option>
+                  <option value="niski">niski</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tytuł zadania *</label>
+              <input
+                required
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Szczegóły</label>
+              <textarea
+                name="details"
+                value={formData.details}
+                onChange={handleChange}
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-y"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Liczba godzin wycenianych</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="estimatedHours"
+                  value={formData.estimatedHours}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    name="isEstimated"
+                    checked={formData.isEstimated}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Czy wycenione</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data wyceny</label>
+                <input
+                  type="date"
+                  name="estimationDate"
+                  value={formData.estimationDate || ''}
+                  onChange={handleChange}
+                  onKeyDown={handleDateInputTabNavigation}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    name="isAccepted"
+                    checked={formData.isAccepted}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Zaakceptowane?</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data akceptacji</label>
+                <input
+                  type="date"
+                  name="acceptanceDate"
+                  value={formData.acceptanceDate || ''}
+                  onChange={handleChange}
+                  onKeyDown={handleDateInputTabNavigation}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kanał akceptacji</label>
+                <input
+                  list="pending-settlement-acceptance-channels"
+                  name="acceptanceChannel"
+                  value={formData.acceptanceChannel || ''}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+                <datalist id="pending-settlement-acceptance-channels">
+                  {acceptanceChannelSuggestions.map((value) => <option key={value} value={value} />)}
+                </datalist>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Czas pracy przed akceptacją</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="preAcceptanceWorkHours"
+                  value={formData.preAcceptanceWorkHours}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div>
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      name="isInProgress"
+                      checked={formData.isInProgress}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Realizacja</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      name="isCompleted"
+                      checked={formData.isCompleted}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Zrealizowano?</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      name="isSentToSettlement"
+                      checked={formData.isSentToSettlement}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Przekazano do rozliczenia?</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      name="isSettled"
+                      checked={formData.isSettled}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>Rozliczono?</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Co zrobiono przed akceptacją</label>
+              <textarea
+                name="preAcceptanceWorkDescription"
+                value={formData.preAcceptanceWorkDescription}
+                onChange={handleChange}
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-y"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Uwagi</label>
+              <textarea
+                name="notes"
+                value={formData.notes || ''}
+                onChange={handleChange}
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-y"
+              />
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between gap-3 shrink-0">
+            <div>
+              {entryToEdit && (
+                <button
+                  type="button"
+                  onClick={() => void onDelete(entryToEdit.id)}
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                >
+                  Usuń wpis
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                Anuluj
+              </button>
+              <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-900 transition flex items-center justify-center min-w-[150px]">
+                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : (entryToEdit ? 'Zapisz zmiany' : 'Dodaj pozycję')}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const MaintenanceSettlementFlowModal = ({
   isOpen,
   entry,
@@ -7457,6 +8086,61 @@ const createScheduledTaskDraft = (): ScheduledTask => {
     },
     emailTemplate: createEmptyEmailTemplate(),
     contentSources: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const generatePendingSettlementExternalId = (
+  project: Project,
+  entries: PendingSettlementEntry[],
+  requestDate?: string,
+  currentEntryId?: string,
+) => {
+  const year = (requestDate || format(new Date(), 'yyyy-MM-dd')).slice(0, 4) || format(new Date(), 'yyyy');
+  const projectCode = (project.code || 'PROJEKT').trim().toUpperCase();
+  const prefix = `${projectCode}-DR-${year}-`;
+  const nextSequence = entries
+    .filter((entry) => entry.id !== currentEntryId)
+    .map((entry) => entry.externalId.trim())
+    .map((externalId) => {
+      if (!externalId.startsWith(prefix)) return null;
+      const sequencePart = externalId.slice(prefix.length);
+      const parsedSequence = Number.parseInt(sequencePart, 10);
+      return Number.isFinite(parsedSequence) ? parsedSequence : null;
+    })
+    .reduce((maxValue, value) => (value && value > maxValue ? value : maxValue), 0) + 1;
+
+  return `${prefix}${String(nextSequence).padStart(3, '0')}`;
+};
+
+const createPendingSettlementDraft = (project: Project, entries: PendingSettlementEntry[] = []): PendingSettlementEntry => {
+  const now = new Date().toISOString();
+  const requestDate = format(new Date(), 'yyyy-MM-dd');
+  return {
+    id: createClientId(),
+    projectId: project.id,
+    externalId: generatePendingSettlementExternalId(project, entries, requestDate),
+    requester: '',
+    requestDate,
+    requestChannel: '',
+    module: '',
+    title: '',
+    details: '',
+    priority: 'normalny',
+    estimatedHours: 0,
+    isEstimated: false,
+    estimationDate: '',
+    isAccepted: false,
+    acceptanceDate: '',
+    acceptanceChannel: '',
+    preAcceptanceWorkHours: 0,
+    preAcceptanceWorkDescription: '',
+    isInProgress: false,
+    isCompleted: false,
+    isSentToSettlement: false,
+    isSettled: false,
+    notes: '',
     createdAt: now,
     updatedAt: now,
   };
