@@ -3036,6 +3036,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 const OrdersRegistryView = () => {
   const { selectedProject } = useProjectContext();
   const { orders, isLoading, addOrder, updateOrder, deleteOrder, importOrders } = useOrders(selectedProject?.id);
+  const [listSort, setListSort] = useState<{ column: 'orderNumber' | 'scheduleTo'; direction: 'asc' | 'desc' }>({
+    column: 'scheduleTo',
+    direction: 'desc',
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isPmsReportModalOpen, setIsPmsReportModalOpen] = useState(false);
@@ -3125,6 +3129,40 @@ const OrdersRegistryView = () => {
     await updateOrder(orderId, { acceptanceDate });
   };
 
+  const handleListSortChange = (column: 'orderNumber' | 'scheduleTo') => {
+    setListSort((current) => (
+      current.column === column
+        ? {
+            column,
+            direction: current.direction === 'desc' ? 'asc' : 'desc',
+          }
+        : {
+            column,
+            direction: 'desc',
+          }
+    ));
+  };
+
+  const sortedOrders = orders
+    .slice()
+    .sort((left, right) => {
+      const directionMultiplier = listSort.direction === 'asc' ? 1 : -1;
+      const orderNumberComparison = left.orderNumber.localeCompare(right.orderNumber, 'pl', { sensitivity: 'base' });
+
+      if (listSort.column === 'scheduleTo') {
+        const leftDate = parseCalendarDate(left.scheduleTo);
+        const rightDate = parseCalendarDate(right.scheduleTo);
+        const leftTime = leftDate ? leftDate.getTime() : Number.NEGATIVE_INFINITY;
+        const rightTime = rightDate ? rightDate.getTime() : Number.NEGATIVE_INFINITY;
+
+        if (leftTime !== rightTime) {
+          return (leftTime - rightTime) * directionMultiplier;
+        }
+      }
+
+      return orderNumberComparison * directionMultiplier;
+    });
+
   if (isLoading) {
     return (
       <div className="flex justify-center p-12">
@@ -3141,6 +3179,28 @@ const OrdersRegistryView = () => {
             <Briefcase className="text-indigo-500" /> Zlecenia
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Zarządzaj zleceniami dla: {selectedProject.code}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-medium text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+              W trakcie realizacji, bez PP
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-3 py-1 font-medium text-yellow-700 dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
+              Do końca 3 dni, bez PP
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-medium text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-orange-500"></span>
+              Ostatni dzień, bez PP
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1 font-medium text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
+              Po terminie, bez PP
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 font-medium text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
+              <span className="h-2.5 w-2.5 rounded-full bg-sky-500"></span>
+              Po PP, bez PO
+            </span>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
@@ -3214,7 +3274,7 @@ const OrdersRegistryView = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
-        {orders.length === 0 ? (
+        {sortedOrders.length === 0 ? (
           <div className="p-12 text-center flex flex-col items-center">
             <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
               <Briefcase size={28} className="text-gray-300 dark:text-gray-600" />
@@ -3227,16 +3287,44 @@ const OrdersRegistryView = () => {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
-                  <th className="px-6 py-4 whitespace-nowrap">Nr</th>
+                  <th className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => handleListSortChange('orderNumber')}
+                      className="inline-flex items-center gap-2 font-medium transition hover:text-indigo-600 dark:hover:text-indigo-300"
+                      title={`Sortuj po numerze ${listSort.column === 'orderNumber' && listSort.direction === 'desc' ? 'rosnąco' : 'malejąco'}`}
+                    >
+                      <span>Nr</span>
+                      {listSort.column === 'orderNumber' ? (
+                        listSort.direction === 'desc' ? <ArrowDown size={14} /> : <ArrowUp size={14} />
+                      ) : (
+                        <ArrowDown size={14} className="opacity-30" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-6 py-4">Tytuł</th>
-                  <th className="px-6 py-4 text-center whitespace-nowrap">Daty</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => handleListSortChange('scheduleTo')}
+                      className="inline-flex items-center gap-2 font-medium transition hover:text-indigo-600 dark:hover:text-indigo-300"
+                      title={`Sortuj po dacie do ${listSort.column === 'scheduleTo' && listSort.direction === 'desc' ? 'rosnąco' : 'malejąco'}`}
+                    >
+                      <span>Daty</span>
+                      {listSort.column === 'scheduleTo' ? (
+                        listSort.direction === 'desc' ? <ArrowDown size={14} /> : <ArrowUp size={14} />
+                      ) : (
+                        <ArrowDown size={14} className="opacity-30" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">Suma Godzin</th>
                   <th className="px-6 py-4 text-right">Kwota Brutto <span className="text-xs font-normal text-gray-400">(Netto)</span></th>
                   <th className="px-6 py-4 text-center">Akcje</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {orders.map(order => {
+                {sortedOrders.map(order => {
                   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
                   const total = totalHours * selectedProject.rateNetto;
                   return (
@@ -5861,24 +5949,42 @@ const getComparableDateKey = (value?: string) => {
   return date ? getDateKey(date) : null;
 };
 const getOrderRegistryRowClassName = (order: Order) => {
-  const todayKey = getDateKey(new Date());
+  const today = parseCalendarDate(getDateKey(new Date())) || new Date();
+  const todayKey = getDateKey(today);
+  const scheduleFromDate = parseCalendarDate(order.scheduleFrom);
+  const scheduleToDate = parseCalendarDate(order.scheduleTo);
   const scheduleToKey = getComparableDateKey(order.scheduleTo);
   const handoverDateKey = getComparableDateKey(order.handoverDate);
   const acceptanceDateKey = getComparableDateKey(order.acceptanceDate);
+  const isAfterHandoverBeforeAcceptance = Boolean(handoverDateKey) && !acceptanceDateKey;
+  const isMissingHandover = !handoverDateKey;
+  const isWithinExecutionRange = Boolean(
+    scheduleFromDate
+    && scheduleToDate
+    && scheduleFromDate.getTime() <= today.getTime()
+    && scheduleToDate.getTime() >= today.getTime()
+  );
 
-  if (handoverDateKey === todayKey && !acceptanceDateKey) {
-    return 'bg-amber-300/70 dark:bg-amber-700/45 hover:bg-amber-300 dark:hover:bg-amber-700/60';
-  }
-
-  if (handoverDateKey && handoverDateKey < todayKey && !acceptanceDateKey) {
+  if (isAfterHandoverBeforeAcceptance) {
     return 'bg-sky-300/70 dark:bg-sky-700/45 hover:bg-sky-300 dark:hover:bg-sky-700/60';
   }
 
-  if (scheduleToKey && scheduleToKey < todayKey && !handoverDateKey) {
+  if (isMissingHandover && scheduleToKey && scheduleToKey < todayKey) {
     return 'bg-red-300/70 dark:bg-red-700/45 hover:bg-red-300 dark:hover:bg-red-700/60';
   }
 
-  if (scheduleToKey && scheduleToKey > todayKey) {
+  if (isMissingHandover && isWithinExecutionRange && scheduleToKey === todayKey) {
+    return 'bg-orange-300/70 dark:bg-orange-700/45 hover:bg-orange-300 dark:hover:bg-orange-700/60';
+  }
+
+  if (isMissingHandover && isWithinExecutionRange && scheduleToDate) {
+    const warningDate = addDays(today, 3);
+    if (scheduleToDate.getTime() <= warningDate.getTime()) {
+      return 'bg-yellow-200/80 dark:bg-yellow-700/45 hover:bg-yellow-200 dark:hover:bg-yellow-700/60';
+    }
+  }
+
+  if (isMissingHandover && isWithinExecutionRange) {
     return 'bg-emerald-300/70 dark:bg-emerald-700/45 hover:bg-emerald-300 dark:hover:bg-emerald-700/60';
   }
 

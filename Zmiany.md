@@ -116,6 +116,15 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-13 – Sortowanie po kolumnach `Nr` i `Daty` w liście zleceń
+  -- Nagłówki `Nr` i `Daty` w tabeli `Zlecenia` są teraz klikalne i przełączają kierunek sortowania rosnąco/malejąco.
+  -- Sortowanie dla kolumny `Daty` opiera się na polu `Data do`, a dla kolumny `Nr` używany jest porządek alfabetyczny dokładnie według zapisu numeru; domyślny stan widoku startuje teraz od `Data do` malejąco.
+- 2026-04-13 – Sortowanie listy zleceń malejąco po numerze
+  -- Widok tabeli `Zlecenia` sortuje teraz rekordy malejąco według pola `Nr`.
+  -- Najwyższe numery zleceń są widoczne na górze listy bez zmiany kolejności danych wykorzystywanych przez inne mechanizmy aplikacji.
+- 2026-04-13 – Nowa legenda i kolory statusu terminów w `Zleceniach`
+  -- Przebudowano logikę podświetlania wierszy w rejestrze zleceń: zlecenia w trakcie realizacji bez `PP` są zielone, w ostatnich 3 dniach przed końcem żółte, w ostatnim dniu pomarańczowe, po terminie bez `PP` czerwone, a po `PP` bez `PO` niebieskie.
+  -- Pod tytułem widoku `Zlecenia` dodano legendę kolorów, dzięki czemu użytkownik widzi od razu znaczenie statusów bez zgadywania.
 - 2026-04-13 – Daty względne w protokołach przekazania i odbioru
   -- Modal `PP` i `PO` obsługuje teraz składnię `{{data+3d}}`, `{{data-1w}}` oraz `{{data+2m}}` w krokach, linkach i szablonach wiadomości, liczoną względem wybranej daty protokołu.
   -- Przy podglądzie i kopiowaniu wartości dat protokołów są zawsze zwracane w formacie `dd.MM.yyyy`, a tokeny dat względnych nie pojawiają się już błędnie jako dodatkowe własne pola do ręcznego uzupełnienia.
