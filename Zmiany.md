@@ -116,6 +116,9 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-13 – Daty względne w protokołach przekazania i odbioru
+  -- Modal `PP` i `PO` obsługuje teraz składnię `{{data+3d}}`, `{{data-1w}}` oraz `{{data+2m}}` w krokach, linkach i szablonach wiadomości, liczoną względem wybranej daty protokołu.
+  -- Przy podglądzie i kopiowaniu wartości dat protokołów są zawsze zwracane w formacie `dd.MM.yyyy`, a tokeny dat względnych nie pojawiają się już błędnie jako dodatkowe własne pola do ręcznego uzupełnienia.
 - 2026-04-09 – Flow `PO` dla protokołu odbioru na liście zleceń
   -- Na liście `Zlecenia` dodano przycisk `PO` z tooltipem `Protokół Odbioru`, który otwiera modal dla konkretnego zlecenia obok istniejącego `PP`.
   -- Modal `PO` działa na tej samej zasadzie co `PP`: pozwala definiować kroki, opcjonalne linki, kolejność działań, stany wykonania oraz projektowy szablon e-mail z podstawianiem zmiennych z bieżącego zlecenia.

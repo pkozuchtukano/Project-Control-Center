@@ -98,6 +98,7 @@ import {
 } from './context/ProjectContext';
 
 import { TaskTypeIconMap } from './utils/icons';
+import { parseDateVariable } from './utils/dateParsing';
 
 // ==========================================
 import { YouTrackTab } from './components/YouTrackTab';
@@ -3510,6 +3511,7 @@ const OrderProtocolFlowModal = ({
       ]
         .map((token) => token.trim())
         .filter(Boolean)
+        .filter((token) => !parseDateVariable(token, variableOverrides.data))
         .filter((token) => !knownVariableKeys.has(normalizeTemplateVariableKey(token)))
         .map((token) => [normalizeTemplateVariableKey(token), token])
     ).values()
@@ -3703,7 +3705,7 @@ const OrderProtocolFlowModal = ({
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data dla zmiennej <code>{`{{data}}`}</code></h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Ta data jest używana w krokach <code>{protocolType}</code>, w treści e-mail oraz w akcji uzupełnienia pola daty protokołu.
+                    Ta data jest używana w krokach <code>{protocolType}</code>, w treści e-mail oraz w akcji uzupełnienia pola daty protokołu. Możesz też używać przesunięć, np. <code>{`{{data+3d}}`}</code>, <code>{`{{data-1w}}`}</code>, <code>{`{{data+2m}}`}</code>; kopiowana wartość ma zawsze format <code>dd.MM.yyyy</code>.
                   </p>
                 </div>
                 <div className="w-full md:w-64">
@@ -3799,7 +3801,7 @@ const OrderProtocolFlowModal = ({
                   </div>
                 </div>
                 <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 mt-3">
-                  Zmienne są podstawiane z pól formularza zlecenia oraz z bieżącej daty <code>{`{{data}}`}</code>. Funkcje możesz łączyć z dostępnymi tokenami wewnątrz nawiasów.
+                  Zmienne są podstawiane z pól formularza zlecenia oraz z daty <code>{`{{data}}`}</code>. Składnia wspiera też przesunięcia jak <code>{`{{data+3d}}`}</code>, <code>{`{{data-1w}}`}</code> i <code>{`{{data+2m}}`}</code>, zawsze zwracane w formacie <code>dd.MM.yyyy</code>. Funkcje możesz łączyć z dostępnymi tokenami wewnątrz nawiasów.
                 </p>
               </>
             )}
@@ -4340,6 +4342,11 @@ const normalizeTemplateVariableKey = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+const formatProtocolTemplateDateValue = (value?: string) => {
+  if (!value) return '';
+  return parseDateVariable('data', value) || value;
+};
+
 const suggestOrderProtocolDate = (order: Order, protocolType: 'PP' | 'PO' = 'PP') =>
   getOrderProtocolDateValue(order, protocolType)
   || order.scheduleTo
@@ -4354,7 +4361,7 @@ const getOrderProtocolVariableDefinitions = (
 ) => {
   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
   const productNames = order.items.map(item => item.name.trim()).filter(Boolean);
-  const resolvedDate = overrides?.data || suggestOrderProtocolDate(order, protocolType);
+  const resolvedDate = formatProtocolTemplateDateValue(overrides?.data || suggestOrderProtocolDate(order, protocolType));
   const totalNetValue = totalHours * (project?.rateNetto || 0);
   const totalGrossValue = totalHours * (project?.rateBrutto || 0);
   const totalNetValueWords = formatCurrencyAmountInWords(formatCurrencyValue(totalNetValue));
@@ -4645,6 +4652,11 @@ const resolveTemplateExpression = (rawExpression: string, variableMap: Record<st
       : recursivelyResolvedArgument;
     const amountInWords = formatCurrencyAmountInWords(argumentValue);
     return amountInWords || `{{${expression}}}`;
+  }
+
+  const resolvedDateVariable = parseDateVariable(expression, variableMap[normalizeTemplateVariableKey('data')]);
+  if (resolvedDateVariable) {
+    return resolvedDateVariable;
   }
 
   const normalizedToken = normalizeTemplateVariableKey(expression);
