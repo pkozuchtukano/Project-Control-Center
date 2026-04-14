@@ -598,6 +598,9 @@
 - 2026-04-14 – Godziny bez miejsc po przecinku w eksporcie `Do rozliczenia`
   -- Kopiowany eksport tekstowy dla zakładki `Do rozliczenia` formatuje teraz godziny jako liczby całkowite, bez części dziesiętnej.
   -- Dotyczy to zarówno `Wyceny`, jak i sekcji `Już wykonano`, bez zmiany globalnego formatowania godzin w innych modułach aplikacji.
+- 2026-04-14 – Nowy format kolumny godzin na liście `Do rozliczenia`
+  -- Kolumna `Liczba godzin wycenionych` pokazuje teraz pogrubioną liczbę godzin końcowych bez miejsc po przecinku oraz `Wycenę zespołu` w nawiasie.
+  -- Zmiana dotyczy wyłącznie prezentacji tabeli i ułatwia szybkie porównanie wartości końcowej z bazową wyceną zespołu.
 
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status

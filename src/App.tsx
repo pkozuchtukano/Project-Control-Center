@@ -5726,7 +5726,10 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{formatOrderHours(entry.estimatedHours)} h</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      <span className="font-bold text-gray-900 dark:text-white">{formatPendingSettlementHoursForExport(entry.estimatedHours)}</span>
+                      <span>{` (${formatPendingSettlementHoursForExport(entry.teamEstimatedHours)})`}</span>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isSettled ? 'Tak' : 'Nie'}</td>
                     <td className="px-6 py-4 text-center">
