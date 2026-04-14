@@ -142,6 +142,7 @@ db.exec(`
         estimationDate TEXT,
         isAccepted INTEGER NOT NULL DEFAULT 0,
         acceptanceDate TEXT,
+        acceptedBy TEXT,
         acceptanceChannel TEXT,
         preAcceptanceWorkHours REAL NOT NULL DEFAULT 0,
         preAcceptanceWorkDescription TEXT,
@@ -191,6 +192,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress IN
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -330,6 +332,7 @@ const initializeDatabase = () => {
             estimationDate TEXT,
             isAccepted INTEGER NOT NULL DEFAULT 0,
             acceptanceDate TEXT,
+            acceptedBy TEXT,
             acceptanceChannel TEXT,
             preAcceptanceWorkHours REAL NOT NULL DEFAULT 0,
             preAcceptanceWorkDescription TEXT,
@@ -388,6 +391,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress IN
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch { }
 try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -2930,6 +2934,7 @@ ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) =>
                 estimationDate,
                 isAccepted,
                 acceptanceDate,
+                acceptedBy,
                 acceptanceChannel,
                 preAcceptanceWorkHours,
                 preAcceptanceWorkDescription,
@@ -2984,6 +2989,7 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 estimationDate,
                 isAccepted,
                 acceptanceDate,
+                acceptedBy,
                 acceptanceChannel,
                 preAcceptanceWorkHours,
                 preAcceptanceWorkDescription,
@@ -2995,7 +3001,7 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 createdAt,
                 updatedAt
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 externalId = excluded.externalId,
                 requester = excluded.requester,
@@ -3013,6 +3019,7 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 estimationDate = excluded.estimationDate,
                 isAccepted = excluded.isAccepted,
                 acceptanceDate = excluded.acceptanceDate,
+                acceptedBy = excluded.acceptedBy,
                 acceptanceChannel = excluded.acceptanceChannel,
                 preAcceptanceWorkHours = excluded.preAcceptanceWorkHours,
                 preAcceptanceWorkDescription = excluded.preAcceptanceWorkDescription,
@@ -3041,6 +3048,7 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
             data.estimationDate || null,
             data.isAccepted ? 1 : 0,
             data.acceptanceDate || null,
+            data.acceptedBy || '',
             data.acceptanceChannel || '',
             Number(data.preAcceptanceWorkHours) || 0,
             data.preAcceptanceWorkDescription || '',

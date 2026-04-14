@@ -592,6 +592,12 @@
 - 2026-04-14 – Tekstowy format eksportu `Do rozliczenia`
   -- Eksport kopiowany przyciskiem `Kopiuj` został zmieniony z tabeli na swobodny blok tekstowy dla każdej pozycji, z liniami `Id`, `Zgłoszono`, pogrubionym tytułem, `Szczegółami`, `Wyceną`, `Zaakceptowano`, `Statusem` i opcjonalnym `Już wykonano`.
   -- Dzięki temu wklejona treść jest bardziej naturalna do użycia w mailach, dokumentach i notatkach, a jednocześnie zachowuje pogrubienia i podziały linii.
+- 2026-04-14 – Pole `Kto zaakceptował` w `Do rozliczenia`
+  -- Sekcja `Akceptacja` formularza `Do rozliczenia` została rozszerzona o pole `Kto zaakceptował`, zapisywane w modelu danych i bazie SQLite przez bezstratną migrację nowej kolumny.
+  -- Pole podpowiada nazwiska interesariuszy projektu oraz wcześniejsze wartości z wpisów, a dane osoby akceptującej są teraz uwzględniane także w kopiowanym eksporcie tekstowym.
+- 2026-04-14 – Godziny bez miejsc po przecinku w eksporcie `Do rozliczenia`
+  -- Kopiowany eksport tekstowy dla zakładki `Do rozliczenia` formatuje teraz godziny jako liczby całkowite, bez części dziesiętnej.
+  -- Dotyczy to zarówno `Wyceny`, jak i sekcji `Już wykonano`, bez zmiany globalnego formatowania godzin w innych modułach aplikacji.
 
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status

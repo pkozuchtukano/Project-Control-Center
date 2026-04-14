@@ -5366,6 +5366,8 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300';
   };
 
+  const formatPendingSettlementHoursForExport = (value: number) => String(Math.round(Number(value) || 0));
+
   const escapeHtml = (value: string) =>
     value
       .replace(/&/g, '&amp;')
@@ -5393,7 +5395,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const formatPendingSettlementCompletedWorkLabel = (entry: PendingSettlementEntry) => {
     const workParts: string[] = [];
     if (Number(entry.preAcceptanceWorkHours) > 0) {
-      workParts.push(`${formatOrderHours(entry.preAcceptanceWorkHours)} h`);
+      workParts.push(`${formatPendingSettlementHoursForExport(entry.preAcceptanceWorkHours)} h`);
     }
     if ((entry.preAcceptanceWorkDescription || '').trim()) {
       workParts.push(entry.preAcceptanceWorkDescription.trim());
@@ -5417,7 +5419,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   };
 
   const buildPendingSettlementEstimationLabel = (entry: PendingSettlementEntry) => {
-    const estimationParts = [`${formatOrderHours(entry.estimatedHours)} h`];
+    const estimationParts = [`${formatPendingSettlementHoursForExport(entry.estimatedHours)} h`];
     if (entry.estimationDate) {
       estimationParts.push(entry.estimationDate);
     }
@@ -5426,7 +5428,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
 
   const buildPendingSettlementAcceptanceSummary = (entry: PendingSettlementEntry) => {
     const acceptanceState = entry.isAccepted ? 'Tak' : 'Nie';
-    const details = [entry.acceptanceDate, entry.acceptanceChannel].filter(Boolean);
+    const details = [entry.acceptedBy, entry.acceptanceDate, entry.acceptanceChannel].filter(Boolean);
     return [acceptanceState, ...details].join(' - ');
   };
 
@@ -5445,7 +5447,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
           <p style="margin:0 0 4px 0;">Zgłoszono: ${escapeHtml(reportedLabel)}</p>
           <p style="margin:0 0 4px 0;"><strong>${escapeHtml(entry.title || '')}</strong></p>
           ${detailsLabel ? `<p style="margin:0 0 4px 0;">${escapeHtml(detailsLabel)}</p>` : ''}
-          <p style="margin:0 0 4px 0;">Wycena: <strong>${escapeHtml(`${formatOrderHours(entry.estimatedHours)} h`)}</strong>${entry.estimationDate ? ` - ${escapeHtml(entry.estimationDate)}` : ''}</p>
+          <p style="margin:0 0 4px 0;">Wycena: <strong>${escapeHtml(`${formatPendingSettlementHoursForExport(entry.estimatedHours)} h`)}</strong>${entry.estimationDate ? ` - ${escapeHtml(entry.estimationDate)}` : ''}</p>
           <p style="margin:0 0 4px 0;">Zaakceptowano: ${escapeHtml(acceptanceLabel)}</p>
           <p style="margin:0 0 4px 0;">Status: ${escapeHtml(statusLabel)}</p>
           ${completedWorkLabel ? `<p style="margin:0;">Już wykonano: ${escapeHtml(completedWorkLabel)}</p>` : ''}
@@ -5796,6 +5798,10 @@ const PendingSettlementEntryModal = ({
     ...(project.stakeholders || []).map((stakeholder) => stakeholder.name.trim()),
     ...entries.map((entry) => entry.requester.trim()),
   ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+  const acceptedBySuggestions = Array.from(new Set([
+    ...(project.stakeholders || []).map((stakeholder) => stakeholder.name.trim()),
+    ...entries.map((entry) => (entry.acceptedBy || '').trim()),
+  ].filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const requestChannelSuggestions = Array.from(new Set(entries.map((entry) => entry.requestChannel.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const moduleSuggestions = Array.from(new Set(entries.map((entry) => entry.module.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const acceptanceChannelSuggestions = Array.from(new Set(entries.map((entry) => (entry.acceptanceChannel || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
@@ -5856,6 +5862,7 @@ const PendingSettlementEntryModal = ({
         teamEstimatedHours: Number(formData.teamEstimatedHours) || 0,
         marginPercent: Number(formData.marginPercent) || 0,
         estimatedHours: Math.max(0, Math.ceil(Number(formData.estimatedHours) || 0)),
+        acceptedBy: formData.acceptedBy?.trim() || '',
         acceptanceChannel: formData.acceptanceChannel?.trim() || '',
         preAcceptanceWorkDescription: formData.preAcceptanceWorkDescription.trim(),
         notes: formData.notes?.trim() || '',
@@ -6184,7 +6191,20 @@ const PendingSettlementEntryModal = ({
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
                       />
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Kto zaakceptował</label>
+                      <input
+                        list="pending-settlement-accepted-by"
+                        name="acceptedBy"
+                        value={formData.acceptedBy || ''}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                      <datalist id="pending-settlement-accepted-by">
+                        {acceptedBySuggestions.map((value) => <option key={value} value={value} />)}
+                      </datalist>
+                    </div>
+                    <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Kanał akceptacji</label>
                       <input
                         list="pending-settlement-acceptance-channels"
@@ -8537,6 +8557,7 @@ const createPendingSettlementDraft = (project: Project, entries: PendingSettleme
     estimationDate: '',
     isAccepted: false,
     acceptanceDate: '',
+    acceptedBy: '',
     acceptanceChannel: '',
     preAcceptanceWorkHours: 0,
     preAcceptanceWorkDescription: '',

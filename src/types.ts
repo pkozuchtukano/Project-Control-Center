@@ -295,6 +295,7 @@ export type PendingSettlementEntry = {
   estimationDate?: string;
   isAccepted: boolean;
   acceptanceDate?: string;
+  acceptedBy?: string;
   acceptanceChannel?: string;
   preAcceptanceWorkHours: number;
   preAcceptanceWorkDescription: string;
