@@ -56,7 +56,7 @@ declare global {
       getPendingSettlementEntries: (projectId: string) => Promise<PendingSettlementEntry[]>;
       savePendingSettlementEntry: (data: PendingSettlementEntry) => Promise<{ success: boolean }>;
       deletePendingSettlementEntry: (id: string) => Promise<{ success: boolean }>;
-      writeClipboardHtml: (html: string) => Promise<{ success: boolean }>;
+      writeClipboardHtml: (data: { html: string; text?: string }) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
       getGoogleAuthUrl: () => Promise<string>;
@@ -92,7 +92,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste
 } from 'lucide-react';
 
 import { 
@@ -320,6 +320,7 @@ const ProjectModal = ({
     hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
     taskTypes: [],
     googleDocLink: '',
+    pendingSettlementYoutrackUrl: '',
     stakeholders: []
   });
   const [isMaintenanceGrossLocked, setIsMaintenanceGrossLocked] = useState(true);
@@ -350,6 +351,7 @@ const ProjectModal = ({
         targetProfitPct: projectToEdit.targetProfitPct !== undefined ? projectToEdit.targetProfitPct : 20,
         taskTypes: projectToEdit.taskTypes || [],
         googleDocLink: projectToEdit.googleDocLink || '',
+        pendingSettlementYoutrackUrl: projectToEdit.pendingSettlementYoutrackUrl || '',
         stakeholders: projectToEdit.stakeholders || []
       });
       setIsMaintenanceGrossLocked(true);
@@ -363,6 +365,7 @@ const ProjectModal = ({
         hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
         taskTypes: [],
         googleDocLink: '',
+        pendingSettlementYoutrackUrl: '',
         stakeholders: []
       });
       setIsMaintenanceGrossLocked(true);
@@ -610,7 +613,12 @@ const ProjectModal = ({
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" 
                         placeholder="https://docs.google.com/document/d/..." />
                     </div>
-                    <div></div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Url tablicy w youtrack</label>
+                      <input name="pendingSettlementYoutrackUrl" value={formData.pendingSettlementYoutrackUrl || ''} onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                        placeholder="https://youtrack/.../issues?q=..." />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5339,6 +5347,116 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
+  const [copiedExport, setCopiedExport] = useState(false);
+
+  const formatPendingSettlementRequester = (value: string) => {
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return value.trim();
+    const [firstName, ...rest] = parts;
+    const lastInitial = rest[0]?.charAt(0).toUpperCase();
+    return lastInitial ? `${firstName} ${lastInitial}.` : firstName;
+  };
+
+  const getPendingSettlementPriorityBadgeClass = (priority: PendingSettlementEntry['priority']) => {
+    if (priority === 'wysoki') {
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300';
+    }
+
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300';
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const formatPendingSettlementStatusLabel = (entry: PendingSettlementEntry) => {
+    if (entry.isSettled) {
+      return 'Rozliczono';
+    }
+    if (entry.isSentToSettlement) {
+      return 'Przekazano do rozliczenia';
+    }
+    if (entry.isCompleted) {
+      return 'Zrealizowano';
+    }
+    if (entry.isInProgress) {
+      return 'Realizujemy';
+    }
+    return 'Nowe';
+  };
+
+  const formatPendingSettlementCompletedWorkLabel = (entry: PendingSettlementEntry) => {
+    const workParts: string[] = [];
+    if (Number(entry.preAcceptanceWorkHours) > 0) {
+      workParts.push(`${formatOrderHours(entry.preAcceptanceWorkHours)} h`);
+    }
+    if ((entry.preAcceptanceWorkDescription || '').trim()) {
+      workParts.push(entry.preAcceptanceWorkDescription.trim());
+    }
+    return workParts.join(' - ');
+  };
+
+  const buildPendingSettlementReportedLabel = (entry: PendingSettlementEntry) => {
+    const reportParts = [
+      entry.requester?.trim(),
+      entry.requestDate ? `w dniu: ${entry.requestDate}` : '',
+      entry.requestChannel?.trim(),
+    ].filter(Boolean);
+
+    return reportParts.join(' - ');
+  };
+
+  const buildPendingSettlementIdLabel = (entry: PendingSettlementEntry) => {
+    const moduleLabel = entry.module?.trim() ? ` - [${entry.module.trim()}]` : '';
+    return `Id: ${entry.externalId || ''}${moduleLabel}`;
+  };
+
+  const buildPendingSettlementEstimationLabel = (entry: PendingSettlementEntry) => {
+    const estimationParts = [`${formatOrderHours(entry.estimatedHours)} h`];
+    if (entry.estimationDate) {
+      estimationParts.push(entry.estimationDate);
+    }
+    return estimationParts.join(' - ');
+  };
+
+  const buildPendingSettlementAcceptanceSummary = (entry: PendingSettlementEntry) => {
+    const acceptanceState = entry.isAccepted ? 'Tak' : 'Nie';
+    const details = [entry.acceptanceDate, entry.acceptanceChannel].filter(Boolean);
+    return [acceptanceState, ...details].join(' - ');
+  };
+
+  const buildPendingSettlementExportHtml = (items: PendingSettlementEntry[]) => {
+    const blocksHtml = items.map((entry) => {
+      const reportedLabel = buildPendingSettlementReportedLabel(entry);
+      const idLabel = buildPendingSettlementIdLabel(entry);
+      const statusLabel = formatPendingSettlementStatusLabel(entry);
+      const completedWorkLabel = formatPendingSettlementCompletedWorkLabel(entry);
+      const acceptanceLabel = buildPendingSettlementAcceptanceSummary(entry);
+      const detailsLabel = (entry.details || '').trim();
+
+      return `
+        <div style="margin:0 0 18px 0;padding:0 0 14px 0;border-bottom:1px solid #cbd5e1;font-family:Arial,sans-serif;font-size:13px;line-height:1.55;color:#0f172a;">
+          <p style="margin:0 0 4px 0;">${escapeHtml(idLabel)}</p>
+          <p style="margin:0 0 4px 0;">Zgłoszono: ${escapeHtml(reportedLabel)}</p>
+          <p style="margin:0 0 4px 0;"><strong>${escapeHtml(entry.title || '')}</strong></p>
+          ${detailsLabel ? `<p style="margin:0 0 4px 0;">${escapeHtml(detailsLabel)}</p>` : ''}
+          <p style="margin:0 0 4px 0;">Wycena: <strong>${escapeHtml(`${formatOrderHours(entry.estimatedHours)} h`)}</strong>${entry.estimationDate ? ` - ${escapeHtml(entry.estimationDate)}` : ''}</p>
+          <p style="margin:0 0 4px 0;">Zaakceptowano: ${escapeHtml(acceptanceLabel)}</p>
+          <p style="margin:0 0 4px 0;">Status: ${escapeHtml(statusLabel)}</p>
+          ${completedWorkLabel ? `<p style="margin:0;">Już wykonano: ${escapeHtml(completedWorkLabel)}</p>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="font-family:Arial,sans-serif;font-size:13px;">${blocksHtml}</div>
+    `;
+  };
 
   const loadEntries = async () => {
     if (!window.electron?.getPendingSettlementEntries) {
@@ -5351,7 +5469,15 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     setError(null);
     try {
       const result = await window.electron.getPendingSettlementEntries(project.id);
-      setEntries(result);
+      const sortedEntries = [...(result || [])].sort((first, second) => {
+        const byRequestDate = (second.requestDate || '').localeCompare(first.requestDate || '');
+        if (byRequestDate !== 0) {
+          return byRequestDate;
+        }
+
+        return (second.createdAt || '').localeCompare(first.createdAt || '');
+      });
+      setEntries(sortedEntries);
     } catch (err: any) {
       setError(err.message || 'Nie udało się pobrać pozycji do rozliczenia.');
     } finally {
@@ -5387,8 +5513,81 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   };
 
   const estimatedCount = entries.filter((entry) => entry.isEstimated).length;
+  const notEstimatedCount = entries.filter((entry) => !entry.isEstimated).length;
   const acceptedCount = entries.filter((entry) => entry.isAccepted).length;
-  const settledCount = entries.filter((entry) => entry.isSettled).length;
+  const notAcceptedCount = entries.filter((entry) => !entry.isAccepted).length;
+  const inProgressCount = entries.filter((entry) => entry.isInProgress).length;
+  const completedCount = entries.filter((entry) => entry.isCompleted).length;
+  const filteredEntries = entries.filter((entry) => {
+    switch (activeFilter) {
+      case 'estimated':
+        return entry.isEstimated;
+      case 'notEstimated':
+        return !entry.isEstimated;
+      case 'accepted':
+        return entry.isAccepted;
+      case 'notAccepted':
+        return !entry.isAccepted;
+      case 'inProgress':
+        return entry.isInProgress;
+      case 'completed':
+        return entry.isCompleted;
+      default:
+        return true;
+    }
+  });
+
+  const summaryCards = [
+    { id: 'all' as const, label: 'Pozycji', count: entries.length },
+    { id: 'estimated' as const, label: 'Wycenione', count: estimatedCount },
+    { id: 'notEstimated' as const, label: 'Niewycenione', count: notEstimatedCount },
+    { id: 'accepted' as const, label: 'Zaakceptowane', count: acceptedCount },
+    { id: 'notAccepted' as const, label: 'Niezaakceptowane', count: notAcceptedCount },
+    { id: 'inProgress' as const, label: 'Realizowane', count: inProgressCount },
+    { id: 'completed' as const, label: 'Zrealizowane', count: completedCount },
+  ];
+
+  const handleCopyPendingSettlementTable = async () => {
+    const html = buildPendingSettlementExportHtml(filteredEntries);
+    const plainText = filteredEntries.map((entry) => {
+      const lines = [
+        buildPendingSettlementIdLabel(entry),
+        `Zgłoszono: ${buildPendingSettlementReportedLabel(entry)}`,
+        entry.title || '',
+      ];
+
+      if ((entry.details || '').trim()) {
+        lines.push(entry.details.trim());
+      }
+
+      lines.push(`Wycena: ${buildPendingSettlementEstimationLabel(entry)}`);
+      lines.push(`Zaakceptowano: ${buildPendingSettlementAcceptanceSummary(entry)}`);
+      lines.push(`Status: ${formatPendingSettlementStatusLabel(entry)}`);
+
+      const completedWorkLabel = formatPendingSettlementCompletedWorkLabel(entry);
+      if (completedWorkLabel) {
+        lines.push(`Już wykonano: ${completedWorkLabel}`);
+      }
+
+      return lines.join('\n');
+    }).join('\n\n');
+
+    try {
+      if (window.electron?.writeClipboardHtml) {
+        await window.electron.writeClipboardHtml({
+          html,
+          text: plainText,
+        });
+      } else {
+        await navigator.clipboard.writeText(plainText);
+      }
+      setCopiedExport(true);
+      window.setTimeout(() => setCopiedExport(false), 1800);
+    } catch (copyError) {
+      console.error('Pending settlement export copy failed:', copyError);
+      setError('Nie udało się skopiować eksportu do schowka.');
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -5401,15 +5600,31 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
             Ewidencja zleceń uruchomionych operacyjnie przed pojawieniem się pełnych dokumentów dla projektu: {project.code}
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditingEntry(null);
-            setIsModalOpen(true);
-          }}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm"
-        >
-          <Plus size={16} /> Dodaj pozycję
-        </button>
+        <div className="flex items-center gap-3">
+          <ProjectLinksDropdown project={project} visibleInTab="pendingSettlement" />
+          <button
+            type="button"
+            onClick={() => void handleCopyPendingSettlementTable()}
+            className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition shadow-sm border ${
+              copiedExport
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+            title="Kopiuj tabelę widocznych pozycji do schowka"
+          >
+            <Copy size={15} />
+            <span>{copiedExport ? 'Skopiowano' : 'Kopiuj'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setEditingEntry(null);
+              setIsModalOpen(true);
+            }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-sm"
+          >
+            <Plus size={16} /> Dodaj pozycję
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -5418,23 +5633,29 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Pozycji</p>
-          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{entries.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wycenione</p>
-          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{estimatedCount}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zaakceptowane</p>
-          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{acceptedCount}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Rozliczone</p>
-          <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{settledCount}</p>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+        {summaryCards.map((card) => {
+          const isActive = activeFilter === card.id;
+          return (
+            <button
+              key={card.id}
+              type="button"
+              onClick={() => setActiveFilter(card.id)}
+              className={`rounded-2xl p-5 text-left shadow-sm border transition ${
+                isActive
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-950 dark:bg-indigo-500/10 dark:border-indigo-400/40 dark:text-white'
+                  : 'bg-white border-gray-100 text-gray-900 hover:border-indigo-200 hover:bg-indigo-50/60 dark:bg-gray-800 dark:border-gray-800 dark:text-white dark:hover:border-indigo-400/30 dark:hover:bg-indigo-500/5'
+              }`}
+            >
+              <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                isActive ? 'text-indigo-600 dark:text-indigo-200' : 'text-gray-500 dark:text-gray-400'
+              }`}>
+                {card.label}
+              </p>
+              <p className="mt-3 text-3xl font-black">{card.count}</p>
+            </button>
+          );
+        })}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -5450,60 +5671,62 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak pozycji do rozliczenia</h3>
             <p className="text-gray-500 dark:text-gray-400">Dodaj pierwsze zgłoszenie zrealizowane przed pojawieniem się dokumentów formalnych.</p>
           </div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="p-12 text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
+              <FileText size={28} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak pozycji dla wybranego filtra</h3>
+            <p className="text-gray-500 dark:text-gray-400">Zmień kafelek u góry, aby zobaczyć inne pozycje `Do rozliczenia`.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
                   <th className="px-6 py-4 whitespace-nowrap">ID</th>
-                  <th className="px-6 py-4">Tytuł zadania</th>
                   <th className="px-6 py-4 whitespace-nowrap">Zgłaszający</th>
                   <th className="px-6 py-4 whitespace-nowrap">Data zgłoszenia</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Priorytet</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Wycena</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Akceptacja</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4">Tytuł</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Liczba godzin wycenionych</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Akceptacja?</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Rozliczono?</th>
                   <th className="px-6 py-4 text-center">Akcje</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {entries.map((entry) => (
+                {filteredEntries.map((entry) => (
                   <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
-                    <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{entry.externalId}</td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
-                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entry.module || 'Bez modułu'}</div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{entry.requester}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        entry.priority === 'wysoki'
-                          ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                          : entry.priority === 'normalny'
-                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      }`}>
-                        {entry.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
-                      {entry.isEstimated ? `${formatOrderHours(entry.estimatedHours)} h` : 'Nie'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
-                      {entry.isAccepted ? (entry.acceptanceDate || 'Tak') : 'Nie'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {entry.isInProgress && <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Realizacja</span>}
-                        {entry.isCompleted && <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Zrealizowano</span>}
-                        {entry.isSentToSettlement && <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">Przekazano</span>}
-                        {entry.isSettled && <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Rozliczono</span>}
-                        {!entry.isInProgress && !entry.isCompleted && !entry.isSentToSettlement && !entry.isSettled && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">W toku</span>
+                      <div className="flex flex-col gap-1">
+                        {entry.youtrackIssueUrl && (
+                          <button
+                            type="button"
+                            onClick={() => void window.electron?.openExternal?.(entry.youtrackIssueUrl!)}
+                            className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+                          >
+                            <ExternalLink size={13} />
+                            <span>{entry.externalId}</span>
+                          </button>
+                        )}
+                        {!entry.youtrackIssueUrl && (
+                          <span className="font-semibold text-gray-900 dark:text-white whitespace-nowrap">{entry.externalId}</span>
+                        )}
+                        {entry.priority !== 'normalny' && (
+                          <span className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${getPendingSettlementPriorityBadgeClass(entry.priority)}`}>
+                            {entry.priority}
+                          </span>
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{formatPendingSettlementRequester(entry.requester)}</td>
+                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{formatOrderHours(entry.estimatedHours)} h</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isSettled ? 'Tak' : 'Nie'}</td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
@@ -5576,6 +5799,8 @@ const PendingSettlementEntryModal = ({
   const requestChannelSuggestions = Array.from(new Set(entries.map((entry) => entry.requestChannel.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const moduleSuggestions = Array.from(new Set(entries.map((entry) => entry.module.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const acceptanceChannelSuggestions = Array.from(new Set(entries.map((entry) => (entry.acceptanceChannel || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
+  const teamEstimateSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.teamEstimatedHours) || 0).filter((value) => value > 0))).sort((left, right) => left - right);
+  const marginPercentSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.marginPercent) || 0).filter((value) => value >= 0))).sort((left, right) => left - right);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target;
@@ -5585,11 +5810,21 @@ const PendingSettlementEntryModal = ({
         ? parseFloat(value) || 0
         : value;
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: nextValue,
-      updatedAt: new Date().toISOString(),
-    }));
+    setFormData((prev) => {
+      const updated = {
+        ...prev,
+        [name]: nextValue,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (name === 'teamEstimatedHours' || name === 'marginPercent') {
+        const teamEstimatedHours = name === 'teamEstimatedHours' ? Number(nextValue) || 0 : prev.teamEstimatedHours;
+        const marginPercent = name === 'marginPercent' ? Number(nextValue) || 0 : prev.marginPercent;
+        updated.estimatedHours = calculatePendingSettlementEstimatedHours(teamEstimatedHours, marginPercent);
+      }
+
+      return updated;
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -5616,7 +5851,11 @@ const PendingSettlementEntryModal = ({
         requestChannel: formData.requestChannel.trim(),
         module: formData.module.trim(),
         title: formData.title.trim(),
+        youtrackIssueUrl: formData.youtrackIssueUrl?.trim() || '',
         details: formData.details.trim(),
+        teamEstimatedHours: Number(formData.teamEstimatedHours) || 0,
+        marginPercent: Number(formData.marginPercent) || 0,
+        estimatedHours: Math.max(0, Math.ceil(Number(formData.estimatedHours) || 0)),
         acceptanceChannel: formData.acceptanceChannel?.trim() || '',
         preAcceptanceWorkDescription: formData.preAcceptanceWorkDescription.trim(),
         notes: formData.notes?.trim() || '',
@@ -5627,6 +5866,33 @@ const PendingSettlementEntryModal = ({
       setError(err.message || 'Wystąpił błąd zapisu pozycji do rozliczenia.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePasteFromClipboard = async (fieldName: keyof PendingSettlementEntry) => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      setFormData((prev) => ({
+        ...prev,
+        [fieldName]: clipboardText,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      setError('Nie udało się odczytać zawartości schowka.');
+    }
+  };
+
+  const handleOpenProjectPendingSettlementYoutrackUrl = async () => {
+    const targetUrl = (project.pendingSettlementYoutrackUrl || '').trim();
+    if (!targetUrl) {
+      setError('Dla tego projektu nie ustawiono adresu tablicy w YouTrack.');
+      return;
+    }
+
+    try {
+      await window.electron?.openExternal?.(targetUrl);
+    } catch (error) {
+      setError('Nie udało się otworzyć adresu tablicy w YouTrack.');
     }
   };
 
@@ -5735,7 +6001,17 @@ const PendingSettlementEntryModal = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tytuł zadania *</label>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tytuł zadania *</label>
+                <button
+                  type="button"
+                  onClick={() => void handlePasteFromClipboard('title')}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                  title="Wklej ze schowka"
+                >
+                  <ClipboardPaste size={15} />
+                </button>
+              </div>
               <input
                 required
                 name="title"
@@ -5746,7 +6022,17 @@ const PendingSettlementEntryModal = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Szczegóły</label>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Szczegóły</label>
+                <button
+                  type="button"
+                  onClick={() => void handlePasteFromClipboard('details')}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                  title="Wklej ze schowka"
+                >
+                  <ClipboardPaste size={15} />
+                </button>
+              </div>
               <textarea
                 name="details"
                 value={formData.details}
@@ -5756,150 +6042,246 @@ const PendingSettlementEntryModal = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Liczba godzin wycenianych</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  name="estimatedHours"
-                  value={formData.estimatedHours}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Link do zadania w YouTrack</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenProjectPendingSettlementYoutrackUrl()}
+                    disabled={!project.pendingSettlementYoutrackUrl?.trim()}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                    title="Otwórz url tablicy w YouTrack"
+                  >
+                    <ExternalLink size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePasteFromClipboard('youtrackIssueUrl')}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                    title="Wklej ze schowka"
+                  >
+                    <ClipboardPaste size={15} />
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  <input
-                    type="checkbox"
-                    name="isEstimated"
-                    checked={formData.isEstimated}
-                    onChange={handleChange}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span>Czy wycenione</span>
-                </label>
+              <input
+                type="url"
+                name="youtrackIssueUrl"
+                value={formData.youtrackIssueUrl || ''}
+                onChange={handleChange}
+                placeholder="https://youtrack..."
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+              />
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-800 dark:bg-gray-900/20">
+              <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wycena i akceptacja</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Pola związane z potwierdzeniem wyceny i formalną akceptacją zadania.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data wyceny</label>
-                <input
-                  type="date"
-                  name="estimationDate"
-                  value={formData.estimationDate || ''}
-                  onChange={handleChange}
-                  onKeyDown={handleDateInputTabNavigation}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
+
+              <div className="mt-5 grid grid-cols-1 gap-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Wycena</p>
+                  <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
+                    <div className="xl:col-span-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Wycena zespołu</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        list="pending-settlement-team-estimates"
+                        name="teamEstimatedHours"
+                        value={formData.teamEstimatedHours}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                      <datalist id="pending-settlement-team-estimates">
+                        {teamEstimateSuggestions.map((value) => <option key={value} value={String(value)} />)}
+                      </datalist>
+                    </div>
+                    <div className="xl:col-span-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Marża procentowa</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        list="pending-settlement-margin-percentages"
+                        name="marginPercent"
+                        value={formData.marginPercent}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                      <datalist id="pending-settlement-margin-percentages">
+                        {marginPercentSuggestions.map((value) => <option key={value} value={String(value)} />)}
+                      </datalist>
+                    </div>
+                    <div className="xl:col-span-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Liczba godzin wycenianych</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        name="estimatedHours"
+                        value={formData.estimatedHours}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                    </div>
+                    <div className="xl:col-span-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Data wyceny</label>
+                      <input
+                        type="date"
+                        name="estimationDate"
+                        value={formData.estimationDate || ''}
+                        onChange={handleChange}
+                        onKeyDown={handleDateInputTabNavigation}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                    </div>
+                    <div className="xl:col-span-3 rounded-xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs leading-5 text-gray-500 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                      `Liczba godzin wycenianych` wylicza się automatycznie jako `Wycena zespołu + marża`, zaokrąglona w górę do pełnej godziny. Pole końcowe nadal możesz ręcznie zmienić.
+                    </div>
+                    <div className="xl:col-span-1">
+                      <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          name="isEstimated"
+                          checked={formData.isEstimated}
+                          onChange={handleChange}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>Przekazane do zamawiającego</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Akceptacja</p>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="md:col-span-3">
+                      <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <input
+                          type="checkbox"
+                          name="isAccepted"
+                          checked={formData.isAccepted}
+                          onChange={handleChange}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>Zaakceptowane?</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Data akceptacji</label>
+                      <input
+                        type="date"
+                        name="acceptanceDate"
+                        value={formData.acceptanceDate || ''}
+                        onChange={handleChange}
+                        onKeyDown={handleDateInputTabNavigation}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Kanał akceptacji</label>
+                      <input
+                        list="pending-settlement-acceptance-channels"
+                        name="acceptanceChannel"
+                        value={formData.acceptanceChannel || ''}
+                        onChange={handleChange}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                      />
+                      <datalist id="pending-settlement-acceptance-channels">
+                        {acceptanceChannelSuggestions.map((value) => <option key={value} value={value} />)}
+                      </datalist>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  <input
-                    type="checkbox"
-                    name="isAccepted"
-                    checked={formData.isAccepted}
-                    onChange={handleChange}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span>Zaakceptowane?</span>
-                </label>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-5 dark:border-gray-800 dark:bg-gray-900/20">
+              <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Realizacja i rozliczenie</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Status wykonania i przygotowania pozycji do dalszego rozliczenia.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data akceptacji</label>
-                <input
-                  type="date"
-                  name="acceptanceDate"
-                  value={formData.acceptanceDate || ''}
-                  onChange={handleChange}
-                  onKeyDown={handleDateInputTabNavigation}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kanał akceptacji</label>
-                <input
-                  list="pending-settlement-acceptance-channels"
-                  name="acceptanceChannel"
-                  value={formData.acceptanceChannel || ''}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
-                <datalist id="pending-settlement-acceptance-channels">
-                  {acceptanceChannelSuggestions.map((value) => <option key={value} value={value} />)}
-                </datalist>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Czas pracy przed akceptacją</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  name="preAcceptanceWorkHours"
-                  value={formData.preAcceptanceWorkHours}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      name="isInProgress"
-                      checked={formData.isInProgress}
-                      onChange={handleChange}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span>Realizacja</span>
-                  </label>
+              <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Czas pracy przed akceptacją</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    name="preAcceptanceWorkHours"
+                    value={formData.preAcceptanceWorkHours}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
                 </div>
-                <div>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      name="isCompleted"
-                      checked={formData.isCompleted}
-                      onChange={handleChange}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span>Zrealizowano?</span>
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      name="isSentToSettlement"
-                      checked={formData.isSentToSettlement}
-                      onChange={handleChange}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span>Przekazano do rozliczenia?</span>
-                  </label>
-                </div>
-                <div>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <input
-                      type="checkbox"
-                      name="isSettled"
-                      checked={formData.isSettled}
-                      onChange={handleChange}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span>Rozliczono?</span>
-                  </label>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Status pozycji</p>
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="isInProgress"
+                        checked={formData.isInProgress}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="min-w-0 whitespace-normal leading-snug">Realizacja</span>
+                    </label>
+                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="isCompleted"
+                        checked={formData.isCompleted}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="min-w-0 whitespace-normal leading-snug">Zrealizowano?</span>
+                    </label>
+                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="isSentToSettlement"
+                        checked={formData.isSentToSettlement}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="min-w-0 whitespace-normal leading-snug">Przekazano do rozliczenia?</span>
+                    </label>
+                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        name="isSettled"
+                        checked={formData.isSettled}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="min-w-0 whitespace-normal leading-snug">Rozliczono?</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Co zrobiono przed akceptacją</label>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Co zrobiono przed akceptacją</label>
+                <button
+                  type="button"
+                  onClick={() => void handlePasteFromClipboard('preAcceptanceWorkDescription')}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                  title="Wklej ze schowka"
+                >
+                  <ClipboardPaste size={15} />
+                </button>
+              </div>
               <textarea
                 name="preAcceptanceWorkDescription"
                 value={formData.preAcceptanceWorkDescription}
@@ -5910,7 +6292,17 @@ const PendingSettlementEntryModal = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Uwagi</label>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Uwagi</label>
+                <button
+                  type="button"
+                  onClick={() => void handlePasteFromClipboard('notes')}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                  title="Wklej ze schowka"
+                >
+                  <ClipboardPaste size={15} />
+                </button>
+              </div>
               <textarea
                 name="notes"
                 value={formData.notes || ''}
@@ -8114,9 +8506,18 @@ const generatePendingSettlementExternalId = (
   return `${prefix}${String(nextSequence).padStart(3, '0')}`;
 };
 
+const calculatePendingSettlementEstimatedHours = (teamEstimatedHours: number, marginPercent: number) => {
+  const safeTeamEstimate = Number(teamEstimatedHours) || 0;
+  const safeMargin = Number(marginPercent) || 0;
+  return Math.max(0, Math.ceil(safeTeamEstimate * (1 + safeMargin / 100)));
+};
+
 const createPendingSettlementDraft = (project: Project, entries: PendingSettlementEntry[] = []): PendingSettlementEntry => {
   const now = new Date().toISOString();
   const requestDate = format(new Date(), 'yyyy-MM-dd');
+  const teamEstimatedHours = 0;
+  const lastUsedMarginPercent = entries.find((entry) => Number.isFinite(Number(entry.marginPercent)))?.marginPercent;
+  const marginPercent = Number(lastUsedMarginPercent) || 0;
   return {
     id: createClientId(),
     projectId: project.id,
@@ -8126,9 +8527,12 @@ const createPendingSettlementDraft = (project: Project, entries: PendingSettleme
     requestChannel: '',
     module: '',
     title: '',
+    youtrackIssueUrl: '',
     details: '',
     priority: 'normalny',
-    estimatedHours: 0,
+    teamEstimatedHours,
+    marginPercent,
+    estimatedHours: calculatePendingSettlementEstimatedHours(teamEstimatedHours, marginPercent),
     isEstimated: false,
     estimationDate: '',
     isAccepted: false,

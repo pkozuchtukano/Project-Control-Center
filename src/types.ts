@@ -34,6 +34,7 @@ export type Project = {
   youtrackQuery?: string;
   taskTypes?: TaskType[];
   googleDocLink?: string;
+  pendingSettlementYoutrackUrl?: string;
   stakeholders?: Stakeholder[];
 };
 
@@ -284,8 +285,11 @@ export type PendingSettlementEntry = {
   requestChannel: string;
   module: string;
   title: string;
+  youtrackIssueUrl?: string;
   details: string;
   priority: 'wysoki' | 'normalny' | 'niski';
+  teamEstimatedHours: number;
+  marginPercent: number;
   estimatedHours: number;
   isEstimated: boolean;
   estimationDate?: string;

@@ -525,6 +525,74 @@
   -- Do zmiennych rozliczenia miesiąca dodano `{{poczatek_miesiaca}}` oraz `{{koniec_miesiaca}}` wraz z aliasami technicznymi dla szablonów i flow.
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
 
+## Do rozliczenia
+- 2026-04-14 – Uporządkowanie sekcji wyceny i statusów w formularzu
+  -- W formularzu pozycji `Do rozliczenia` przeorganizowano układ pól dotyczących wyceny, akceptacji oraz statusów realizacji do dwóch czytelnych sekcji z wewnętrznymi kartami.
+  -- Pola zachowały dotychczasową logikę i dane, ale widok ma teraz równiejszą siatkę, lepsze grupowanie informacji i bardziej spójny układ checkboxów przy różnych szerokościach ekranu.
+- 2026-04-14 – Korekta zawijania etykiet statusów
+  -- W sekcji statusów formularza `Do rozliczenia` zmieniono responsywność siatki checkboxów oraz sposób renderowania etykiet przy statusach realizacji i rozliczenia.
+  -- Dłuższe nazwy statusów zawijają się teraz wewnątrz własnych kafli i nie wychodzą poza obszar sekcji przy pośrednich szerokościach okna.
+- 2026-04-14 – Naturalne zawijanie etykiet statusów
+  -- W sekcji `Status pozycji` zrezygnowano z ciasnego układu czterech kolumn na szerokich widokach pośrednich, pozostawiając szersze kafle w dwóch kolumnach.
+  -- Etykiety statusów zawijają się teraz naturalnie po całych słowach, zamiast łamać wyrazy w środku.
+- 2026-04-14 – Link do zadania YouTrack w `Do rozliczenia`
+  -- Formularz pozycji `Do rozliczenia` został rozszerzony o pole `Link do zadania w YouTrack`, a model danych i zapis SQLite dostały bezstratną migrację nowej kolumny `youtrackIssueUrl`.
+  -- Zapisany link można od razu otworzyć z listy pozycji, co ułatwia szybkie przejście z wpisu rozliczeniowego do źródłowego zadania w YouTrack.
+- 2026-04-14 – Wklejanie ze schowka w polach formularza `Do rozliczenia`
+  -- Pole `Link do zadania w YouTrack` przeniesiono pod `Szczegóły`, a przy polach `Tytuł zadania`, `Szczegóły`, `Link do zadania w YouTrack`, `Co zrobiono przed akceptacją` i `Uwagi` dodano ikonę szybkiego wklejenia ze schowka.
+  -- Kliknięcie ikony odczytuje bieżącą zawartość tekstową schowka i wstawia ją bezpośrednio do wybranego pola, co przyspiesza uzupełnianie formularza.
+- 2026-04-14 – Projektowy skrót YouTrack dla `Do rozliczenia`
+  -- W konfiguracji projektu dodano osobne pole `Url tablicy w youtrack` dla sekcji `Do rozliczenia`, dzięki czemu każdy projekt może wskazywać własny adres tablicy.
+  -- Przy polu `Link do zadania w YouTrack` w formularzu dodano ikonę otwierającą ten projektowy adres, aktywną tylko wtedy, gdy URL został zdefiniowany.
+- 2026-04-14 – Uproszczenie opisu pola tablicy YouTrack
+  -- Z pola `Url tablicy w youtrack` w konfiguracji projektu usunięto dodatkowy opis pomocniczy pod inputem.
+  -- Sekcja jest dzięki temu wizualnie lżejsza, a funkcja pola pozostaje czytelna dzięki nazwie i kontekstowi formularza.
+- 2026-04-14 – Wycena zespołu i marża w sekcji `Do rozliczenia`
+  -- W sekcji `Wycena` formularza `Do rozliczenia` dodano pola `Wycena zespołu` oraz `Marża procentowa`, zapisywane razem z wpisem i podpowiadane na podstawie wcześniejszych pozycji projektu.
+  -- `Liczba godzin wycenianych` wylicza się teraz automatycznie jako suma wyceny zespołu i marży, zaokrąglona w górę do pełnej godziny, ale nadal może być ręcznie edytowana przed zapisem.
+- 2026-04-14 – Uporządkowanie układu sekcji `Wycena`
+  -- W sekcji `Wycena` formularza `Do rozliczenia` przełożono pola na szerszy układ wykorzystujący wolne miejsce modala, zamiast odkładać część elementów do kolejnego, wąskiego rzędu.
+  -- Dzięki temu `Wycena zespołu`, `Marża procentowa`, `Liczba godzin wycenianych` i `Data wyceny` są czytelniejsze, a opis wyliczenia i status `Czy wycenione` tworzą bardziej uporządkowany drugi rząd.
+- 2026-04-14 – Pionowy układ sekcji `Wycena i akceptacja`
+  -- Sekcje `Wycena` i `Akceptacja` w formularzu `Do rozliczenia` ustawiono jedna pod drugą, zamiast obok siebie.
+  -- Każda karta ma dzięki temu więcej szerokości roboczej, co poprawia czytelność pól i ogranicza ściskanie zawartości przy średnich szerokościach okna.
+- 2026-04-14 – Zapamiętywanie ostatniej marży w nowych pozycjach
+  -- Nowo dodawana pozycja `Do rozliczenia` startuje teraz z ostatnio używaną wartością pola `Marża procentowa` z tego samego projektu, zamiast zawsze od zera.
+  -- Dzięki temu zmieniona marża jest automatycznie podpowiadana i podstawiana także w kolejnych tworzonych wpisach.
+- 2026-04-14 – Uproszczenie listy pozycji `Do rozliczenia`
+  -- Tabela pozycji `Do rozliczenia` pokazuje teraz tylko kolumny `ID`, `Zgłaszający`, `Data zgłoszenia`, `Tytuł`, `Liczba godzin wycenionych`, `Akceptacja?` oraz `Rozliczono?`.
+  -- Kliknięcie w `ID` otwiera zadanie w YouTrack na podstawie pola `Link do zadania w YouTrack`, a `Zgłaszający` jest prezentowany w formacie `Imię N.` dla czytelniejszego widoku listy.
+- 2026-04-14 – Zmiana etykiety checkboxa wyceny
+  -- W sekcji `Wycena` formularza `Do rozliczenia` zmieniono opis checkboxa z `Czy wycenione` na `Przekazane do zamawiającego`.
+  -- Zmiana dotyczy wyłącznie nazewnictwa w interfejsie i nie modyfikuje logiki ani przechowywanych danych pola.
+- 2026-04-14 – Filtrowanie listy `Do rozliczenia` z kafelków podsumowania
+  -- Kafelki `Pozycji`, `Wycenione`, `Zaakceptowane` i `Zrealizowane` w widoku `Do rozliczenia` stały się klikalnymi filtrami listy pozycji.
+  -- `Wycenione` filtruje teraz po zgłoszeniach przekazanych do zamawiającego, a ostatni kafelek pokazuje pozycje zrealizowane zamiast rozliczonych, zgodnie z bieżącym znaczeniem statusów w formularzu.
+- 2026-04-14 – Kafelek `Niewycenione` w widoku `Do rozliczenia`
+  -- Do zestawu kafelków podsumowania dodano filtr `Niewycenione`, pokazujący pozycje, które nie zostały jeszcze przekazane do zamawiającego.
+  -- Układ kafelków został rozszerzony do pięciu pozycji z responsywną siatką, żeby nowy filtr pozostał czytelny na szerszych i średnich ekranach.
+- 2026-04-14 – Kafelek `Niezaakceptowane` w widoku `Do rozliczenia`
+  -- Do podsumowania listy dodano filtr `Niezaakceptowane`, pokazujący pozycje bez formalnej akceptacji.
+  -- Siatka kafelków została dostosowana do sześciu statusów, żeby zachować czytelny układ po dodaniu kolejnego skrótu filtrowania.
+- 2026-04-14 – Kafelek `Realizowane` w widoku `Do rozliczenia`
+  -- Do zestawu filtrów podsumowania dodano kafelek `Realizowane`, oparty o status `Realizacja` zapisywany w polu `isInProgress`.
+  -- Układ kafelków został ponownie dopasowany do siedmiu skrótów filtrowania, aby zachować czytelność listy po dodaniu statusu realizacji.
+- 2026-04-14 – Dropdown `Linki` w zakładce `Do rozliczenia`
+  -- Do nagłówka widoku `Do rozliczenia` dodano dropdown `Linki`, tak jak w innych zakładkach projektowych.
+  -- Konfiguracja linków projektu została rozszerzona o widoczność w zakładce `Do rozliczenia`, dzięki czemu można pokazywać tam tylko wybrane skróty.
+- 2026-04-14 – Sortowanie i oznaczenie priorytetu na liście `Do rozliczenia`
+  -- Lista pozycji `Do rozliczenia` jest teraz domyślnie sortowana malejąco po `Dacie zgłoszenia`, a przy remisie po dacie utworzenia wpisu.
+  -- Pod `ID` pokazuje się teraz priorytet dla pozycji innych niż `normalny`; priorytet `wysoki` jest wyróżniony czerwonym znacznikiem.
+- 2026-04-14 – Eksport tabeli `Do rozliczenia` do schowka
+  -- W pasku akcji zakładki `Do rozliczenia` dodano przycisk `Kopiuj`, który zapisuje do schowka tabelę gotową do wklejenia z kolumnami `ID`, `Zgłoszono`, `Tytuł`, `Szczegóły`, `Wycena`, `Zaakceptowano`, `Status` i `Już wykonano`.
+  -- Eksport respektuje aktualnie wybrany filtr z kafelków i buduje opisowe komórki na podstawie danych zgłoszenia, akceptacji, statusu realizacji oraz prac wykonanych przed akceptacją.
+- 2026-04-14 – Naprawa kopiowania tabeli `Do rozliczenia` do schowka
+  -- Handler schowka w Electronie zapisuje teraz jednocześnie wersję HTML i tekstową, zamiast samego HTML.
+  -- Dzięki temu kliknięcie `Kopiuj` w zakładce `Do rozliczenia` daje zawartość, którą można realnie wkleić do dokumentów, maili i edytorów tekstu.
+- 2026-04-14 – Tekstowy format eksportu `Do rozliczenia`
+  -- Eksport kopiowany przyciskiem `Kopiuj` został zmieniony z tabeli na swobodny blok tekstowy dla każdej pozycji, z liniami `Id`, `Zgłoszono`, pogrubionym tytułem, `Szczegółami`, `Wyceną`, `Zaakceptowano`, `Statusem` i opcjonalnym `Już wykonano`.
+  -- Dzięki temu wklejona treść jest bardziej naturalna do użycia w mailach, dokumentach i notatkach, a jednocześnie zachowuje pogrubienia i podziały linii.
+
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status
   -- Dodano nowy projekt web-pcc oparty o React 19, TypeScript, Vite i Tailwind CSS 4 jako webową replikę modułów Daily i Status istniejącej aplikacji PCC.

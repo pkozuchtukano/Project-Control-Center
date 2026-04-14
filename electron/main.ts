@@ -132,8 +132,11 @@ db.exec(`
         requestChannel TEXT,
         module TEXT,
         title TEXT NOT NULL,
+        youtrackIssueUrl TEXT,
         details TEXT,
         priority TEXT NOT NULL,
+        teamEstimatedHours REAL NOT NULL DEFAULT 0,
+        marginPercent REAL NOT NULL DEFAULT 0,
         estimatedHours REAL NOT NULL DEFAULT 0,
         isEstimated INTEGER NOT NULL DEFAULT 0,
         estimationDate TEXT,
@@ -185,6 +188,9 @@ try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch (e) { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -314,8 +320,11 @@ const initializeDatabase = () => {
             requestChannel TEXT,
             module TEXT,
             title TEXT NOT NULL,
+            youtrackIssueUrl TEXT,
             details TEXT,
             priority TEXT NOT NULL,
+            teamEstimatedHours REAL NOT NULL DEFAULT 0,
+            marginPercent REAL NOT NULL DEFAULT 0,
             estimatedHours REAL NOT NULL DEFAULT 0,
             isEstimated INTEGER NOT NULL DEFAULT 0,
             estimationDate TEXT,
@@ -376,6 +385,9 @@ try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { 
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch { }
 try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -1094,10 +1106,13 @@ ipcMain.handle('save-estimation', async (_, { projectId, data }: { projectId: st
     }
 });
 
-ipcMain.handle('write-clipboard-html', async (_, html: string) => {
+ipcMain.handle('write-clipboard-html', async (_, payload: { html: string; text?: string }) => {
     try {
         const { clipboard } = electron;
-        clipboard.writeHTML(html);
+        clipboard.write({
+            html: payload?.html || '',
+            text: payload?.text || '',
+        });
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d zapisu do schowka HTML:', error);
@@ -2905,8 +2920,11 @@ ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) =>
                 requestChannel,
                 module,
                 title,
+                youtrackIssueUrl,
                 details,
                 priority,
+                teamEstimatedHours,
+                marginPercent,
                 estimatedHours,
                 isEstimated,
                 estimationDate,
@@ -2927,6 +2945,8 @@ ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) =>
             ORDER BY requestDate DESC, createdAt DESC
         `).all(projectId).map((row: any) => ({
             ...row,
+            teamEstimatedHours: Number(row.teamEstimatedHours) || 0,
+            marginPercent: Number(row.marginPercent) || 0,
             estimatedHours: Number(row.estimatedHours) || 0,
             isEstimated: row.isEstimated === 1,
             isAccepted: row.isAccepted === 1,
@@ -2954,8 +2974,11 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 requestChannel,
                 module,
                 title,
+                youtrackIssueUrl,
                 details,
                 priority,
+                teamEstimatedHours,
+                marginPercent,
                 estimatedHours,
                 isEstimated,
                 estimationDate,
@@ -2972,7 +2995,7 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 createdAt,
                 updatedAt
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 externalId = excluded.externalId,
                 requester = excluded.requester,
@@ -2980,8 +3003,11 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 requestChannel = excluded.requestChannel,
                 module = excluded.module,
                 title = excluded.title,
+                youtrackIssueUrl = excluded.youtrackIssueUrl,
                 details = excluded.details,
                 priority = excluded.priority,
+                teamEstimatedHours = excluded.teamEstimatedHours,
+                marginPercent = excluded.marginPercent,
                 estimatedHours = excluded.estimatedHours,
                 isEstimated = excluded.isEstimated,
                 estimationDate = excluded.estimationDate,
@@ -3005,8 +3031,11 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
             data.requestChannel || '',
             data.module || '',
             data.title,
+            data.youtrackIssueUrl || '',
             data.details || '',
             data.priority,
+            Number(data.teamEstimatedHours) || 0,
+            Number(data.marginPercent) || 0,
             Number(data.estimatedHours) || 0,
             data.isEstimated ? 1 : 0,
             data.estimationDate || null,
