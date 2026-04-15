@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Edit2, ExternalLink, Loader2, Plus, Trash2, X } from 'lucide-react';
 import type { Project, ProjectLink } from '../../../types';
@@ -388,6 +388,9 @@ const useProjectLinksState = (projectId: string, visibleInTab?: string) => {
 
 export const ProjectLinksDropdown = ({ project, visibleInTab }: ProjectLinksDropdownProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const {
     sortedLinks,
     isLoading,
@@ -409,9 +412,55 @@ export const ProjectLinksDropdown = ({ project, visibleInTab }: ProjectLinksDrop
     }
   }, [isModalOpen]);
 
+  useEffect(() => {
+    if (!isExpanded) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      const preferredWidth = 352;
+      const viewportPadding = 16;
+      const width = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
+      const left = Math.max(viewportPadding, Math.min(rect.right - width, window.innerWidth - width - viewportPadding));
+
+      setMenuPosition({
+        top: rect.bottom + 8,
+        left,
+        width,
+      });
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      const target = event.target as Node | null;
+      if (target && !trigger?.contains(target) && !menu?.contains(target)) {
+        setIsExpanded(false);
+      }
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    document.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [isExpanded]);
+
   return (
     <>
-      <div className="relative">
+      <div ref={triggerRef} className="relative">
         <button
           type="button"
           onClick={() => setIsExpanded((current) => !current)}
@@ -428,8 +477,12 @@ export const ProjectLinksDropdown = ({ project, visibleInTab }: ProjectLinksDrop
           <ChevronDown size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
 
-        {isExpanded && (
-          <div className="absolute right-0 top-full z-30 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+        {isExpanded && menuPosition && createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[80] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+            style={{ top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }}
+          >
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-700">
               <div>
                 <div className="text-sm font-semibold text-gray-900 dark:text-white">Linki projektu</div>
@@ -493,7 +546,8 @@ export const ProjectLinksDropdown = ({ project, visibleInTab }: ProjectLinksDrop
                 </div>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
 

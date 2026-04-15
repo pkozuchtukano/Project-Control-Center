@@ -615,9 +615,25 @@
 - 2026-04-15 – Import i eksport schematu JSON dla zakładki `Obowiązki`
   -- Przycisk `Załaduj szablon` otwiera teraz modal z eksportem przykładowego pliku JSON oraz importem definicji obowiązków przygotowanych w zewnętrznym narzędziu.
   -- Przy imporcie aplikacja pyta, czy zastąpić istniejącą listę obowiązków; po potwierdzeniu usuwa bieżące obowiązki projektu i tworzy nową listę na podstawie wczytanego pliku.
+  -- Modal eksportu zawiera dodatkowo pola `Data bazowa` i `Data końcowa`, domyślnie uzupełnione z dat obowiązywania umowy w projekcie, a eksportowany JSON zapisuje te wartości w parametrach `baseDate` i `endDate`.
+- 2026-04-15 – Wyraźna sekcja harmonogramu w formularzu obowiązku
+  -- Formularz edycji obowiązku pokazuje teraz osobną sekcję `Harmonogram` z opisem aktualnego trybu działania, dzięki czemu sposób liczenia terminu jest łatwiej znaleźć i zmienić.
+  -- Dostępne opcje harmonogramu są filtrowane według typu obowiązku: `ciągły`, `cykliczny` albo `od zdarzenia`, co usuwa część mylących kombinacji pól.
+- 2026-04-15 – Jednostka `godziny` dla terminów względnych
+  -- W obowiązkach liczonych od zdarzenia dodano nową jednostkę `Godziny`, dzięki czemu termin można ustawić np. jako `4 godziny od zdarzenia`.
+  -- Logika backendu wylicza teraz takie terminy z dokładnością godzinową, a etykiety harmonogramu pokazują tę jednostkę również w podsumowaniu obowiązku.
+- 2026-04-15 – Ciągłe obowiązki bez zadań do odhaczania
+  -- Obowiązek oznaczony jako `ciągły` jest teraz automatycznie zapisywany bez terminu i nie tworzy zadania na liście `Terminy do dopilnowania`.
+  -- Jeżeli wcześniej istniały otwarte zadania dla obowiązku później zmienionego na `ciągły`, aplikacja wygasza je przy przeliczeniu, aby nie dało się błędnie oznaczać ich jako wykonane.
+- 2026-04-15 – Jeden aktywny termin na obowiązek
+  -- Logika przeliczania obowiązków pilnuje teraz, aby dla pojedynczego obowiązku pozostawało najwyżej jedno otwarte zadanie `pending` lub `overdue`.
+  -- Nadmiarowe otwarte zadania historyczne są automatycznie wygaszane, co usuwa sytuację, w której po oznaczeniu wykonania nadal zostawał drugi aktywny termin do odhaczenia.
 - 2026-04-15 – Linki projektowe i obowiązki we wszystkich projektach
   -- Linki projektowe można teraz przypinać także do zakładki `Obowiązki`, tak aby pod ręką mieć np. portal serwisowy, repozytorium, monitoring lub dokumenty kontraktowe.
   -- Zakładka `Obowiązki` jest dostępna we wszystkich projektach, a nie tylko w projektach utrzymaniowych.
+- 2026-04-15 – Dropdown `Linki` renderowany nad kartą nagłówka
+  -- Lista linków w zakładce `Obowiązki` została przepięta na portal renderowany do `document.body`, dzięki czemu nie jest już obcinana przez kontener nagłówka z `overflow-hidden`.
+  -- Dropdown utrzymuje pozycję względem przycisku podczas przewijania i zamyka się po kliknięciu poza menu.
 
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status

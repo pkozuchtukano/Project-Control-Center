@@ -85,7 +85,9 @@ const getScheduleLabel = (obligation: ServiceObligation) => {
     case 'relative': {
       const value = obligation.relativeValue || 0;
       const unitLabel =
-        obligation.relativeUnit === 'business_days'
+        obligation.relativeUnit === 'hours'
+          ? 'godzin'
+          : obligation.relativeUnit === 'business_days'
           ? 'dni roboczych'
           : obligation.relativeUnit === 'months'
             ? 'miesiąca / miesięcy'
@@ -166,6 +168,10 @@ const TemplateManagerModal = ({
   isOpen,
   isBusy,
   sampleCount,
+  baseDate,
+  endDate,
+  onBaseDateChange,
+  onEndDateChange,
   onClose,
   onExport,
   onImport,
@@ -173,6 +179,10 @@ const TemplateManagerModal = ({
   isOpen: boolean;
   isBusy: boolean;
   sampleCount: number;
+  baseDate: string;
+  endDate: string;
+  onBaseDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
   onClose: () => void;
   onExport: () => Promise<void>;
   onImport: () => Promise<void>;
@@ -193,6 +203,34 @@ const TemplateManagerModal = ({
         </div>
 
         <div className="space-y-6 px-6 py-5">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+            <label className="mb-2 block text-sm font-semibold text-slate-900 dark:text-white">Data bazowa</label>
+            <p className="mb-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Domyślnie jest tu `Data obowiązywania umowy od` z projektu. Ta wartość zostanie zapisana w eksportowanym JSON jako parametr `baseDate`.
+            </p>
+            <input
+              type="date"
+              value={baseDate}
+              disabled={isBusy}
+              onChange={(event) => onBaseDateChange(event.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-indigo-500 dark:focus:ring-indigo-900/40"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+            <label className="mb-2 block text-sm font-semibold text-slate-900 dark:text-white">Data końcowa</label>
+            <p className="mb-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Domyślnie jest tu `Data końcowa umowy` z projektu. Ta wartość zostanie zapisana w eksportowanym JSON jako parametr `endDate`.
+            </p>
+            <input
+              type="date"
+              value={endDate}
+              disabled={isBusy}
+              onChange={(event) => onEndDateChange(event.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-indigo-500 dark:focus:ring-indigo-900/40"
+            />
+          </div>
+
           <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-5 dark:border-sky-900/40 dark:bg-sky-500/10">
             <div className="flex items-start gap-3">
               <Download className="mt-0.5 text-sky-600 dark:text-sky-300" size={18} />
@@ -552,6 +590,8 @@ const ServiceObligationModal = ({
   const [formData, setFormData] = useState<ServiceObligation | null>(obligation);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const recurringScheduleOptions: ServiceScheduleType[] = ['fixed_date', 'monthly', 'quarterly', 'semiannual', 'annual'];
+  const eventScheduleOptions: ServiceScheduleType[] = ['fixed_date', 'relative'];
 
   useEffect(() => {
     setFormData(obligation);
@@ -562,11 +602,55 @@ const ServiceObligationModal = ({
   if (!isOpen || !formData) return null;
 
   const handleChange = <K extends keyof ServiceObligation>(field: K, value: ServiceObligation[K]) => {
-    setFormData((current) => current ? {
-      ...current,
-      [field]: value,
-      updatedAt: createTimestamp(),
-    } : current);
+    setFormData((current) => {
+      if (!current) return current;
+
+      if (field === 'kind') {
+        if (value === 'continuous') {
+          return {
+            ...current,
+            kind: value,
+            scheduleType: 'none',
+            fixedDate: '',
+            anchorDate: '',
+            relativeValue: 0,
+            relativeUnit: 'business_days',
+            triggerLabel: '',
+            updatedAt: createTimestamp(),
+          };
+        }
+
+        if (value === 'recurring') {
+          const nextScheduleType = recurringScheduleOptions.includes(current.scheduleType) ? current.scheduleType : 'monthly';
+          return {
+            ...current,
+            kind: value,
+            scheduleType: nextScheduleType,
+            relativeValue: 0,
+            relativeUnit: 'business_days',
+            triggerLabel: '',
+            updatedAt: createTimestamp(),
+          };
+        }
+
+        if (value === 'event') {
+          const nextScheduleType = eventScheduleOptions.includes(current.scheduleType) ? current.scheduleType : 'relative';
+          return {
+            ...current,
+            kind: value,
+            scheduleType: nextScheduleType,
+            anchorDate: '',
+            updatedAt: createTimestamp(),
+          };
+        }
+      }
+
+      return {
+        ...current,
+        [field]: value,
+        updatedAt: createTimestamp(),
+      };
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -599,6 +683,25 @@ const ServiceObligationModal = ({
   const showAnchorDate = ['monthly', 'quarterly', 'semiannual', 'annual'].includes(formData.scheduleType);
   const showFixedDate = formData.scheduleType === 'fixed_date';
   const showRelative = formData.scheduleType === 'relative';
+  const scheduleOptions = formData.kind === 'continuous'
+    ? [{ value: 'none', label: 'Brak terminu, monitoring ciągły' }]
+    : formData.kind === 'event'
+      ? [
+          { value: 'fixed_date', label: 'Jedna konkretna data' },
+          { value: 'relative', label: 'Licz od zdarzenia' },
+        ]
+      : [
+          { value: 'fixed_date', label: 'Jedna konkretna data' },
+          { value: 'monthly', label: 'Co miesiąc' },
+          { value: 'quarterly', label: 'Co kwartał' },
+          { value: 'semiannual', label: 'Co 6 miesięcy' },
+          { value: 'annual', label: 'Co rok' },
+        ];
+  const scheduleHint = formData.kind === 'continuous'
+    ? 'Obowiązek ciągły pozostaje bezterminowy i nie tworzy zadania do odhaczania.'
+    : formData.kind === 'event'
+      ? 'Dla obowiązku od zdarzenia możesz wskazać sztywną datę wykonania albo termin liczony od konkretnego zdarzenia.'
+      : 'Dla obowiązku cyklicznego wybierz stałą datę albo rytm powtarzania wraz z datą bazową pierwszego cyklu.';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -660,6 +763,12 @@ const ServiceObligationModal = ({
             />
           </div>
 
+          <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/30">
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Harmonogram</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{scheduleHint}</p>
+            </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Typ obowiązku</label>
@@ -678,15 +787,14 @@ const ServiceObligationModal = ({
               <select
                 value={formData.scheduleType}
                 onChange={(event) => handleChange('scheduleType', event.target.value as ServiceScheduleType)}
+                disabled={formData.kind === 'continuous'}
                 className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
               >
-                <option value="none">Brak terminu, monitoring ciągły</option>
-                <option value="fixed_date">Jedna konkretna data</option>
-                <option value="monthly">Co miesiąc</option>
-                <option value="quarterly">Co kwartał</option>
-                <option value="semiannual">Co 6 miesięcy</option>
-                <option value="annual">Co rok</option>
-                <option value="relative">Licz od zdarzenia</option>
+                {scheduleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex items-end">
@@ -701,6 +809,13 @@ const ServiceObligationModal = ({
               </label>
             </div>
           </div>
+          </div>
+
+          {formData.kind === 'continuous' && (
+            <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-900/40 dark:bg-sky-500/10 dark:text-sky-200">
+              Obowiązek ciągły nie tworzy zadania do odhaczenia. Jest widoczny w sekcji `Obowiązki ciągłe` i nie pojawia się na liście terminów do wykonania.
+            </div>
+          )}
 
           {showAnchorDate && (
             <div>
@@ -745,6 +860,7 @@ const ServiceObligationModal = ({
                   onChange={(event) => handleChange('relativeUnit', event.target.value as ServiceRelativeUnit)}
                   className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
                 >
+                  <option value="hours">Godziny</option>
                   <option value="business_days">Dni robocze</option>
                   <option value="calendar_days">Dni kalendarzowe</option>
                   <option value="months">Miesiące</option>
@@ -1015,6 +1131,13 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isTemplateActionPending, setIsTemplateActionPending] = useState(false);
+  const [templateBaseDate, setTemplateBaseDate] = useState(project.dateFrom || new Date().toISOString().slice(0, 10));
+  const [templateEndDate, setTemplateEndDate] = useState(project.dateTo || '');
+
+  useEffect(() => {
+    setTemplateBaseDate(project.dateFrom || new Date().toISOString().slice(0, 10));
+    setTemplateEndDate(project.dateTo || '');
+  }, [project.id, project.dateFrom, project.dateTo]);
 
   const loadData = async () => {
     if (!window.electron?.getServiceOverview) {
@@ -1143,7 +1266,10 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
     setIsTemplateActionPending(true);
     setError(null);
     try {
-      const result = await window.electron.exportServiceObligationTemplate();
+      const result = await window.electron.exportServiceObligationTemplate({
+        baseDate: templateBaseDate || project.dateFrom || new Date().toISOString().slice(0, 10),
+        endDate: templateEndDate || project.dateTo || '',
+      });
       if (!result?.canceled && result?.success) {
         window.alert(`Zapisano przykładowy plik JSON: ${result.filePath || 'bez wskazanej ścieżki'}`);
       }
@@ -1549,6 +1675,10 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
         isOpen={isTemplateModalOpen}
         isBusy={isTemplateActionPending}
         sampleCount={Math.min(DEFAULT_ATK_OBLIGATIONS.length, 3)}
+        baseDate={templateBaseDate}
+        endDate={templateEndDate}
+        onBaseDateChange={setTemplateBaseDate}
+        onEndDateChange={setTemplateEndDate}
         onClose={() => setIsTemplateModalOpen(false)}
         onExport={handleExportTemplate}
         onImport={handleImportTemplate}

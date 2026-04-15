@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld('electron', {
     deleteServiceEvent: (id: string) => ipcRenderer.invoke('delete-service-event', id),
     completeServiceTask: (id: string) => ipcRenderer.invoke('complete-service-task', id),
     reopenServiceTask: (id: string) => ipcRenderer.invoke('reopen-service-task', id),
-    exportServiceObligationTemplate: () => ipcRenderer.invoke('export-service-obligation-template'),
+    exportServiceObligationTemplate: (data: { baseDate: string; endDate: string }) => ipcRenderer.invoke('export-service-obligation-template', data),
     readServiceObligationTemplate: () => ipcRenderer.invoke('read-service-obligation-template'),
     importServiceObligations: (data: any) => ipcRenderer.invoke('import-service-obligations', data),
     onServiceAlerts: (callback: (payload: any) => void) => {

@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
-import { addBusinessDays, addDays, addMonths } from 'date-fns';
+import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
 import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent } from '../src/types.js';
@@ -2570,28 +2570,35 @@ const stopScheduledTaskRunner = () => {
     scheduledTaskRunner = null;
 };
 
-const normalizeServiceObligation = (obligation: ServiceObligation): ServiceObligation => ({
-    ...obligation,
-    code: obligation.code?.trim() || '',
-    title: obligation.title?.trim() || '',
-    description: obligation.description?.trim() || '',
-    kind: obligation.kind || 'continuous',
-    scheduleType: obligation.scheduleType || 'none',
-    intervalValue: Number(obligation.intervalValue) || 1,
-    relativeValue: Number(obligation.relativeValue) || 0,
-    relativeUnit: obligation.relativeUnit || 'business_days',
-    fixedDate: obligation.fixedDate || '',
-    anchorDate: obligation.anchorDate || '',
-    triggerLabel: obligation.triggerLabel || '',
-    owner: obligation.owner || '',
-    evidenceHint: obligation.evidenceHint || '',
-    notes: obligation.notes || '',
-    sourceRequirement: obligation.sourceRequirement || '',
-    requiresProtocol: Boolean(obligation.requiresProtocol),
-    isActive: obligation.isActive !== false,
-    createdAt: obligation.createdAt || new Date().toISOString(),
-    updatedAt: obligation.updatedAt || new Date().toISOString(),
-});
+const normalizeServiceObligation = (obligation: ServiceObligation): ServiceObligation => {
+    const kind = obligation.kind || 'continuous';
+    const scheduleType = kind === 'continuous'
+        ? 'none'
+        : obligation.scheduleType || 'none';
+
+    return {
+        ...obligation,
+        code: obligation.code?.trim() || '',
+        title: obligation.title?.trim() || '',
+        description: obligation.description?.trim() || '',
+        kind,
+        scheduleType,
+        intervalValue: Number(obligation.intervalValue) || 1,
+        relativeValue: scheduleType === 'relative' ? (Number(obligation.relativeValue) || 0) : 0,
+        relativeUnit: scheduleType === 'relative' ? (obligation.relativeUnit || 'business_days') : 'business_days',
+        fixedDate: scheduleType === 'fixed_date' ? (obligation.fixedDate || '') : '',
+        anchorDate: ['monthly', 'quarterly', 'semiannual', 'annual'].includes(scheduleType) ? (obligation.anchorDate || '') : '',
+        triggerLabel: scheduleType === 'relative' ? (obligation.triggerLabel || '') : '',
+        owner: obligation.owner || '',
+        evidenceHint: obligation.evidenceHint || '',
+        notes: obligation.notes || '',
+        sourceRequirement: obligation.sourceRequirement || '',
+        requiresProtocol: Boolean(obligation.requiresProtocol),
+        isActive: obligation.isActive !== false,
+        createdAt: obligation.createdAt || new Date().toISOString(),
+        updatedAt: obligation.updatedAt || new Date().toISOString(),
+    };
+};
 
 const normalizeServiceTask = (task: ServiceTask): ServiceTask => ({
     ...task,
@@ -2710,6 +2717,10 @@ const calculateRelativeDueDate = (occurredAt: string, obligation: ServiceObligat
         return addMonths(baseDate, relativeValue).toISOString();
     }
 
+    if (obligation.relativeUnit === 'hours') {
+        return addHours(baseDate, relativeValue).toISOString();
+    }
+
     if (obligation.relativeUnit === 'calendar_days') {
         return addDays(baseDate, relativeValue).toISOString();
     }
@@ -2779,6 +2790,11 @@ const upsertServiceTask = (task: ServiceTask) => {
 
 const ensureServiceTaskForObligation = (obligation: ServiceObligation) => {
     if (!obligation.isActive || obligation.kind === 'continuous' || obligation.scheduleType === 'none' || obligation.scheduleType === 'relative') {
+        db.prepare(`
+            UPDATE service_tasks
+            SET status = 'canceled', updatedAt = ?
+            WHERE obligationId = ? AND status IN ('pending', 'overdue')
+        `).run(new Date().toISOString(), obligation.id);
         return;
     }
 
@@ -2790,13 +2806,23 @@ const ensureServiceTaskForObligation = (obligation: ServiceObligation) => {
         LIMIT 1
     `).get(obligation.id) as any;
 
-    const openTask = db.prepare(`
+    const openTasks = db.prepare(`
         SELECT *
         FROM service_tasks
         WHERE obligationId = ? AND status IN ('pending', 'overdue')
         ORDER BY dueDate DESC, createdAt DESC
-        LIMIT 1
-    `).get(obligation.id) as any;
+    `).all(obligation.id) as any[];
+
+    const openTask = openTasks[0];
+    if (openTasks.length > 1) {
+        const timestamp = new Date().toISOString();
+        const cancelStatement = db.prepare(`
+            UPDATE service_tasks
+            SET status = 'canceled', updatedAt = ?
+            WHERE id = ?
+        `);
+        openTasks.slice(1).forEach((task) => cancelStatement.run(timestamp, task.id));
+    }
 
     const timestamp = new Date().toISOString();
     const fixedDueDate = obligation.fixedDate ? new Date(obligation.fixedDate).toISOString() : '';
@@ -2935,9 +2961,11 @@ const deleteServiceObligationRecord = (obligationId: string) => {
     }
 };
 
-const buildServiceObligationTemplatePayload = () => ({
+const buildServiceObligationTemplatePayload = (baseDate: string, endDate: string) => ({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
+    baseDate,
+    endDate,
     description: 'Przykładowy schemat obowiązków do przygotowania i ponownego importu do zakładki Obowiązki.',
     obligations: defaultServiceObligationTemplate,
 });
@@ -3809,10 +3837,13 @@ ipcMain.handle('reopen-service-task', async (_, id: string) => {
     }
 });
 
-ipcMain.handle('export-service-obligation-template', async () => {
+ipcMain.handle('export-service-obligation-template', async (_, data?: { baseDate?: string; endDate?: string }) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
         throw new Error('Okno aplikacji nie jest dostępne.');
     }
+
+    const baseDate = data?.baseDate?.trim() || new Date().toISOString().slice(0, 10);
+    const endDate = data?.endDate?.trim() || '';
 
     const saveResult = await dialog.showSaveDialog(mainWindow, {
         title: 'Zapisz przykładowy szablon obowiązków',
@@ -3825,7 +3856,7 @@ ipcMain.handle('export-service-obligation-template', async () => {
         return { success: false, canceled: true };
     }
 
-    await fs.writeFile(saveResult.filePath, JSON.stringify(buildServiceObligationTemplatePayload(), null, 2), 'utf-8');
+    await fs.writeFile(saveResult.filePath, JSON.stringify(buildServiceObligationTemplatePayload(baseDate, endDate), null, 2), 'utf-8');
 
     return {
         success: true,

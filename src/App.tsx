@@ -63,7 +63,7 @@ declare global {
       deleteServiceEvent: (id: string) => Promise<{ success: boolean }>;
       completeServiceTask: (id: string) => Promise<{ success: boolean }>;
       reopenServiceTask: (id: string) => Promise<{ success: boolean }>;
-      exportServiceObligationTemplate: () => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+      exportServiceObligationTemplate: (data: { baseDate: string; endDate: string }) => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
       readServiceObligationTemplate: () => Promise<{ canceled?: boolean; fileName?: string; obligations: Array<Partial<ServiceObligation>> }>;
       importServiceObligations: (data: { projectId: string; replaceExisting: boolean; obligations: Array<Partial<ServiceObligation>> }) => Promise<{ success: boolean; importedCount: number }>;
       onServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;

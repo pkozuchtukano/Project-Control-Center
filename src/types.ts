@@ -59,7 +59,7 @@ export type ServiceScheduleType =
   | 'annual'
   | 'relative';
 
-export type ServiceRelativeUnit = 'business_days' | 'calendar_days' | 'months';
+export type ServiceRelativeUnit = 'hours' | 'business_days' | 'calendar_days' | 'months';
 
 export type ServiceTaskStatus = 'pending' | 'completed' | 'overdue' | 'canceled';
 
