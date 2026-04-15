@@ -1303,6 +1303,50 @@ let serviceTaskRunnerInProgress = false;
 const padTimePart = (value: number) => String(value).padStart(2, '0');
 
 const createEntityId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
+const serviceObligationTemplateFileName = 'obowiazki-szablon.json';
+const defaultServiceObligationTemplate: Array<Partial<ServiceObligation>> = [
+    {
+        code: 'OB-001',
+        title: 'Comiesięczny raport obsługi',
+        description: 'Przygotowanie i przekazanie raportu z wykonanych działań w projekcie.',
+        kind: 'recurring',
+        scheduleType: 'monthly',
+        anchorDate: '2026-01-01',
+        owner: 'PM / Service Manager',
+        evidenceHint: 'Raport przekazany do klienta',
+        sourceRequirement: 'Przykładowy obowiązek cykliczny',
+        requiresProtocol: false,
+        isActive: true,
+    },
+    {
+        code: 'OB-002',
+        title: 'Przegląd kwartalny dokumentacji',
+        description: 'Weryfikacja zgodności dokumentacji projektowej z aktualnym stanem rozwiązania.',
+        kind: 'recurring',
+        scheduleType: 'quarterly',
+        anchorDate: '2026-01-01',
+        owner: 'Lider techniczny',
+        evidenceHint: 'Checklist / protokół przeglądu',
+        sourceRequirement: 'Przykładowy obowiązek okresowy',
+        requiresProtocol: true,
+        isActive: true,
+    },
+    {
+        code: 'OB-003',
+        title: 'Instalacja poprawki bezpieczeństwa',
+        description: 'Realizacja działania w określonym terminie od momentu wydania poprawki przez producenta.',
+        kind: 'event',
+        scheduleType: 'relative',
+        relativeValue: 3,
+        relativeUnit: 'business_days',
+        triggerLabel: 'Wydanie poprawki bezpieczeństwa',
+        owner: 'Administrator / DevOps',
+        evidenceHint: 'Potwierdzenie wdrożenia poprawki',
+        sourceRequirement: 'Przykładowy obowiązek od zdarzenia',
+        requiresProtocol: false,
+        isActive: true,
+    },
+];
 
 const getDateKey = (date: Date) =>
     `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`;
@@ -2891,6 +2935,94 @@ const deleteServiceObligationRecord = (obligationId: string) => {
     }
 };
 
+const buildServiceObligationTemplatePayload = () => ({
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    description: 'Przykładowy schemat obowiązków do przygotowania i ponownego importu do zakładki Obowiązki.',
+    obligations: defaultServiceObligationTemplate,
+});
+
+const parseImportedServiceObligations = (rawContent: string): Array<Partial<ServiceObligation>> => {
+    const parsed = JSON.parse(rawContent);
+    const obligations = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.obligations)
+            ? parsed.obligations
+            : null;
+
+    if (!obligations) {
+        throw new Error('Plik JSON nie zawiera listy obowiązków w polu "obligations".');
+    }
+
+    return obligations
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => {
+            const candidate = item as Partial<ServiceObligation>;
+            return {
+                code: candidate.code || '',
+                title: candidate.title || '',
+                description: candidate.description || '',
+                kind: candidate.kind || 'continuous',
+                scheduleType: candidate.scheduleType || 'none',
+                intervalValue: candidate.intervalValue,
+                relativeValue: candidate.relativeValue,
+                relativeUnit: candidate.relativeUnit || 'business_days',
+                fixedDate: candidate.fixedDate || '',
+                anchorDate: candidate.anchorDate || '',
+                triggerLabel: candidate.triggerLabel || '',
+                owner: candidate.owner || '',
+                evidenceHint: candidate.evidenceHint || '',
+                notes: candidate.notes || '',
+                sourceRequirement: candidate.sourceRequirement || '',
+                requiresProtocol: candidate.requiresProtocol === true,
+                isActive: candidate.isActive !== false,
+            };
+        })
+        .filter((item) => item.title?.trim());
+};
+
+const replaceServiceObligationsForProject = (projectId: string, obligations: Array<Partial<ServiceObligation>>) => {
+    const timestamp = new Date().toISOString();
+    const deleteTasks = db.prepare('DELETE FROM service_tasks WHERE projectId = ?');
+    const deleteEvents = db.prepare('DELETE FROM service_events WHERE projectId = ?');
+    const deleteObligations = db.prepare('DELETE FROM service_obligations WHERE projectId = ?');
+
+    const transaction = db.transaction(() => {
+        deleteTasks.run(projectId);
+        deleteEvents.run(projectId);
+        deleteObligations.run(projectId);
+
+        obligations.forEach((item) => {
+            saveServiceObligationRecord({
+                id: createEntityId('service_obligation'),
+                projectId,
+                code: item.code?.trim() || '',
+                title: item.title?.trim() || '',
+                description: item.description?.trim() || '',
+                kind: item.kind || 'continuous',
+                scheduleType: item.scheduleType || 'none',
+                intervalValue: Number(item.intervalValue) || 1,
+                relativeValue: Number(item.relativeValue) || 0,
+                relativeUnit: item.relativeUnit || 'business_days',
+                fixedDate: item.fixedDate || '',
+                anchorDate: item.anchorDate || '',
+                triggerLabel: item.triggerLabel || '',
+                owner: item.owner || '',
+                evidenceHint: item.evidenceHint || '',
+                notes: item.notes || '',
+                sourceRequirement: item.sourceRequirement || '',
+                requiresProtocol: item.requiresProtocol === true,
+                isActive: item.isActive !== false,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+            });
+        });
+    });
+
+    transaction();
+    ensureServiceTasksForProject(projectId);
+};
+
 const saveServiceEventRecord = (event: ServiceEvent) => {
     const normalizedEvent = normalizeServiceEvent(event);
     db.prepare(`
@@ -3673,6 +3805,107 @@ ipcMain.handle('reopen-service-task', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('Błąd ponownego otwierania zadania obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('export-service-obligation-template', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        throw new Error('Okno aplikacji nie jest dostępne.');
+    }
+
+    const saveResult = await dialog.showSaveDialog(mainWindow, {
+        title: 'Zapisz przykładowy szablon obowiązków',
+        defaultPath: path.join(app.getPath('documents'), serviceObligationTemplateFileName),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, canceled: true };
+    }
+
+    await fs.writeFile(saveResult.filePath, JSON.stringify(buildServiceObligationTemplatePayload(), null, 2), 'utf-8');
+
+    return {
+        success: true,
+        canceled: false,
+        filePath: saveResult.filePath,
+    };
+});
+
+ipcMain.handle('read-service-obligation-template', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+        throw new Error('Okno aplikacji nie jest dostępne.');
+    }
+
+    const openResult = await dialog.showOpenDialog(mainWindow, {
+        title: 'Wczytaj schemat obowiązków',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile'],
+    });
+
+    if (openResult.canceled || openResult.filePaths.length === 0) {
+        return { canceled: true, obligations: [] };
+    }
+
+    const filePath = openResult.filePaths[0];
+    const content = await fs.readFile(filePath, 'utf-8');
+    const obligations = parseImportedServiceObligations(content);
+
+    return {
+        canceled: false,
+        fileName: path.basename(filePath),
+        obligations,
+    };
+});
+
+ipcMain.handle('import-service-obligations', async (_, data: { projectId: string; replaceExisting: boolean; obligations: Array<Partial<ServiceObligation>> }) => {
+    try {
+        const projectId = data?.projectId?.trim();
+        if (!projectId) {
+            throw new Error('Brakuje identyfikatora projektu dla importu obowiązków.');
+        }
+
+        const obligations = Array.isArray(data?.obligations) ? data.obligations : [];
+        if (obligations.length === 0) {
+            throw new Error('Plik nie zawiera żadnych obowiązków do importu.');
+        }
+
+        if (data.replaceExisting) {
+            replaceServiceObligationsForProject(projectId, obligations);
+        } else {
+            const timestamp = new Date().toISOString();
+            obligations.forEach((item) => {
+                saveServiceObligationRecord({
+                    id: createEntityId('service_obligation'),
+                    projectId,
+                    code: item.code?.trim() || '',
+                    title: item.title?.trim() || '',
+                    description: item.description?.trim() || '',
+                    kind: item.kind || 'continuous',
+                    scheduleType: item.scheduleType || 'none',
+                    intervalValue: Number(item.intervalValue) || 1,
+                    relativeValue: Number(item.relativeValue) || 0,
+                    relativeUnit: item.relativeUnit || 'business_days',
+                    fixedDate: item.fixedDate || '',
+                    anchorDate: item.anchorDate || '',
+                    triggerLabel: item.triggerLabel || '',
+                    owner: item.owner || '',
+                    evidenceHint: item.evidenceHint || '',
+                    notes: item.notes || '',
+                    sourceRequirement: item.sourceRequirement || '',
+                    requiresProtocol: item.requiresProtocol === true,
+                    isActive: item.isActive !== false,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                });
+            });
+        }
+
+        return { success: true, importedCount: obligations.length };
+    } catch (error) {
+        console.error('Błąd importu obowiązków z pliku JSON:', error);
         throw error;
     }
 });

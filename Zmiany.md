@@ -602,19 +602,22 @@
   -- Kolumna `Liczba godzin wycenionych` pokazuje teraz pogrubioną liczbę godzin końcowych bez miejsc po przecinku oraz `Wycenę zespołu` w nawiasie.
   -- Zmiana dotyczy wyłącznie prezentacji tabeli i ułatwia szybkie porównanie wartości końcowej z bazową wyceną zespołu.
 
-## Obsługa umowy utrzymaniowej
-- 2026-04-15 – Nowa zakładka `Obsługa` dla obowiązków ATiK
-  -- Dodano nową zakładkę projektową `Obsługa`, przeznaczoną do pilnowania obowiązków umowy utrzymaniowej w ramach konkretnego projektu.
-  -- Widok pokazuje katalog obowiązków, terminy do wykonania, ostatnie zdarzenia uruchamiające SLA oraz podsumowania zaległych i nadchodzących działań.
+## Obowiązki projektu
+- 2026-04-15 – Nowa zakładka `Obowiązki` dla listy zobowiązań projektowych
+  -- Dodano nową zakładkę projektową `Obowiązki`, przeznaczoną do pilnowania listy obowiązków w ramach konkretnego projektu.
+  -- Widok pokazuje katalog obowiązków, terminy do wykonania, ostatnie zdarzenia uruchamiające działania oraz podsumowania zaległych i nadchodzących zadań.
 - 2026-04-15 – Relacyjny model danych dla obowiązków i terminów umownych
   -- Lokalna baza SQLite została rozszerzona o tabele `service_obligations`, `service_tasks` i `service_events`, wraz z indeksami pod odczyt po projekcie, statusie i terminie.
   -- Moduł zapisuje osobno definicje obowiązków, konkretne zadania terminowe oraz zdarzenia uruchamiające, bez ingerencji w istniejące tabele projektów i bez utraty danych.
 - 2026-04-15 – Automatyczne generowanie terminów i przypomnień
   -- W procesie głównym Electrona dodano logikę generowania zadań dla obowiązków cyklicznych i zdarzeniowych, oznaczania zadań po terminie oraz obsługi wykonania i ponownego otwierania zadań.
   -- Aplikacja potrafi teraz liczyć terminy miesięczne, kwartalne, półroczne, roczne oraz terminy względne liczone w dniach kalendarzowych, roboczych i miesiącach.
-- 2026-04-15 – Szablon startowy wymagań ATK i integracja z linkami projektu
-  -- Zakładka `Obsługa` otrzymała przycisk ładowania szablonu najważniejszych obowiązków ATK, aby PM mógł szybciej wystartować z konfiguracją realnej umowy.
-  -- Linki projektowe można teraz przypinać także do zakładki `Obsługa`, tak aby pod ręką mieć np. portal serwisowy, repozytorium, monitoring lub dokumenty kontraktowe.
+- 2026-04-15 – Import i eksport schematu JSON dla zakładki `Obowiązki`
+  -- Przycisk `Załaduj szablon` otwiera teraz modal z eksportem przykładowego pliku JSON oraz importem definicji obowiązków przygotowanych w zewnętrznym narzędziu.
+  -- Przy imporcie aplikacja pyta, czy zastąpić istniejącą listę obowiązków; po potwierdzeniu usuwa bieżące obowiązki projektu i tworzy nową listę na podstawie wczytanego pliku.
+- 2026-04-15 – Linki projektowe i obowiązki we wszystkich projektach
+  -- Linki projektowe można teraz przypinać także do zakładki `Obowiązki`, tak aby pod ręką mieć np. portal serwisowy, repozytorium, monitoring lub dokumenty kontraktowe.
+  -- Zakładka `Obowiązki` jest dostępna we wszystkich projektach, a nie tylko w projektach utrzymaniowych.
 
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status

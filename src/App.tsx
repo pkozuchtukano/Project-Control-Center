@@ -63,6 +63,9 @@ declare global {
       deleteServiceEvent: (id: string) => Promise<{ success: boolean }>;
       completeServiceTask: (id: string) => Promise<{ success: boolean }>;
       reopenServiceTask: (id: string) => Promise<{ success: boolean }>;
+      exportServiceObligationTemplate: () => Promise<{ success: boolean; canceled?: boolean; filePath?: string }>;
+      readServiceObligationTemplate: () => Promise<{ canceled?: boolean; fileName?: string; obligations: Array<Partial<ServiceObligation>> }>;
+      importServiceObligations: (data: { projectId: string; replaceExisting: boolean; obligations: Array<Partial<ServiceObligation>> }) => Promise<{ success: boolean; importedCount: number }>;
       onServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       offServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       writeClipboardHtml: (data: { html: string; text?: string }) => Promise<{ success: boolean }>;
@@ -1755,7 +1758,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             <div className="flex items-start gap-3">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <div className="space-y-1">
-                <p className="font-semibold">Aplikacja wykryła aktywne terminy w module `Obsługa`.</p>
+                <p className="font-semibold">Aplikacja wykryła aktywne terminy w module `Obowiązki`.</p>
                 {serviceAlerts.slice(0, 2).map((alert) => (
                   <p key={alert.taskId}>
                     {alert.projectCode ? `${alert.projectCode} - ` : ''}
@@ -1806,14 +1809,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
               Utrzymanie
             </button>
           )}
-          {selectedProject.hasMaintenance && (
-            <button
-              onClick={() => setActiveTab('service')}
-              className={`pb-3 border-b-2 transition-colors ${activeTab === 'service' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-            >
-              Obsługa
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab('service')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'service' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Obowiązki
+          </button>
           <button
             onClick={() => setActiveTab('status')}
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'status' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
@@ -3065,7 +3066,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
           <MaintenanceView project={selectedProject} />
         )}
 
-        {activeTab === 'service' && selectedProject.hasMaintenance && (
+        {activeTab === 'service' && (
           <ServiceView project={selectedProject} alerts={serviceAlerts} />
         )}
 

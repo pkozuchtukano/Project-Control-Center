@@ -4,11 +4,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
+  Download,
   Edit2,
   Loader2,
   Plus,
   ShieldCheck,
   Siren,
+  Upload,
   X,
 } from 'lucide-react';
 
@@ -158,6 +160,95 @@ const createEmptyEvent = (projectId: string, obligations: ServiceObligation[]): 
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+};
+
+const TemplateManagerModal = ({
+  isOpen,
+  isBusy,
+  sampleCount,
+  onClose,
+  onExport,
+  onImport,
+}: {
+  isOpen: boolean;
+  isBusy: boolean;
+  sampleCount: number;
+  onClose: () => void;
+  onExport: () => Promise<void>;
+  onImport: () => Promise<void>;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-3xl bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 px-6 py-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Załaduj szablon</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Eksportuj przykładowy schemat JSON albo wczytaj przygotowaną listę obowiązków z zewnętrznego narzędzia.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isBusy} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-6 px-6 py-5">
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/80 p-5 dark:border-sky-900/40 dark:bg-sky-500/10">
+            <div className="flex items-start gap-3">
+              <Download className="mt-0.5 text-sky-600 dark:text-sky-300" size={18} />
+              <div className="space-y-2">
+                <p className="font-semibold text-slate-900 dark:text-white">1. Eksport przykładowego JSON</p>
+                <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Zapisuje plik JSON zgodny ze strukturą zakładki `Obowiązki`. Plik zawiera przykładowy schemat i {sampleCount} przykładowych pozycji,
+                  które możesz edytować w zewnętrznym narzędziu.
+                </p>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void onExport()}
+                  className="rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50 disabled:opacity-50 dark:border-sky-900/40 dark:bg-slate-900/40 dark:text-sky-300 dark:hover:bg-sky-500/10"
+                >
+                  <span className="inline-flex items-center gap-2"><Download size={15} /> Eksportuj przykładowy JSON</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-5 dark:border-emerald-900/40 dark:bg-emerald-500/10">
+            <div className="flex items-start gap-3">
+              <Upload className="mt-0.5 text-emerald-600 dark:text-emerald-300" size={18} />
+              <div className="space-y-2">
+                <p className="font-semibold text-slate-900 dark:text-white">2. Wczytanie przygotowanego schematu</p>
+                <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Wybierasz gotowy plik JSON z definicją obowiązków. Jeśli w projekcie istnieją już obowiązki, aplikacja zapyta,
+                  czy zastąpić bieżącą listę importowaną wersją.
+                </p>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void onImport()}
+                  className="rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-900/40 dark:bg-slate-900/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                >
+                  <span className="inline-flex items-center gap-2"><Upload size={15} /> Wczytaj schemat JSON</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 dark:border-gray-700 px-6 py-4 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isBusy}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            Zamknij
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const DEFAULT_ATK_OBLIGATIONS: ObligationSeed[] = [
@@ -922,6 +1013,8 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
   const [editingEvent, setEditingEvent] = useState<ServiceEvent | null>(null);
   const [activeTaskFilter, setActiveTaskFilter] = useState<'all' | 'overdue' | 'upcoming' | 'completed'>('all');
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isTemplateActionPending, setIsTemplateActionPending] = useState(false);
 
   const loadData = async () => {
     if (!window.electron?.getServiceOverview) {
@@ -940,7 +1033,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
         events: result.events || [],
       });
     } catch (loadError: any) {
-      setError(loadError?.message || 'Nie udało się pobrać danych zakładki Obsługa.');
+      setError(loadError?.message || 'Nie udało się pobrać danych zakładki Obowiązki.');
     } finally {
       setIsLoading(false);
     }
@@ -1045,31 +1138,59 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
     }
   };
 
-  const handleSeedAtk = async () => {
-    if (!window.electron?.saveServiceObligation) return;
-    const existingCodes = new Set(state.obligations.map((item) => item.code.trim().toUpperCase()));
-    const now = createTimestamp();
-    const itemsToCreate = DEFAULT_ATK_OBLIGATIONS
-      .filter((item) => !existingCodes.has(item.code.trim().toUpperCase()))
-      .map((item) => ({
-        ...createEmptyObligation(project.id),
-        ...item,
-        id: createClientId('service_obligation'),
+  const handleExportTemplate = async () => {
+    if (!window.electron?.exportServiceObligationTemplate) return;
+    setIsTemplateActionPending(true);
+    setError(null);
+    try {
+      const result = await window.electron.exportServiceObligationTemplate();
+      if (!result?.canceled && result?.success) {
+        window.alert(`Zapisano przykładowy plik JSON: ${result.filePath || 'bez wskazanej ścieżki'}`);
+      }
+    } catch (exportError: any) {
+      setError(exportError?.message || 'Nie udało się wyeksportować przykładowego pliku JSON.');
+    } finally {
+      setIsTemplateActionPending(false);
+    }
+  };
+
+  const handleImportTemplate = async () => {
+    if (!window.electron?.readServiceObligationTemplate || !window.electron?.importServiceObligations) return;
+    setIsTemplateActionPending(true);
+    setError(null);
+    try {
+      const readResult = await window.electron.readServiceObligationTemplate();
+      if (readResult?.canceled) {
+        return;
+      }
+
+      const importedObligations = (readResult?.obligations || []).filter((item) => item?.title?.trim());
+      if (importedObligations.length === 0) {
+        setError('Wybrany plik JSON nie zawiera żadnych obowiązków do importu.');
+        return;
+      }
+
+      let replaceExisting = false;
+      if (state.obligations.length > 0) {
+        replaceExisting = window.confirm(
+          'W tym projekcie istnieją już obowiązki. Czy zastąpić obecną listę obowiązków listą z importowanego pliku JSON?',
+        );
+      }
+
+      const result = await window.electron.importServiceObligations({
         projectId: project.id,
-        createdAt: now,
-        updatedAt: now,
-      }));
+        replaceExisting,
+        obligations: importedObligations,
+      });
 
-    if (itemsToCreate.length === 0) {
-      setError('Szablon ATK został już wcześniej załadowany lub odpowiadające mu pozycje już istnieją.');
-      return;
+      setIsTemplateModalOpen(false);
+      window.alert(`Zaimportowano ${result.importedCount} obowiązków${readResult?.fileName ? ` z pliku ${readResult.fileName}` : ''}.`);
+      await loadData();
+    } catch (importError: any) {
+      setError(importError?.message || 'Nie udało się zaimportować obowiązków z pliku JSON.');
+    } finally {
+      setIsTemplateActionPending(false);
     }
-
-    for (const item of itemsToCreate) {
-      await window.electron.saveServiceObligation(item);
-    }
-
-    await loadData();
   };
 
   const projectAlerts = alerts.filter((item) => item.projectId === project.id);
@@ -1082,13 +1203,13 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700 shadow-sm dark:bg-white/5 dark:text-sky-300">
               <ShieldCheck size={14} />
-              Obsługa umowy
+              Obowiązki projektu
             </div>
             <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">Kontrola obowiązków ATiK dla projektu {project.code}</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">Kontrola obowiązków dla projektu {project.code}</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                To miejsce porządkuje obowiązki umowy utrzymaniowej: wymagania ciągłe, cykliczne terminy oraz zdarzenia,
-                które uruchamiają liczenie SLA i działań po stronie zespołu.
+                To miejsce porządkuje listę obowiązków dla projektu: wymagania ciągłe, terminy cykliczne oraz działania
+                uruchamiane przez zdarzenia projektowe.
               </p>
             </div>
           </div>
@@ -1103,10 +1224,10 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
             </button>
             <button
               type="button"
-              onClick={() => void handleSeedAtk()}
+              onClick={() => setIsTemplateModalOpen(true)}
               className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15"
             >
-              Załaduj szablon ATK
+              Załaduj szablon
             </button>
             <button
               type="button"
@@ -1277,7 +1398,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
             <div className="border-b border-gray-100 px-6 py-5 dark:border-gray-700">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Katalog obowiązków</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">W tym miejscu opisujesz, co dokładnie musi być spełnione w ramach umowy.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">W tym miejscu opisujesz, co dokładnie musi być spełnione w ramach projektu.</p>
             </div>
 
             {isLoading ? (
@@ -1286,7 +1407,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
               </div>
             ) : state.obligations.length === 0 ? (
               <div className="p-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                Brak obowiązków. Załaduj szablon ATK albo dodaj pierwszy własny obowiązek ręcznie.
+                Brak obowiązków. Załaduj szablon albo dodaj pierwszy własny obowiązek ręcznie.
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1413,8 +1534,8 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Jak z tego korzystać</h3>
             </div>
             <div className="mt-4 space-y-3 text-sm leading-6 text-gray-600 dark:text-gray-300">
-              <p>1. Załaduj szablon ATK i usuń lub doprecyzuj pozycje niepasujące do konkretnej umowy.</p>
-              <p>2. Dla obowiązków cyklicznych ustaw datę bazową pierwszego cyklu, np. od startu umowy lub od pierwszego przeglądu.</p>
+              <p>1. Wyeksportuj przykładowy szablon JSON, przygotuj listę obowiązków w zewnętrznym narzędziu i zaimportuj gotowy plik.</p>
+              <p>2. Dla obowiązków cyklicznych ustaw datę bazową pierwszego cyklu, np. od startu projektu lub od pierwszego przeglądu.</p>
               <p>3. Dla obowiązków zależnych od sytuacji wpisuj zdarzenia: incydent, wydanie poprawki, przekazanie dostępów, audyt.</p>
               <p>4. Zakładka sama pokaże, co jest po terminie, co nadchodzi i co zostało już potwierdzone jako wykonane.</p>
               <p>5. W dowodzie wykonania wpisz artefakt, którego PM powinien pilnować: protokół, commit, raport, potwierdzenie w portalu.</p>
@@ -1423,6 +1544,15 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
 
         </div>
       </div>
+
+      <TemplateManagerModal
+        isOpen={isTemplateModalOpen}
+        isBusy={isTemplateActionPending}
+        sampleCount={Math.min(DEFAULT_ATK_OBLIGATIONS.length, 3)}
+        onClose={() => setIsTemplateModalOpen(false)}
+        onExport={handleExportTemplate}
+        onImport={handleImportTemplate}
+      />
 
       <ServiceObligationModal
         isOpen={Boolean(editingObligation)}
