@@ -6,9 +6,10 @@ import fs from 'fs/promises';
 import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import { addBusinessDays, addDays, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
-import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource } from '../src/types.js';
+import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -219,6 +220,65 @@ db.exec(`
     );
 `);
 
+db.exec(`
+    CREATE TABLE IF NOT EXISTS service_obligations (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        code TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        scheduleType TEXT NOT NULL,
+        intervalValue INTEGER,
+        relativeValue INTEGER,
+        relativeUnit TEXT,
+        fixedDate TEXT,
+        anchorDate TEXT,
+        triggerLabel TEXT,
+        owner TEXT,
+        evidenceHint TEXT,
+        notes TEXT,
+        sourceRequirement TEXT,
+        requiresProtocol INTEGER NOT NULL DEFAULT 0,
+        isActive INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS service_tasks (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        obligationId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        dueDate TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        completedAt TEXT,
+        sourceType TEXT NOT NULL,
+        sourceEventId TEXT,
+        notes TEXT,
+        notifiedAt TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS service_events (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        obligationId TEXT,
+        eventType TEXT NOT NULL,
+        title TEXT NOT NULL,
+        occurredAt TEXT NOT NULL,
+        dueDate TEXT,
+        reference TEXT,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_service_obligations_project ON service_obligations(projectId, isActive);
+    CREATE INDEX IF NOT EXISTS idx_service_tasks_project_due ON service_tasks(projectId, dueDate);
+    CREATE INDEX IF NOT EXISTS idx_service_tasks_status ON service_tasks(status, dueDate);
+    CREATE INDEX IF NOT EXISTS idx_service_events_project_date ON service_events(projectId, occurredAt);
+`);
+
 const initializeDatabase = () => {
     db.pragma('journal_mode = WAL');
     db.exec(`
@@ -410,6 +470,65 @@ try {
     } catch (error) {
         console.error('BÄąâ€šĂ„â€¦d migracji kolumny settlementFlow:', error);
     }
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS service_obligations (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            code TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            scheduleType TEXT NOT NULL,
+            intervalValue INTEGER,
+            relativeValue INTEGER,
+            relativeUnit TEXT,
+            fixedDate TEXT,
+            anchorDate TEXT,
+            triggerLabel TEXT,
+            owner TEXT,
+            evidenceHint TEXT,
+            notes TEXT,
+            sourceRequirement TEXT,
+            requiresProtocol INTEGER NOT NULL DEFAULT 0,
+            isActive INTEGER NOT NULL DEFAULT 1,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS service_tasks (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            obligationId TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            dueDate TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            completedAt TEXT,
+            sourceType TEXT NOT NULL,
+            sourceEventId TEXT,
+            notes TEXT,
+            notifiedAt TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS service_events (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            obligationId TEXT,
+            eventType TEXT NOT NULL,
+            title TEXT NOT NULL,
+            occurredAt TEXT NOT NULL,
+            dueDate TEXT,
+            reference TEXT,
+            notes TEXT,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_service_obligations_project ON service_obligations(projectId, isActive);
+        CREATE INDEX IF NOT EXISTS idx_service_tasks_project_due ON service_tasks(projectId, dueDate);
+        CREATE INDEX IF NOT EXISTS idx_service_tasks_status ON service_tasks(status, dueDate);
+        CREATE INDEX IF NOT EXISTS idx_service_events_project_date ON service_events(projectId, occurredAt);
+    `);
 };
 
 const reopenDatabase = () => {
@@ -625,6 +744,7 @@ app.whenReady().then(async () => {
     await createWindow();
     ensureTray();
     startScheduledTaskRunner();
+    startServiceTaskRunner();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -643,6 +763,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
     stopScheduledTaskRunner();
+    stopServiceTaskRunner();
     closeDatabase();
 });
 
@@ -1174,8 +1295,14 @@ const buildGoogleDriveScopeErrorMessage = () =>
 const scheduledTaskCheckIntervalMs = 30 * 1000;
 let scheduledTaskRunner: NodeJS.Timeout | null = null;
 let scheduledTaskRunnerInProgress = false;
+const serviceTaskCheckIntervalMs = 15 * 60 * 1000;
+const serviceUpcomingAlertWindowDays = 7;
+let serviceTaskRunner: NodeJS.Timeout | null = null;
+let serviceTaskRunnerInProgress = false;
 
 const padTimePart = (value: number) => String(value).padStart(2, '0');
+
+const createEntityId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
 
 const getDateKey = (date: Date) =>
     `${date.getFullYear()}-${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())}`;
@@ -2399,6 +2526,570 @@ const stopScheduledTaskRunner = () => {
     scheduledTaskRunner = null;
 };
 
+const normalizeServiceObligation = (obligation: ServiceObligation): ServiceObligation => ({
+    ...obligation,
+    code: obligation.code?.trim() || '',
+    title: obligation.title?.trim() || '',
+    description: obligation.description?.trim() || '',
+    kind: obligation.kind || 'continuous',
+    scheduleType: obligation.scheduleType || 'none',
+    intervalValue: Number(obligation.intervalValue) || 1,
+    relativeValue: Number(obligation.relativeValue) || 0,
+    relativeUnit: obligation.relativeUnit || 'business_days',
+    fixedDate: obligation.fixedDate || '',
+    anchorDate: obligation.anchorDate || '',
+    triggerLabel: obligation.triggerLabel || '',
+    owner: obligation.owner || '',
+    evidenceHint: obligation.evidenceHint || '',
+    notes: obligation.notes || '',
+    sourceRequirement: obligation.sourceRequirement || '',
+    requiresProtocol: Boolean(obligation.requiresProtocol),
+    isActive: obligation.isActive !== false,
+    createdAt: obligation.createdAt || new Date().toISOString(),
+    updatedAt: obligation.updatedAt || new Date().toISOString(),
+});
+
+const normalizeServiceTask = (task: ServiceTask): ServiceTask => ({
+    ...task,
+    title: task.title?.trim() || '',
+    description: task.description || '',
+    status: task.status || 'pending',
+    sourceType: task.sourceType || 'schedule',
+    notes: task.notes || '',
+    createdAt: task.createdAt || new Date().toISOString(),
+    updatedAt: task.updatedAt || new Date().toISOString(),
+});
+
+const normalizeServiceEvent = (event: ServiceEvent): ServiceEvent => ({
+    ...event,
+    obligationId: event.obligationId || '',
+    eventType: event.eventType || 'other',
+    title: event.title?.trim() || '',
+    occurredAt: event.occurredAt || new Date().toISOString(),
+    dueDate: event.dueDate || '',
+    reference: event.reference || '',
+    notes: event.notes || '',
+    createdAt: event.createdAt || new Date().toISOString(),
+    updatedAt: event.updatedAt || new Date().toISOString(),
+});
+
+const getProjectLookup = () => {
+    const rows = db.prepare('SELECT id, data FROM projects').all() as { id: string; data: string }[];
+    return rows.reduce<Record<string, { code?: string; name?: string }>>((acc, row) => {
+        try {
+            const parsed = JSON.parse(row.data);
+            acc[row.id] = { code: parsed.code, name: parsed.name };
+        } catch {
+            acc[row.id] = {};
+        }
+        return acc;
+    }, {});
+};
+
+const getServiceObligations = (projectId: string): ServiceObligation[] => {
+    const rows = db.prepare(`
+        SELECT *
+        FROM service_obligations
+        WHERE projectId = ?
+        ORDER BY isActive DESC, code COLLATE NOCASE ASC, createdAt ASC
+    `).all(projectId) as any[];
+
+    return rows.map((row) => normalizeServiceObligation({
+        ...row,
+        requiresProtocol: row.requiresProtocol === 1,
+        isActive: row.isActive === 1,
+    }));
+};
+
+const getServiceTasks = (projectId: string): ServiceTask[] => {
+    const rows = db.prepare(`
+        SELECT *
+        FROM service_tasks
+        WHERE projectId = ? AND status <> 'canceled'
+        ORDER BY
+            CASE status
+                WHEN 'overdue' THEN 0
+                WHEN 'pending' THEN 1
+                WHEN 'completed' THEN 2
+                ELSE 3
+            END,
+            dueDate ASC,
+            createdAt DESC
+    `).all(projectId) as any[];
+
+    return rows.map((row) => normalizeServiceTask(row));
+};
+
+const getServiceEvents = (projectId: string): ServiceEvent[] => {
+    const rows = db.prepare(`
+        SELECT *
+        FROM service_events
+        WHERE projectId = ?
+        ORDER BY occurredAt DESC, createdAt DESC
+    `).all(projectId) as any[];
+
+    return rows.map((row) => normalizeServiceEvent(row));
+};
+
+const refreshServiceTaskStatuses = (projectId?: string) => {
+    const nowIso = new Date().toISOString();
+    db.prepare(projectId
+        ? `UPDATE service_tasks SET status = 'overdue', updatedAt = ? WHERE projectId = ? AND status = 'pending' AND dueDate < ?`
+        : `UPDATE service_tasks SET status = 'overdue', updatedAt = ? WHERE status = 'pending' AND dueDate < ?`)
+        .run(...(projectId ? [nowIso, projectId, nowIso] : [nowIso, nowIso]));
+};
+
+const addSchedulePeriod = (date: Date, scheduleType: ServiceObligation['scheduleType']) => {
+    switch (scheduleType) {
+        case 'monthly':
+            return addMonths(date, 1);
+        case 'quarterly':
+            return addMonths(date, 3);
+        case 'semiannual':
+            return addMonths(date, 6);
+        case 'annual':
+            return addMonths(date, 12);
+        default:
+            return date;
+    }
+};
+
+const calculateRelativeDueDate = (occurredAt: string, obligation: ServiceObligation) => {
+    const baseDate = new Date(occurredAt);
+    const relativeValue = Number(obligation.relativeValue) || 0;
+
+    if (Number.isNaN(baseDate.getTime()) || relativeValue <= 0) {
+        return '';
+    }
+
+    if (obligation.relativeUnit === 'months') {
+        return addMonths(baseDate, relativeValue).toISOString();
+    }
+
+    if (obligation.relativeUnit === 'calendar_days') {
+        return addDays(baseDate, relativeValue).toISOString();
+    }
+
+    return addBusinessDays(baseDate, relativeValue).toISOString();
+};
+
+const buildCurrentRecurringDueDate = (obligation: ServiceObligation) => {
+    const anchorCandidate = obligation.anchorDate || new Date().toISOString().slice(0, 10);
+    let dueDate = new Date(anchorCandidate);
+    if (Number.isNaN(dueDate.getTime())) {
+        dueDate = new Date();
+    }
+
+    const now = new Date();
+    let guard = 0;
+    while (guard < 240) {
+        const nextDate = addSchedulePeriod(dueDate, obligation.scheduleType);
+        if (nextDate.getTime() > now.getTime()) {
+            break;
+        }
+        dueDate = nextDate;
+        guard += 1;
+    }
+
+    return dueDate.toISOString();
+};
+
+const upsertServiceTask = (task: ServiceTask) => {
+    const normalizedTask = normalizeServiceTask(task);
+    db.prepare(`
+        INSERT INTO service_tasks (
+            id, projectId, obligationId, title, description, dueDate, status, completedAt, sourceType,
+            sourceEventId, notes, notifiedAt, createdAt, updatedAt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            projectId = excluded.projectId,
+            obligationId = excluded.obligationId,
+            title = excluded.title,
+            description = excluded.description,
+            dueDate = excluded.dueDate,
+            status = excluded.status,
+            completedAt = excluded.completedAt,
+            sourceType = excluded.sourceType,
+            sourceEventId = excluded.sourceEventId,
+            notes = excluded.notes,
+            notifiedAt = excluded.notifiedAt,
+            updatedAt = excluded.updatedAt
+    `).run(
+        normalizedTask.id,
+        normalizedTask.projectId,
+        normalizedTask.obligationId,
+        normalizedTask.title,
+        normalizedTask.description || '',
+        normalizedTask.dueDate,
+        normalizedTask.status,
+        normalizedTask.completedAt || null,
+        normalizedTask.sourceType,
+        normalizedTask.sourceEventId || null,
+        normalizedTask.notes || '',
+        normalizedTask.notifiedAt || null,
+        normalizedTask.createdAt,
+        normalizedTask.updatedAt,
+    );
+};
+
+const ensureServiceTaskForObligation = (obligation: ServiceObligation) => {
+    if (!obligation.isActive || obligation.kind === 'continuous' || obligation.scheduleType === 'none' || obligation.scheduleType === 'relative') {
+        return;
+    }
+
+    const latestTask = db.prepare(`
+        SELECT *
+        FROM service_tasks
+        WHERE obligationId = ?
+        ORDER BY dueDate DESC, createdAt DESC
+        LIMIT 1
+    `).get(obligation.id) as any;
+
+    const openTask = db.prepare(`
+        SELECT *
+        FROM service_tasks
+        WHERE obligationId = ? AND status IN ('pending', 'overdue')
+        ORDER BY dueDate DESC, createdAt DESC
+        LIMIT 1
+    `).get(obligation.id) as any;
+
+    const timestamp = new Date().toISOString();
+    const fixedDueDate = obligation.fixedDate ? new Date(obligation.fixedDate).toISOString() : '';
+
+    if (openTask) {
+        db.prepare(`
+            UPDATE service_tasks
+            SET title = ?, description = ?, dueDate = ?, updatedAt = ?
+            WHERE id = ?
+        `).run(
+            obligation.title,
+            obligation.description || '',
+            obligation.scheduleType === 'fixed_date' && fixedDueDate ? fixedDueDate : openTask.dueDate,
+            timestamp,
+            openTask.id,
+        );
+        return;
+    }
+
+    let dueDate = '';
+
+    if (obligation.scheduleType === 'fixed_date') {
+        if (latestTask) {
+            return;
+        }
+        dueDate = fixedDueDate;
+    } else if (latestTask?.dueDate) {
+        const latestDueDate = new Date(latestTask.dueDate);
+        if (!Number.isNaN(latestDueDate.getTime())) {
+            dueDate = addSchedulePeriod(latestDueDate, obligation.scheduleType).toISOString();
+        }
+    } else {
+        dueDate = buildCurrentRecurringDueDate(obligation);
+    }
+
+    if (!dueDate) {
+        return;
+    }
+
+    upsertServiceTask({
+        id: createEntityId('service_task'),
+        projectId: obligation.projectId,
+        obligationId: obligation.id,
+        title: obligation.title,
+        description: obligation.description || '',
+        dueDate,
+        status: 'pending',
+        sourceType: 'schedule',
+        sourceEventId: '',
+        notes: '',
+        notifiedAt: '',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+    });
+};
+
+const ensureServiceTasksForProject = (projectId: string) => {
+    const obligations = getServiceObligations(projectId);
+    obligations.forEach((obligation) => {
+        if (!obligation.isActive) {
+            db.prepare(`
+                UPDATE service_tasks
+                SET status = 'canceled', updatedAt = ?
+                WHERE obligationId = ? AND status IN ('pending', 'overdue')
+            `).run(new Date().toISOString(), obligation.id);
+            return;
+        }
+        ensureServiceTaskForObligation(obligation);
+    });
+
+    refreshServiceTaskStatuses(projectId);
+};
+
+const saveServiceObligationRecord = (obligation: ServiceObligation) => {
+    const normalizedObligation = normalizeServiceObligation(obligation);
+    db.prepare(`
+        INSERT INTO service_obligations (
+            id, projectId, code, title, description, kind, scheduleType, intervalValue, relativeValue, relativeUnit,
+            fixedDate, anchorDate, triggerLabel, owner, evidenceHint, notes, sourceRequirement, requiresProtocol, isActive, createdAt, updatedAt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            projectId = excluded.projectId,
+            code = excluded.code,
+            title = excluded.title,
+            description = excluded.description,
+            kind = excluded.kind,
+            scheduleType = excluded.scheduleType,
+            intervalValue = excluded.intervalValue,
+            relativeValue = excluded.relativeValue,
+            relativeUnit = excluded.relativeUnit,
+            fixedDate = excluded.fixedDate,
+            anchorDate = excluded.anchorDate,
+            triggerLabel = excluded.triggerLabel,
+            owner = excluded.owner,
+            evidenceHint = excluded.evidenceHint,
+            notes = excluded.notes,
+            sourceRequirement = excluded.sourceRequirement,
+            requiresProtocol = excluded.requiresProtocol,
+            isActive = excluded.isActive,
+            updatedAt = excluded.updatedAt
+    `).run(
+        normalizedObligation.id,
+        normalizedObligation.projectId,
+        normalizedObligation.code,
+        normalizedObligation.title,
+        normalizedObligation.description,
+        normalizedObligation.kind,
+        normalizedObligation.scheduleType,
+        normalizedObligation.intervalValue || 1,
+        normalizedObligation.relativeValue || 0,
+        normalizedObligation.relativeUnit || null,
+        normalizedObligation.fixedDate || null,
+        normalizedObligation.anchorDate || null,
+        normalizedObligation.triggerLabel || null,
+        normalizedObligation.owner || null,
+        normalizedObligation.evidenceHint || null,
+        normalizedObligation.notes || null,
+        normalizedObligation.sourceRequirement || null,
+        normalizedObligation.requiresProtocol ? 1 : 0,
+        normalizedObligation.isActive ? 1 : 0,
+        normalizedObligation.createdAt,
+        normalizedObligation.updatedAt,
+    );
+
+    ensureServiceTasksForProject(normalizedObligation.projectId);
+};
+
+const deleteServiceObligationRecord = (obligationId: string) => {
+    const obligation = db.prepare('SELECT projectId FROM service_obligations WHERE id = ?').get(obligationId) as { projectId: string } | undefined;
+    db.prepare('DELETE FROM service_tasks WHERE obligationId = ?').run(obligationId);
+    db.prepare('DELETE FROM service_events WHERE obligationId = ?').run(obligationId);
+    db.prepare('DELETE FROM service_obligations WHERE id = ?').run(obligationId);
+    if (obligation?.projectId) {
+        ensureServiceTasksForProject(obligation.projectId);
+    }
+};
+
+const saveServiceEventRecord = (event: ServiceEvent) => {
+    const normalizedEvent = normalizeServiceEvent(event);
+    db.prepare(`
+        INSERT INTO service_events (
+            id, projectId, obligationId, eventType, title, occurredAt, dueDate, reference, notes, createdAt, updatedAt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            projectId = excluded.projectId,
+            obligationId = excluded.obligationId,
+            eventType = excluded.eventType,
+            title = excluded.title,
+            occurredAt = excluded.occurredAt,
+            dueDate = excluded.dueDate,
+            reference = excluded.reference,
+            notes = excluded.notes,
+            updatedAt = excluded.updatedAt
+    `).run(
+        normalizedEvent.id,
+        normalizedEvent.projectId,
+        normalizedEvent.obligationId || null,
+        normalizedEvent.eventType,
+        normalizedEvent.title,
+        normalizedEvent.occurredAt,
+        normalizedEvent.dueDate || null,
+        normalizedEvent.reference || null,
+        normalizedEvent.notes || null,
+        normalizedEvent.createdAt,
+        normalizedEvent.updatedAt,
+    );
+
+    db.prepare(`
+        DELETE FROM service_tasks
+        WHERE sourceEventId = ? AND sourceType = 'event' AND status IN ('pending', 'overdue')
+    `).run(normalizedEvent.id);
+
+    if (normalizedEvent.obligationId) {
+        const obligation = db.prepare('SELECT * FROM service_obligations WHERE id = ?').get(normalizedEvent.obligationId) as any;
+        if (obligation) {
+            const normalizedObligation = normalizeServiceObligation({
+                ...obligation,
+                requiresProtocol: obligation.requiresProtocol === 1,
+                isActive: obligation.isActive === 1,
+            });
+            const dueDate = calculateRelativeDueDate(normalizedEvent.occurredAt, normalizedObligation);
+            if (dueDate) {
+                const timestamp = new Date().toISOString();
+                upsertServiceTask({
+                    id: createEntityId('service_task'),
+                    projectId: normalizedEvent.projectId,
+                    obligationId: normalizedObligation.id,
+                    title: normalizedObligation.title,
+                    description: normalizedEvent.title,
+                    dueDate,
+                    status: 'pending',
+                    sourceType: 'event',
+                    sourceEventId: normalizedEvent.id,
+                    notes: normalizedEvent.notes || '',
+                    notifiedAt: '',
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                });
+
+                db.prepare('UPDATE service_events SET dueDate = ?, updatedAt = ? WHERE id = ?').run(dueDate, timestamp, normalizedEvent.id);
+            }
+        }
+    }
+
+    ensureServiceTasksForProject(normalizedEvent.projectId);
+};
+
+const deleteServiceEventRecord = (eventId: string) => {
+    const event = db.prepare('SELECT projectId FROM service_events WHERE id = ?').get(eventId) as { projectId: string } | undefined;
+    db.prepare('DELETE FROM service_events WHERE id = ?').run(eventId);
+    if (event?.projectId) {
+        ensureServiceTasksForProject(event.projectId);
+    }
+};
+
+const completeServiceTaskRecord = (taskId: string) => {
+    const task = db.prepare('SELECT * FROM service_tasks WHERE id = ?').get(taskId) as any;
+    if (!task) {
+        throw new Error('Nie znaleziono zadania obsługi.');
+    }
+
+    const completedAt = new Date().toISOString();
+    db.prepare(`
+        UPDATE service_tasks
+        SET status = 'completed', completedAt = ?, updatedAt = ?, notifiedAt = ?
+        WHERE id = ?
+    `).run(completedAt, completedAt, completedAt, taskId);
+
+    const obligation = db.prepare('SELECT * FROM service_obligations WHERE id = ?').get(task.obligationId) as any;
+    if (obligation) {
+        const normalizedObligation = normalizeServiceObligation({
+            ...obligation,
+            requiresProtocol: obligation.requiresProtocol === 1,
+            isActive: obligation.isActive === 1,
+        });
+        if (['monthly', 'quarterly', 'semiannual', 'annual'].includes(normalizedObligation.scheduleType)) {
+            ensureServiceTaskForObligation(normalizedObligation);
+        }
+    }
+
+    ensureServiceTasksForProject(task.projectId);
+};
+
+const reopenServiceTaskRecord = (taskId: string) => {
+    const task = db.prepare('SELECT * FROM service_tasks WHERE id = ?').get(taskId) as any;
+    if (!task) {
+        throw new Error('Nie znaleziono zadania obsługi.');
+    }
+
+    const timestamp = new Date().toISOString();
+    db.prepare(`
+        UPDATE service_tasks
+        SET status = 'pending', completedAt = NULL, notifiedAt = NULL, updatedAt = ?
+        WHERE id = ?
+    `).run(timestamp, taskId);
+
+    ensureServiceTasksForProject(task.projectId);
+};
+
+const buildServiceAlertPayload = () => {
+    const upcomingTarget = addDays(new Date(), serviceUpcomingAlertWindowDays).toISOString();
+    const projectLookup = getProjectLookup();
+    const rows = db.prepare(`
+        SELECT
+            t.id as taskId,
+            t.projectId,
+            t.title,
+            t.dueDate,
+            t.status,
+            o.code as obligationCode
+        FROM service_tasks t
+        JOIN service_obligations o ON o.id = t.obligationId
+        WHERE t.notifiedAt IS NULL
+          AND t.status IN ('pending', 'overdue')
+          AND (
+              t.status = 'overdue'
+              OR (t.status = 'pending' AND t.dueDate <= ?)
+          )
+        ORDER BY
+            CASE t.status WHEN 'overdue' THEN 0 ELSE 1 END,
+            t.dueDate ASC
+    `).all(upcomingTarget) as {
+        taskId: string;
+        projectId: string;
+        title: string;
+        dueDate: string;
+        status: 'pending' | 'overdue';
+        obligationCode?: string;
+    }[];
+
+    return rows.map((row) => ({
+        ...row,
+        projectCode: projectLookup[row.projectId]?.code || '',
+        projectName: projectLookup[row.projectId]?.name || '',
+    }));
+};
+
+const runServiceTaskChecks = () => {
+    if (serviceTaskRunnerInProgress) return;
+    serviceTaskRunnerInProgress = true;
+
+    try {
+        const projectIds = db.prepare('SELECT id FROM projects').all() as { id: string }[];
+        projectIds.forEach(({ id }) => ensureServiceTasksForProject(id));
+
+        const alerts = buildServiceAlertPayload();
+        if (alerts.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('service:alerts', alerts);
+            const timestamp = new Date().toISOString();
+            const updateStatement = db.prepare('UPDATE service_tasks SET notifiedAt = ?, updatedAt = ? WHERE id = ?');
+            alerts.forEach((alert) => {
+                updateStatement.run(timestamp, timestamp, alert.taskId);
+            });
+        }
+    } catch (error) {
+        console.error('Błąd pracy modułu obsługi umowy:', error);
+    } finally {
+        serviceTaskRunnerInProgress = false;
+    }
+};
+
+const startServiceTaskRunner = () => {
+    if (serviceTaskRunner) return;
+    runServiceTaskChecks();
+    serviceTaskRunner = setInterval(() => {
+        runServiceTaskChecks();
+    }, serviceTaskCheckIntervalMs);
+};
+
+const stopServiceTaskRunner = () => {
+    if (!serviceTaskRunner) return;
+    clearInterval(serviceTaskRunner);
+    serviceTaskRunner = null;
+};
+
 const importDatabaseBackupFromGoogleDrive = async () => {
     if (!googleDriveSharedFolderLink) {
         throw new Error('Brak GOOGLE_DRIVE_SHARED_FOLDER_LINK w pliku .env.');
@@ -2908,6 +3599,80 @@ ipcMain.handle('delete-maintenance-entry', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d usuwania wpisu utrzymania:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-service-overview', async (_, projectId: string) => {
+    try {
+        ensureServiceTasksForProject(projectId);
+        return {
+            obligations: getServiceObligations(projectId),
+            tasks: getServiceTasks(projectId),
+            events: getServiceEvents(projectId),
+        };
+    } catch (error) {
+        console.error('Błąd pobierania danych obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-service-obligation', async (_, data: ServiceObligation) => {
+    try {
+        saveServiceObligationRecord(data);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu obowiązku obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-service-obligation', async (_, id: string) => {
+    try {
+        deleteServiceObligationRecord(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania obowiązku obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-service-event', async (_, data: ServiceEvent) => {
+    try {
+        saveServiceEventRecord(data);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu zdarzenia obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-service-event', async (_, id: string) => {
+    try {
+        deleteServiceEventRecord(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania zdarzenia obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('complete-service-task', async (_, id: string) => {
+    try {
+        completeServiceTaskRecord(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zamykania zadania obsługi umowy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('reopen-service-task', async (_, id: string) => {
+    try {
+        reopenServiceTaskRecord(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd ponownego otwierania zadania obsługi umowy:', error);
         throw error;
     }
 });

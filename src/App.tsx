@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
   DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType
+  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType, ServiceObligation, ServiceTask, ServiceEvent
 } from './types';
 
 declare global {
@@ -56,6 +56,15 @@ declare global {
       getPendingSettlementEntries: (projectId: string) => Promise<PendingSettlementEntry[]>;
       savePendingSettlementEntry: (data: PendingSettlementEntry) => Promise<{ success: boolean }>;
       deletePendingSettlementEntry: (id: string) => Promise<{ success: boolean }>;
+      getServiceOverview: (projectId: string) => Promise<{ obligations: ServiceObligation[]; tasks: ServiceTask[]; events: ServiceEvent[] }>;
+      saveServiceObligation: (data: ServiceObligation) => Promise<{ success: boolean }>;
+      deleteServiceObligation: (id: string) => Promise<{ success: boolean }>;
+      saveServiceEvent: (data: ServiceEvent) => Promise<{ success: boolean }>;
+      deleteServiceEvent: (id: string) => Promise<{ success: boolean }>;
+      completeServiceTask: (id: string) => Promise<{ success: boolean }>;
+      reopenServiceTask: (id: string) => Promise<{ success: boolean }>;
+      onServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
+      offServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       writeClipboardHtml: (data: { html: string; text?: string }) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
@@ -114,6 +123,7 @@ import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNot
 import { DailyMain } from './features/daily/components/DailyMain';
 import { ProjectLinksDropdown, ProjectLinksMain } from './features/project-links/components/ProjectLinksMain';
 import { StatusMain } from './features/status/components/StatusMain';
+import { ServiceView } from './features/service/components/ServiceView';
 import {
   buildCbcpReportData,
   exportCbcpReportToExcel,
@@ -854,7 +864,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
@@ -862,6 +872,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const [burnUpSelectionStart, setBurnUpSelectionStart] = useState<string | null>(null);
   const [burnUpSelectionEnd, setBurnUpSelectionEnd] = useState<string | null>(null);
   const [collapsedSettlementSections, setCollapsedSettlementSections] = useState<Record<string, boolean>>({});
+  const [serviceAlerts, setServiceAlerts] = useState<Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>>([]);
   const { orders } = useOrders(selectedProject?.id);
 
   useEffect(() => {
@@ -873,7 +884,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       return;
     }
 
-    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'status', 'youtrack', 'estimation', 'notes'];
+    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'service', 'status', 'youtrack', 'estimation', 'notes'];
     if (allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab as typeof activeTab);
       return;
@@ -893,6 +904,22 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     setBurnUpSelectionStart(null);
     setBurnUpSelectionEnd(null);
   }, [selectedProject?.id]);
+
+  useEffect(() => {
+    const electronApi = window.electron;
+    if (!electronApi?.onServiceAlerts || !electronApi?.offServiceAlerts) {
+      return;
+    }
+
+    const handleAlerts = (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => {
+      setServiceAlerts(payload || []);
+    };
+
+    electronApi.onServiceAlerts(handleAlerts);
+    return () => {
+      electronApi.offServiceAlerts(handleAlerts);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -1723,6 +1750,23 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         </div>
 
         {/* NAVIGATION TABS */}
+        {serviceAlerts.length > 0 && (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p className="font-semibold">Aplikacja wykryła aktywne terminy w module `Obsługa`.</p>
+                {serviceAlerts.slice(0, 2).map((alert) => (
+                  <p key={alert.taskId}>
+                    {alert.projectCode ? `${alert.projectCode} - ` : ''}
+                    {alert.obligationCode ? `${alert.obligationCode}: ` : ''}
+                    {alert.title} - termin {alert.dueDate}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-8 border-b border-gray-200 dark:border-gray-800 mb-6 font-medium text-sm">
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -1760,6 +1804,14 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
               className={`pb-3 border-b-2 transition-colors ${activeTab === 'maintenance' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
             >
               Utrzymanie
+            </button>
+          )}
+          {selectedProject.hasMaintenance && (
+            <button
+              onClick={() => setActiveTab('service')}
+              className={`pb-3 border-b-2 transition-colors ${activeTab === 'service' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+            >
+              Obsługa
             </button>
           )}
           <button
@@ -3011,6 +3063,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'maintenance' && selectedProject.hasMaintenance && (
           <MaintenanceView project={selectedProject} />
+        )}
+
+        {activeTab === 'service' && selectedProject.hasMaintenance && (
+          <ServiceView project={selectedProject} alerts={serviceAlerts} />
         )}
 
         {activeTab === 'pendingSettlement' && (

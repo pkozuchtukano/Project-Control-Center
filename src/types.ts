@@ -48,6 +48,86 @@ export type ProjectLink = {
   updatedAt: string;
 };
 
+export type ServiceObligationKind = 'continuous' | 'recurring' | 'event';
+
+export type ServiceScheduleType =
+  | 'none'
+  | 'fixed_date'
+  | 'monthly'
+  | 'quarterly'
+  | 'semiannual'
+  | 'annual'
+  | 'relative';
+
+export type ServiceRelativeUnit = 'business_days' | 'calendar_days' | 'months';
+
+export type ServiceTaskStatus = 'pending' | 'completed' | 'overdue' | 'canceled';
+
+export type ServiceEventType =
+  | 'incident'
+  | 'security_patch'
+  | 'audit'
+  | 'consultation'
+  | 'backup'
+  | 'update'
+  | 'migration'
+  | 'other';
+
+export type ServiceObligation = {
+  id: string;
+  projectId: string;
+  code: string;
+  title: string;
+  description: string;
+  kind: ServiceObligationKind;
+  scheduleType: ServiceScheduleType;
+  intervalValue?: number;
+  relativeValue?: number;
+  relativeUnit?: ServiceRelativeUnit;
+  fixedDate?: string;
+  anchorDate?: string;
+  triggerLabel?: string;
+  owner?: string;
+  evidenceHint?: string;
+  notes?: string;
+  sourceRequirement?: string;
+  requiresProtocol: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ServiceTask = {
+  id: string;
+  projectId: string;
+  obligationId: string;
+  title: string;
+  description?: string;
+  dueDate: string;
+  status: ServiceTaskStatus;
+  completedAt?: string;
+  sourceType: 'schedule' | 'event';
+  sourceEventId?: string;
+  notes?: string;
+  notifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ServiceEvent = {
+  id: string;
+  projectId: string;
+  obligationId?: string;
+  eventType: ServiceEventType;
+  title: string;
+  occurredAt: string;
+  dueDate?: string;
+  reference?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type OrderItem = {
   id: string;
   name: string;

@@ -45,6 +45,19 @@ contextBridge.exposeInMainWorld('electron', {
     getMaintenanceEntries: (projectId: string) => ipcRenderer.invoke('get-maintenance-entries', projectId),
     saveMaintenanceEntry: (data: any) => ipcRenderer.invoke('save-maintenance-entry', data),
     deleteMaintenanceEntry: (id: string) => ipcRenderer.invoke('delete-maintenance-entry', id),
+    getServiceOverview: (projectId: string) => ipcRenderer.invoke('get-service-overview', projectId),
+    saveServiceObligation: (data: any) => ipcRenderer.invoke('save-service-obligation', data),
+    deleteServiceObligation: (id: string) => ipcRenderer.invoke('delete-service-obligation', id),
+    saveServiceEvent: (data: any) => ipcRenderer.invoke('save-service-event', data),
+    deleteServiceEvent: (id: string) => ipcRenderer.invoke('delete-service-event', id),
+    completeServiceTask: (id: string) => ipcRenderer.invoke('complete-service-task', id),
+    reopenServiceTask: (id: string) => ipcRenderer.invoke('reopen-service-task', id),
+    onServiceAlerts: (callback: (payload: any) => void) => {
+        ipcRenderer.on('service:alerts', (_event, payload) => callback(payload));
+    },
+    offServiceAlerts: (_callback: (payload: any) => void) => {
+        ipcRenderer.removeAllListeners('service:alerts');
+    },
     getPendingSettlementEntries: (projectId: string) => ipcRenderer.invoke('get-pending-settlement-entries', projectId),
     savePendingSettlementEntry: (data: any) => ipcRenderer.invoke('save-pending-settlement-entry', data),
     deletePendingSettlementEntry: (id: string) => ipcRenderer.invoke('delete-pending-settlement-entry', id),

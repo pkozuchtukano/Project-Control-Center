@@ -29,6 +29,7 @@ const LINK_TAB_OPTIONS = [
   { id: 'pendingSettlement', label: 'Do rozliczenia' },
   { id: 'work', label: 'Rejestr pracy' },
   { id: 'settlements', label: 'Rozliczenia' },
+  { id: 'service', label: 'Obsługa' },
   { id: 'status', label: 'Status' },
   { id: 'youtrack', label: 'YouTrack' },
   { id: 'estimation', label: 'Wycena' },

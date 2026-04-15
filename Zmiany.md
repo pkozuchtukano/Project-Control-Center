@@ -602,6 +602,20 @@
   -- Kolumna `Liczba godzin wycenionych` pokazuje teraz pogrubioną liczbę godzin końcowych bez miejsc po przecinku oraz `Wycenę zespołu` w nawiasie.
   -- Zmiana dotyczy wyłącznie prezentacji tabeli i ułatwia szybkie porównanie wartości końcowej z bazową wyceną zespołu.
 
+## Obsługa umowy utrzymaniowej
+- 2026-04-15 – Nowa zakładka `Obsługa` dla obowiązków ATiK
+  -- Dodano nową zakładkę projektową `Obsługa`, przeznaczoną do pilnowania obowiązków umowy utrzymaniowej w ramach konkretnego projektu.
+  -- Widok pokazuje katalog obowiązków, terminy do wykonania, ostatnie zdarzenia uruchamiające SLA oraz podsumowania zaległych i nadchodzących działań.
+- 2026-04-15 – Relacyjny model danych dla obowiązków i terminów umownych
+  -- Lokalna baza SQLite została rozszerzona o tabele `service_obligations`, `service_tasks` i `service_events`, wraz z indeksami pod odczyt po projekcie, statusie i terminie.
+  -- Moduł zapisuje osobno definicje obowiązków, konkretne zadania terminowe oraz zdarzenia uruchamiające, bez ingerencji w istniejące tabele projektów i bez utraty danych.
+- 2026-04-15 – Automatyczne generowanie terminów i przypomnień
+  -- W procesie głównym Electrona dodano logikę generowania zadań dla obowiązków cyklicznych i zdarzeniowych, oznaczania zadań po terminie oraz obsługi wykonania i ponownego otwierania zadań.
+  -- Aplikacja potrafi teraz liczyć terminy miesięczne, kwartalne, półroczne, roczne oraz terminy względne liczone w dniach kalendarzowych, roboczych i miesiącach.
+- 2026-04-15 – Szablon startowy wymagań ATK i integracja z linkami projektu
+  -- Zakładka `Obsługa` otrzymała przycisk ładowania szablonu najważniejszych obowiązków ATK, aby PM mógł szybciej wystartować z konfiguracją realnej umowy.
+  -- Linki projektowe można teraz przypinać także do zakładki `Obsługa`, tak aby pod ręką mieć np. portal serwisowy, repozytorium, monitoring lub dokumenty kontraktowe.
+
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status
   -- Dodano nowy projekt web-pcc oparty o React 19, TypeScript, Vite i Tailwind CSS 4 jako webową replikę modułów Daily i Status istniejącej aplikacji PCC.
