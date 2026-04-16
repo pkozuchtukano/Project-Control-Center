@@ -151,6 +151,8 @@ db.exec(`
         isCompleted INTEGER NOT NULL DEFAULT 0,
         isSentToSettlement INTEGER NOT NULL DEFAULT 0,
         isSettled INTEGER NOT NULL DEFAULT 0,
+        evidenceImageDataUrl TEXT,
+        evidenceImageName TEXT,
         notes TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
@@ -194,6 +196,8 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUr
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -400,6 +404,8 @@ const initializeDatabase = () => {
             isCompleted INTEGER NOT NULL DEFAULT 0,
             isSentToSettlement INTEGER NOT NULL DEFAULT 0,
             isSettled INTEGER NOT NULL DEFAULT 0,
+            evidenceImageDataUrl TEXT,
+            evidenceImageName TEXT,
             notes TEXT,
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
@@ -452,6 +458,8 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUr
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent REAL NOT NULL DEFAULT 0'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch { }
+try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch { }
 try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -1231,7 +1239,7 @@ ipcMain.handle('save-estimation', async (_, { projectId, data }: { projectId: st
     }
 });
 
-ipcMain.handle('write-clipboard-html', async (_, payload: { html: string; text?: string }) => {
+ipcMain.handle('write-clipboard-html', async (_, payload: { html: string; text?: string; imageDataUrl?: string }) => {
     try {
         const { clipboard } = electron;
         clipboard.write({
@@ -3971,6 +3979,8 @@ ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) =>
                 isCompleted,
                 isSentToSettlement,
                 isSettled,
+                evidenceImageDataUrl,
+                evidenceImageName,
                 notes,
                 createdAt,
                 updatedAt
@@ -4026,11 +4036,13 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 isCompleted,
                 isSentToSettlement,
                 isSettled,
+                evidenceImageDataUrl,
+                evidenceImageName,
                 notes,
                 createdAt,
                 updatedAt
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 externalId = excluded.externalId,
                 requester = excluded.requester,
@@ -4056,6 +4068,8 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
                 isCompleted = excluded.isCompleted,
                 isSentToSettlement = excluded.isSentToSettlement,
                 isSettled = excluded.isSettled,
+                evidenceImageDataUrl = excluded.evidenceImageDataUrl,
+                evidenceImageName = excluded.evidenceImageName,
                 notes = excluded.notes,
                 updatedAt = excluded.updatedAt
         `).run(
@@ -4085,6 +4099,8 @@ ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {
             data.isCompleted ? 1 : 0,
             data.isSentToSettlement ? 1 : 0,
             data.isSettled ? 1 : 0,
+            data.evidenceImageDataUrl || '',
+            data.evidenceImageName || '',
             data.notes || '',
             data.createdAt,
             data.updatedAt

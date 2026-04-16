@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
+import { useRef } from 'react';
 
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
@@ -68,7 +69,7 @@ declare global {
       importServiceObligations: (data: { projectId: string; replaceExisting: boolean; obligations: Array<Partial<ServiceObligation>> }) => Promise<{ success: boolean; importedCount: number }>;
       onServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       offServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
-      writeClipboardHtml: (data: { html: string; text?: string }) => Promise<{ success: boolean }>;
+      writeClipboardHtml: (data: { html: string; text?: string; imageDataUrl?: string }) => Promise<{ success: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
       getGoogleAuthUrl: () => Promise<string>;
@@ -5406,6 +5407,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
   const [copiedExport, setCopiedExport] = useState(false);
+  const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
 
   const formatPendingSettlementRequester = (value: string) => {
     const parts = value.trim().split(/\s+/).filter(Boolean);
@@ -5507,6 +5509,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
           <p style="margin:0 0 4px 0;">Wycena: <strong>${escapeHtml(`${formatPendingSettlementHoursForExport(entry.estimatedHours)} h`)}</strong>${entry.estimationDate ? ` - ${escapeHtml(entry.estimationDate)}` : ''}</p>
           <p style="margin:0 0 4px 0;">Zaakceptowano: ${escapeHtml(acceptanceLabel)}</p>
           <p style="margin:0 0 4px 0;">Status: ${escapeHtml(statusLabel)}</p>
+          ${entry.evidenceImageDataUrl ? `<div style="margin:8px 0 4px 0;"><img src="${entry.evidenceImageDataUrl}" alt="${escapeHtml(entry.evidenceImageName || 'Zrzut ekranu')}" style="max-width:100%;max-height:320px;border:1px solid #cbd5e1;border-radius:10px;display:block;" /></div>` : ''}
           ${completedWorkLabel ? `<p style="margin:0;">Już wykonano: ${escapeHtml(completedWorkLabel)}</p>` : ''}
         </div>
       `;
@@ -5516,6 +5519,33 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       <div style="font-family:Arial,sans-serif;font-size:13px;">${blocksHtml}</div>
     `;
   };
+
+  const buildPendingSettlementExportPlainText = (items: PendingSettlementEntry[]) => items.map((entry) => {
+    const lines = [
+      buildPendingSettlementIdLabel(entry),
+      `Zgłoszono: ${buildPendingSettlementReportedLabel(entry)}`,
+      entry.title || '',
+    ];
+
+    if ((entry.details || '').trim()) {
+      lines.push(entry.details.trim());
+    }
+
+    lines.push(`Wycena: ${buildPendingSettlementEstimationLabel(entry)}`);
+    lines.push(`Zaakceptowano: ${buildPendingSettlementAcceptanceSummary(entry)}`);
+    lines.push(`Status: ${formatPendingSettlementStatusLabel(entry)}`);
+
+    const completedWorkLabel = formatPendingSettlementCompletedWorkLabel(entry);
+    if (completedWorkLabel) {
+      lines.push(`Już wykonano: ${completedWorkLabel}`);
+    }
+
+    if (entry.evidenceImageName || entry.evidenceImageDataUrl) {
+      lines.push(`Zrzut: ${entry.evidenceImageName || 'dołączony do kopiowanego HTML'}`);
+    }
+
+    return lines.join('\n');
+  }).join('\n\n');
 
   const loadEntries = async () => {
     if (!window.electron?.getPendingSettlementEntries) {
@@ -5606,31 +5636,9 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     { id: 'completed' as const, label: 'Zrealizowane', count: completedCount },
   ];
 
-  const handleCopyPendingSettlementTable = async () => {
-    const html = buildPendingSettlementExportHtml(filteredEntries);
-    const plainText = filteredEntries.map((entry) => {
-      const lines = [
-        buildPendingSettlementIdLabel(entry),
-        `Zgłoszono: ${buildPendingSettlementReportedLabel(entry)}`,
-        entry.title || '',
-      ];
-
-      if ((entry.details || '').trim()) {
-        lines.push(entry.details.trim());
-      }
-
-      lines.push(`Wycena: ${buildPendingSettlementEstimationLabel(entry)}`);
-      lines.push(`Zaakceptowano: ${buildPendingSettlementAcceptanceSummary(entry)}`);
-      lines.push(`Status: ${formatPendingSettlementStatusLabel(entry)}`);
-
-      const completedWorkLabel = formatPendingSettlementCompletedWorkLabel(entry);
-      if (completedWorkLabel) {
-        lines.push(`Już wykonano: ${completedWorkLabel}`);
-      }
-
-      return lines.join('\n');
-    }).join('\n\n');
-
+  const copyPendingSettlementEntries = async (items: PendingSettlementEntry[]) => {
+    const html = buildPendingSettlementExportHtml(items);
+    const plainText = buildPendingSettlementExportPlainText(items);
     try {
       if (window.electron?.writeClipboardHtml) {
         await window.electron.writeClipboardHtml({
@@ -5640,12 +5648,28 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       } else {
         await navigator.clipboard.writeText(plainText);
       }
-      setCopiedExport(true);
-      window.setTimeout(() => setCopiedExport(false), 1800);
+      return true;
     } catch (copyError) {
       console.error('Pending settlement export copy failed:', copyError);
       setError('Nie udało się skopiować eksportu do schowka.');
+      return false;
     }
+  };
+
+  const handleCopyPendingSettlementTable = async () => {
+    const wasCopied = await copyPendingSettlementEntries(filteredEntries);
+    if (!wasCopied) return;
+    setCopiedExport(true);
+    window.setTimeout(() => setCopiedExport(false), 1800);
+  };
+
+  const handleCopyPendingSettlementEntry = async (entry: PendingSettlementEntry) => {
+    const wasCopied = await copyPendingSettlementEntries([entry]);
+    if (!wasCopied) return;
+    setCopiedEntryId(entry.id);
+    window.setTimeout(() => {
+      setCopiedEntryId((current) => current === entry.id ? null : current);
+    }, 1800);
   };
 
   return (
@@ -5781,7 +5805,14 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     <td className="px-6 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{formatPendingSettlementRequester(entry.requester)}</td>
                     <td className="px-6 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
+                      <div className="space-y-1">
+                        <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
+                        {entry.evidenceImageDataUrl && (
+                          <span className="inline-flex w-fit items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
+                            Zrzut
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
                       <span className="font-bold text-gray-900 dark:text-white">{formatPendingSettlementHoursForExport(entry.estimatedHours)}</span>
@@ -5791,6 +5822,18 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isSettled ? 'Tak' : 'Nie'}</td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyPendingSettlementEntry(entry)}
+                          className={`p-1.5 rounded-lg transition ${
+                            copiedEntryId === entry.id
+                              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300'
+                              : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/60'
+                          }`}
+                          title={copiedEntryId === entry.id ? 'Skopiowano wpis' : 'Kopiuj wpis'}
+                        >
+                          <Copy size={16} />
+                        </button>
                         <button onClick={() => { setEditingEntry(entry); setIsModalOpen(true); }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
                           <Edit2 size={16} />
                         </button>
@@ -5843,6 +5886,7 @@ const PendingSettlementEntryModal = ({
   const [formData, setFormData] = useState<PendingSettlementEntry>(() => createPendingSettlementDraft(project, entries));
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const evidenceImageInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -5925,6 +5969,8 @@ const PendingSettlementEntryModal = ({
         acceptedBy: formData.acceptedBy?.trim() || '',
         acceptanceChannel: formData.acceptanceChannel?.trim() || '',
         preAcceptanceWorkDescription: formData.preAcceptanceWorkDescription.trim(),
+        evidenceImageDataUrl: formData.evidenceImageDataUrl || '',
+        evidenceImageName: formData.evidenceImageName?.trim() || '',
         notes: formData.notes?.trim() || '',
         updatedAt: new Date().toISOString(),
       });
@@ -5961,6 +6007,84 @@ const PendingSettlementEntryModal = ({
     } catch (error) {
       setError('Nie udało się otworzyć adresu tablicy w YouTrack.');
     }
+  };
+
+  const saveEvidenceImage = (payload: { dataUrl: string; fileName: string }) => {
+    setFormData((prev) => ({
+      ...prev,
+      evidenceImageDataUrl: payload.dataUrl,
+      evidenceImageName: payload.fileName,
+      updatedAt: new Date().toISOString(),
+    }));
+    setError('');
+  };
+
+  const readImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Wybierz plik obrazu.');
+    }
+
+    return await new Promise<{ dataUrl: string; fileName: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === 'string' ? reader.result : '';
+        if (!result.startsWith('data:image/')) {
+          reject(new Error('Nie udało się odczytać obrazu.'));
+          return;
+        }
+        resolve({
+          dataUrl: result,
+          fileName: file.name || 'zrzut-ekranu',
+        });
+      };
+      reader.onerror = () => reject(new Error('Nie udało się odczytać pliku obrazu.'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleEvidenceImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const payload = await readImageFile(file);
+      saveEvidenceImage(payload);
+    } catch (imageError: any) {
+      setError(imageError?.message || 'Nie udało się dodać obrazu.');
+    }
+  };
+
+  const handlePasteEvidenceImage = async (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const imageFile = Array.from(event.clipboardData.items)
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      ?.getAsFile();
+
+    if (!imageFile) {
+      setError('Schowek nie zawiera obrazu.');
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      const payload = await readImageFile(imageFile);
+      saveEvidenceImage({
+        ...payload,
+        fileName: payload.fileName || `zrzut-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.png`,
+      });
+    } catch (imageError: any) {
+      setError(imageError?.message || 'Nie udało się wkleić obrazu ze schowka.');
+    }
+  };
+
+  const handleRemoveEvidenceImage = () => {
+    setFormData((prev) => ({
+      ...prev,
+      evidenceImageDataUrl: '',
+      evidenceImageName: '',
+      updatedAt: new Date().toISOString(),
+    }));
   };
 
   if (!isOpen) return null;
@@ -6369,6 +6493,63 @@ const PendingSettlementEntryModal = ({
                 rows={4}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-y"
               />
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Zrzut ekranu / obraz</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => evidenceImageInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700/60 dark:hover:text-indigo-300"
+                  >
+                    <FileUp size={15} />
+                    <span>Dodaj plik</span>
+                  </button>
+                  {formData.evidenceImageDataUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveEvidenceImage}
+                      className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:hover:bg-red-900/20"
+                    >
+                      <X size={15} />
+                      <span>Usuń</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input
+                ref={evidenceImageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleEvidenceImageFileChange}
+                className="hidden"
+              />
+              <div
+                tabIndex={0}
+                onPaste={(event) => void handlePasteEvidenceImage(event)}
+                className="rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-4 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 dark:border-gray-600 dark:bg-gray-900/30"
+              >
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Dodaj obraz jako plik albo wklej zrzut ze schowka.</p>
+                <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">Kliknij `Dodaj plik` albo ustaw fokus tutaj i użyj `Ctrl+V`. Obraz zapisze się razem z pozycją w bazie.</p>
+                {formData.evidenceImageDataUrl ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
+                      {formData.evidenceImageName || 'Zrzut ekranu'}
+                    </div>
+                    <img
+                      src={formData.evidenceImageDataUrl}
+                      alt={formData.evidenceImageName || 'Załączony zrzut ekranu'}
+                      className="max-h-80 w-full rounded-xl border border-gray-200 object-contain bg-white dark:border-gray-700 dark:bg-gray-950/40"
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-white/80 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-400">
+                    Brak dodanego obrazu.
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
@@ -8625,6 +8806,8 @@ const createPendingSettlementDraft = (project: Project, entries: PendingSettleme
     isCompleted: false,
     isSentToSettlement: false,
     isSettled: false,
+    evidenceImageDataUrl: '',
+    evidenceImageName: '',
     notes: '',
     createdAt: now,
     updatedAt: now,

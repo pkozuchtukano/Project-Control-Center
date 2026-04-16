@@ -526,6 +526,18 @@
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
 
 ## Do rozliczenia
+- 2026-04-16 – Zrzut ekranu w pozycjach `Do rozliczenia`
+  -- Formularz pozycji `Do rozliczenia` został rozszerzony o pole obrazu z podglądem, dodawaniem pliku oraz wklejaniem zrzutu ekranu bezpośrednio ze schowka.
+  -- Model danych i zapis SQLite dostały bezstratną migrację nowych kolumn obrazu, dzięki czemu załączony zrzut zapisuje się razem z pozycją i pozostaje w bazie przy eksporcie oraz imporcie danych.
+- 2026-04-16 – Kopiowanie zrzutu w eksporcie `Do rozliczenia`
+  -- Obsługa przycisku `Kopiuj` w zakładce `Do rozliczenia` została rozszerzona o osadzanie obrazu w kopiowanym HTML oraz zapis pierwszego dostępnego zrzutu do natywnego schowka systemowego.
+  -- Dzięki temu pozycje ze zrzutem zachowują obraz przy wklejaniu do edytorów obsługujących HTML lub obraz ze schowka, bez utraty dotychczasowego tekstu i układu eksportu.
+- 2026-04-16 – Priorytet tekstu i HTML przy wklejaniu eksportu `Do rozliczenia`
+  -- Z obsługi schowka usunięto osobny zapis natywnego obrazu, ponieważ część aplikacji wklejała wtedy wyłącznie bitmapę i pomijała tekst eksportu.
+  -- Kopiowany eksport nadal zawiera obraz osadzony w HTML, ale priorytet ma teraz pełna treść wpisu, dzięki czemu w edytorach rich text wkleja się tekst razem ze zrzutem.
+- 2026-04-16 – Kopiowanie pojedynczego wpisu `Do rozliczenia`
+  -- Do kolumny akcji na liście `Do rozliczenia` dodano osobny przycisk kopiowania pojedynczego zadania, niezależny od globalnego przycisku `Kopiuj`.
+  -- Pojedynczy wpis korzysta z tego samego formatu eksportu co widok zbiorczy, dzięki czemu można szybko wkleić jedno zadanie razem z jego szczegółami i ewentualnym zrzutem.
 - 2026-04-14 – Uporządkowanie sekcji wyceny i statusów w formularzu
   -- W formularzu pozycji `Do rozliczenia` przeorganizowano układ pól dotyczących wyceny, akceptacji oraz statusów realizacji do dwóch czytelnych sekcji z wewnętrznymi kartami.
   -- Pola zachowały dotychczasową logikę i dane, ale widok ma teraz równiejszą siatkę, lepsze grupowanie informacji i bardziej spójny układ checkboxów przy różnych szerokościach ekranu.

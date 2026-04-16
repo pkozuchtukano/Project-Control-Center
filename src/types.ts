@@ -383,6 +383,8 @@ export type PendingSettlementEntry = {
   isCompleted: boolean;
   isSentToSettlement: boolean;
   isSettled: boolean;
+  evidenceImageDataUrl?: string;
+  evidenceImageName?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
