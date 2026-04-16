@@ -538,6 +538,39 @@
 - 2026-04-16 – Kopiowanie pojedynczego wpisu `Do rozliczenia`
   -- Do kolumny akcji na liście `Do rozliczenia` dodano osobny przycisk kopiowania pojedynczego zadania, niezależny od globalnego przycisku `Kopiuj`.
   -- Pojedynczy wpis korzysta z tego samego formatu eksportu co widok zbiorczy, dzięki czemu można szybko wkleić jedno zadanie razem z jego szczegółami i ewentualnym zrzutem.
+- 2026-04-16 – Suma godzin w widoku `Do rozliczenia`
+  -- Nad listą pozycji `Do rozliczenia` dodano panel z łączną sumą godzin dla aktualnie widocznych zadań, dzięki czemu filtr od razu pokazuje sumaryczny zakres prac.
+  -- Panel uwzględnia zarówno końcową liczbę godzin wycenianych, jak i sumę bazowej wyceny zespołu, żeby łatwiej porównać łączny plan z wartością roboczą.
+- 2026-04-16 – Kolumna `Status` zamiast `Rozliczono?` w `Do rozliczenia`
+  -- W tabeli `Do rozliczenia` zastąpiono prostą kolumnę `Rozliczono?` nową kolumną `Status`, która pokazuje bieżący etap pozycji.
+  -- Widok korzysta z istniejącej logiki statusów (`Nowe`, `Realizujemy`, `Zrealizowano`, `Przekazano do rozliczenia`, `Rozliczono`), dzięki czemu lista daje pełniejszy obraz postępu bez otwierania formularza.
+- 2026-04-16 – Pojedynczy wybór statusu w formularzu `Do rozliczenia`
+  -- Sekcję `Status pozycji` w formularzu `Do rozliczenia` zmieniono z czterech niezależnych checkboxów na jeden combobox `Status`.
+  -- Formularz nadal zapisuje dotychczasowe pola statusowe w modelu danych, ale użytkownik może wybrać tylko jeden etap naraz, co eliminuje sprzeczne kombinacje zaznaczeń.
+- 2026-04-16 – Naprawa błędu `getPendingSettlementStatusValue` w modalu
+  -- Helper odczytujący bieżący status pozycji został przeniesiony do wspólnego zakresu pliku, aby był dostępny zarówno dla listy, jak i formularza edycji.
+  -- Dzięki temu modal `Do rozliczenia` otwiera się poprawnie po zmianie checkboxów statusu na combobox i nie zgłasza błędu `ReferenceError`.
+- 2026-04-16 – Uproszczenie pola statusu do czystego comboboxa
+  -- Z sekcji statusu w formularzu `Do rozliczenia` usunięto dodatkowy opis pomocniczy pod polem.
+  -- Pole `Status` działa teraz jako combobox `input + datalist`, zamiast klasycznej listy `select`, przy zachowaniu tych samych dozwolonych etapów.
+- 2026-04-16 – Własny dropdown statusu zamiast filtrowanego `datalist`
+  -- Pole `Status` w formularzu `Do rozliczenia` zostało przerobione na własny dropdown/combobox otwierający pełną listę wszystkich etapów po kliknięciu.
+  -- Dzięki temu użytkownik zawsze widzi komplet statusów naraz, zamiast pojedynczej podpowiedzi filtrowanej przez bieżącą wartość pola.
+- 2026-04-16 – Niebieskie wyróżnienie zadań niewycenionych na liście
+  -- Na liście `Do rozliczenia` pozycje bez wyceny zostały wyróżnione niebieskim tłem wiersza, aby szybciej odróżnić je od zadań już wycenionych.
+  -- Dodatkowo przy tytule takiego wpisu pojawia się znacznik `Niewycenione`, dzięki czemu status pozostaje czytelny także przy szybszym skanowaniu tabeli.
+- 2026-04-16 – Pomarańczowe wyróżnienie zadań oczekujących na akceptację
+  -- Na liście `Do rozliczenia` pozycje już wycenione, ale jeszcze niezaakceptowane, zostały oznaczone pomarańczowym tłem wiersza.
+  -- Przy tytule takiego wpisu pojawia się także znacznik `Czeka na akceptację`, co ułatwia odróżnienie zadań po wycenie od pozycji już formalnie zaakceptowanych.
+- 2026-04-16 – Kolorowe kropki jako legenda w kafelkach `Do rozliczenia`
+  -- Do kafelków filtrujących w widoku `Do rozliczenia` dodano małe kolorowe kropki pełniące rolę legendy dla prezentowanych statusów i stanów pozycji.
+  -- Kolory kropek zostały dopasowane do istniejących wyróżnień na liście, dzięki czemu łatwiej powiązać kafelki z oznaczeniami widocznymi w tabeli.
+- 2026-04-16 – Spójna paleta kolorów statusów w `Do rozliczenia`
+  -- Każdy status i ważny stan pozycji w widoku `Do rozliczenia` dostał własny kolor bez użycia zieleni i czerwieni, a te same odcienie są używane w legendzie kafelków, badge statusu oraz podświetleniu wierszy.
+  -- Dzięki temu lista jest spójniejsza wizualnie i pozwala szybciej rozpoznać etap pozycji na podstawie jednego, powtarzalnego kodu kolorystycznego w całym widoku.
+- 2026-04-16 – Brak podświetlenia tła dla statusu `Zrealizowano`
+  -- Dla pozycji ze statusem `Zrealizowano` usunięto kolorowe podświetlenie całego wiersza, pozostawiając sam status oraz pozostałe oznaczenia bez zmian.
+  -- Dzięki temu wyróżnienie na liście skupia się na stanach wymagających działania lub uwagi, a zadania wykonane nie dominują wizualnie w tabeli.
 - 2026-04-14 – Uporządkowanie sekcji wyceny i statusów w formularzu
   -- W formularzu pozycji `Do rozliczenia` przeorganizowano układ pól dotyczących wyceny, akceptacji oraz statusów realizacji do dwóch czytelnych sekcji z wewnętrznymi kartami.
   -- Pola zachowały dotychczasową logikę i dane, ale widok ma teraz równiejszą siatkę, lepsze grupowanie informacji i bardziej spójny układ checkboxów przy różnych szerokościach ekranu.

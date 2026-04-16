@@ -5451,6 +5451,50 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     return 'Nowe';
   };
 
+  const getPendingSettlementRowToneClass = (entry: PendingSettlementEntry) => {
+    if (!entry.isEstimated) {
+      return 'bg-sky-100/75 hover:bg-sky-100 dark:bg-sky-900/25 dark:hover:bg-sky-900/35';
+    }
+    if (entry.isEstimated && !entry.isAccepted) {
+      return 'bg-amber-100/75 hover:bg-amber-100 dark:bg-amber-900/25 dark:hover:bg-amber-900/35';
+    }
+    if (entry.isSettled) {
+      return 'bg-fuchsia-100/70 hover:bg-fuchsia-100 dark:bg-fuchsia-900/20 dark:hover:bg-fuchsia-900/30';
+    }
+    if (entry.isSentToSettlement) {
+      return 'bg-violet-100/70 hover:bg-violet-100 dark:bg-violet-900/20 dark:hover:bg-violet-900/30';
+    }
+    if (entry.isCompleted) {
+      return 'hover:bg-gray-50 dark:hover:bg-gray-800/50';
+    }
+    if (entry.isInProgress) {
+      return 'bg-cyan-100/70 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30';
+    }
+    return 'hover:bg-gray-50 dark:hover:bg-gray-800/50';
+  };
+
+  const getPendingSettlementStatusBadgeClass = (entry: PendingSettlementEntry) => {
+    if (!entry.isEstimated) {
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/40 dark:bg-sky-900/25 dark:text-sky-200';
+    }
+    if (entry.isEstimated && !entry.isAccepted) {
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-900/25 dark:text-amber-200';
+    }
+    if (entry.isSettled) {
+      return 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-800/40 dark:bg-fuchsia-900/25 dark:text-fuchsia-200';
+    }
+    if (entry.isSentToSettlement) {
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800/40 dark:bg-violet-900/25 dark:text-violet-200';
+    }
+    if (entry.isCompleted) {
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/40 dark:bg-indigo-900/25 dark:text-indigo-200';
+    }
+    if (entry.isInProgress) {
+      return 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800/40 dark:bg-cyan-900/25 dark:text-cyan-200';
+    }
+    return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-200';
+  };
+
   const formatPendingSettlementCompletedWorkLabel = (entry: PendingSettlementEntry) => {
     const workParts: string[] = [];
     if (Number(entry.preAcceptanceWorkHours) > 0) {
@@ -5625,15 +5669,17 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
         return true;
     }
   });
+  const filteredEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.estimatedHours) || 0), 0);
+  const filteredTeamEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.teamEstimatedHours) || 0), 0);
 
   const summaryCards = [
-    { id: 'all' as const, label: 'Pozycji', count: entries.length },
-    { id: 'estimated' as const, label: 'Wycenione', count: estimatedCount },
-    { id: 'notEstimated' as const, label: 'Niewycenione', count: notEstimatedCount },
-    { id: 'accepted' as const, label: 'Zaakceptowane', count: acceptedCount },
-    { id: 'notAccepted' as const, label: 'Niezaakceptowane', count: notAcceptedCount },
-    { id: 'inProgress' as const, label: 'Realizowane', count: inProgressCount },
-    { id: 'completed' as const, label: 'Zrealizowane', count: completedCount },
+    { id: 'all' as const, label: 'Pozycji', count: entries.length, dotClass: 'bg-slate-400 dark:bg-slate-500' },
+    { id: 'estimated' as const, label: 'Wycenione', count: estimatedCount, dotClass: 'bg-cyan-500 dark:bg-cyan-400' },
+    { id: 'notEstimated' as const, label: 'Niewycenione', count: notEstimatedCount, dotClass: 'bg-sky-500 dark:bg-sky-400' },
+    { id: 'accepted' as const, label: 'Zaakceptowane', count: acceptedCount, dotClass: 'bg-violet-500 dark:bg-violet-400' },
+    { id: 'notAccepted' as const, label: 'Niezaakceptowane', count: notAcceptedCount, dotClass: 'bg-amber-400 dark:bg-amber-300' },
+    { id: 'inProgress' as const, label: 'Realizowane', count: inProgressCount, dotClass: 'bg-cyan-500 dark:bg-cyan-400' },
+    { id: 'completed' as const, label: 'Zrealizowane', count: completedCount, dotClass: 'bg-indigo-500 dark:bg-indigo-400' },
   ];
 
   const copyPendingSettlementEntries = async (items: PendingSettlementEntry[]) => {
@@ -5730,15 +5776,32 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                   : 'bg-white border-gray-100 text-gray-900 hover:border-indigo-200 hover:bg-indigo-50/60 dark:bg-gray-800 dark:border-gray-800 dark:text-white dark:hover:border-indigo-400/30 dark:hover:bg-indigo-500/5'
               }`}
             >
-              <p className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+              <p className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] ${
                 isActive ? 'text-indigo-600 dark:text-indigo-200' : 'text-gray-500 dark:text-gray-400'
               }`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${card.dotClass}`} aria-hidden="true" />
                 {card.label}
               </p>
               <p className="mt-3 text-3xl font-black">{card.count}</p>
             </button>
           );
         })}
+      </div>
+
+      <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4 shadow-sm dark:border-indigo-900/30 dark:from-indigo-500/10 dark:via-gray-800 dark:to-sky-500/10">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Suma godzin</p>
+            <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
+              {formatPendingSettlementHoursForExport(filteredEstimatedHoursTotal)} h
+            </p>
+          </div>
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            <span className="font-medium">Dla aktualnie widocznych pozycji:</span>{' '}
+            <span>{filteredEntries.length}</span>
+            <span>{' · Wycena zespołu: '}{formatPendingSettlementHoursForExport(filteredTeamEstimatedHoursTotal)} h</span>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -5773,13 +5836,16 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                   <th className="px-6 py-4">Tytuł</th>
                   <th className="px-6 py-4 whitespace-nowrap">Liczba godzin wycenionych</th>
                   <th className="px-6 py-4 whitespace-nowrap">Akceptacja?</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Rozliczono?</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
                   <th className="px-6 py-4 text-center">Akcje</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filteredEntries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                  <tr
+                    key={entry.id}
+                    className={`transition ${getPendingSettlementRowToneClass(entry)}`}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
                         {entry.youtrackIssueUrl && (
@@ -5807,6 +5873,16 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     <td className="px-6 py-4">
                       <div className="space-y-1">
                         <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
+                        {!entry.isEstimated && (
+                          <span className="inline-flex w-fit items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700 dark:border-sky-800/40 dark:bg-sky-900/25 dark:text-sky-200">
+                            Niewycenione
+                          </span>
+                        )}
+                        {entry.isEstimated && !entry.isAccepted && (
+                          <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:border-amber-800/40 dark:bg-amber-900/25 dark:text-amber-200">
+                            Czeka na akceptację
+                          </span>
+                        )}
                         {entry.evidenceImageDataUrl && (
                           <span className="inline-flex w-fit items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
                             Zrzut
@@ -5819,7 +5895,11 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                       <span>{` (${formatPendingSettlementHoursForExport(entry.teamEstimatedHours)})`}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isSettled ? 'Tak' : 'Nie'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getPendingSettlementStatusBadgeClass(entry)}`}>
+                        {formatPendingSettlementStatusLabel(entry)}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
@@ -5887,6 +5967,8 @@ const PendingSettlementEntryModal = ({
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const evidenceImageInputRef = useRef<HTMLInputElement | null>(null);
+  const statusComboboxRef = useRef<HTMLDivElement | null>(null);
+  const [isStatusComboboxOpen, setIsStatusComboboxOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -5897,6 +5979,19 @@ const PendingSettlementEntryModal = ({
     }
     setFormData(createPendingSettlementDraft(project, entries));
   }, [entries, entryToEdit, isOpen, project.id]);
+
+  useEffect(() => {
+    if (!isStatusComboboxOpen) return;
+
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      if (!statusComboboxRef.current?.contains(event.target as Node)) {
+        setIsStatusComboboxOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDownOutside);
+    return () => document.removeEventListener('mousedown', handlePointerDownOutside);
+  }, [isStatusComboboxOpen]);
 
   const requesterSuggestions = Array.from(new Set([
     ...(project.stakeholders || []).map((stakeholder) => stakeholder.name.trim()),
@@ -5911,6 +6006,15 @@ const PendingSettlementEntryModal = ({
   const acceptanceChannelSuggestions = Array.from(new Set(entries.map((entry) => (entry.acceptanceChannel || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const teamEstimateSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.teamEstimatedHours) || 0).filter((value) => value > 0))).sort((left, right) => left - right);
   const marginPercentSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.marginPercent) || 0).filter((value) => value >= 0))).sort((left, right) => left - right);
+  const pendingSettlementStatusOptions = [
+    { value: 'new', label: 'Nowe' },
+    { value: 'inProgress', label: 'Realizujemy' },
+    { value: 'completed', label: 'Zrealizowano' },
+    { value: 'sentToSettlement', label: 'Przekazano do rozliczenia' },
+    { value: 'settled', label: 'Rozliczono' },
+  ] as const;
+  const getPendingSettlementStatusLabel = (value: string) =>
+    pendingSettlementStatusOptions.find((option) => option.value === value)?.label || 'Nowe';
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target;
@@ -5935,6 +6039,18 @@ const PendingSettlementEntryModal = ({
 
       return updated;
     });
+  };
+
+  const handleStatusChange = (statusValue: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      isInProgress: statusValue === 'inProgress',
+      isCompleted: statusValue === 'completed',
+      isSentToSettlement: statusValue === 'sentToSettlement',
+      isSettled: statusValue === 'settled',
+      updatedAt: new Date().toISOString(),
+    }));
+    setIsStatusComboboxOpen(false);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -6428,47 +6544,44 @@ const PendingSettlementEntryModal = ({
 
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Status pozycji</p>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        name="isInProgress"
-                        checked={formData.isInProgress}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="min-w-0 whitespace-normal leading-snug">Realizacja</span>
-                    </label>
-                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        name="isCompleted"
-                        checked={formData.isCompleted}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="min-w-0 whitespace-normal leading-snug">Zrealizowano?</span>
-                    </label>
-                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        name="isSentToSettlement"
-                        checked={formData.isSentToSettlement}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="min-w-0 whitespace-normal leading-snug">Przekazano do rozliczenia?</span>
-                    </label>
-                    <label className="flex min-h-[64px] items-center gap-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-3 py-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        name="isSettled"
-                        checked={formData.isSettled}
-                        onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="min-w-0 whitespace-normal leading-snug">Rozliczono?</span>
-                    </label>
+                  <div className="mt-4">
+                    <div ref={statusComboboxRef} className="relative">
+                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                      <button
+                        type="button"
+                        onClick={() => setIsStatusComboboxOpen((current) => !current)}
+                        className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                        aria-haspopup="listbox"
+                        aria-expanded={isStatusComboboxOpen}
+                      >
+                        <span>{getPendingSettlementStatusLabel(getPendingSettlementStatusValue(formData))}</span>
+                        <ChevronDown size={16} className={`transition-transform ${isStatusComboboxOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isStatusComboboxOpen && (
+                        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                          <div role="listbox" className="py-1">
+                            {pendingSettlementStatusOptions.map((option) => {
+                              const isSelected = getPendingSettlementStatusValue(formData) === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  onClick={() => handleStatusChange(option.value)}
+                                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                                    isSelected
+                                      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200'
+                                      : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/60'
+                                  }`}
+                                >
+                                  <span>{option.label}</span>
+                                  {isSelected && <CheckCircle size={14} />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -8765,6 +8878,14 @@ const generatePendingSettlementExternalId = (
     .reduce((maxValue, value) => (value && value > maxValue ? value : maxValue), 0) + 1;
 
   return `${prefix}${String(nextSequence).padStart(3, '0')}`;
+};
+
+const getPendingSettlementStatusValue = (entry: PendingSettlementEntry) => {
+  if (entry.isSettled) return 'settled';
+  if (entry.isSentToSettlement) return 'sentToSettlement';
+  if (entry.isCompleted) return 'completed';
+  if (entry.isInProgress) return 'inProgress';
+  return 'new';
 };
 
 const calculatePendingSettlementEstimatedHours = (teamEstimatedHours: number, marginPercent: number) => {
