@@ -105,7 +105,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search
 } from 'lucide-react';
 
 import { 
@@ -5406,6 +5406,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [copiedExport, setCopiedExport] = useState(false);
   const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
 
@@ -5651,23 +5652,40 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const notAcceptedCount = entries.filter((entry) => !entry.isAccepted).length;
   const inProgressCount = entries.filter((entry) => entry.isInProgress).length;
   const completedCount = entries.filter((entry) => entry.isCompleted).length;
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('pl-PL');
   const filteredEntries = entries.filter((entry) => {
-    switch (activeFilter) {
-      case 'estimated':
-        return entry.isEstimated;
-      case 'notEstimated':
-        return !entry.isEstimated;
-      case 'accepted':
-        return entry.isAccepted;
-      case 'notAccepted':
-        return !entry.isAccepted;
-      case 'inProgress':
-        return entry.isInProgress;
-      case 'completed':
-        return entry.isCompleted;
-      default:
-        return true;
+    const matchesFilter = (() => {
+      switch (activeFilter) {
+        case 'estimated':
+          return entry.isEstimated;
+        case 'notEstimated':
+          return !entry.isEstimated;
+        case 'accepted':
+          return entry.isAccepted;
+        case 'notAccepted':
+          return !entry.isAccepted;
+        case 'inProgress':
+          return entry.isInProgress;
+        case 'completed':
+          return entry.isCompleted;
+        default:
+          return true;
+      }
+    })();
+
+    if (!matchesFilter) {
+      return false;
     }
+
+    if (!normalizedSearchQuery) {
+      return true;
+    }
+
+    const searchableText = [entry.title || '', entry.details || '']
+      .join(' ')
+      .toLocaleLowerCase('pl-PL');
+
+    return searchableText.includes(normalizedSearchQuery);
   });
   const filteredEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.estimatedHours) || 0), 0);
   const filteredTeamEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.teamEstimatedHours) || 0), 0);
@@ -5789,17 +5807,39 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       </div>
 
       <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4 shadow-sm dark:border-indigo-900/30 dark:from-indigo-500/10 dark:via-gray-800 dark:to-sky-500/10">
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Suma godzin</p>
             <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
               {formatPendingSettlementHoursForExport(filteredEstimatedHoursTotal)} h
             </p>
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-300">
-            <span className="font-medium">Dla aktualnie widocznych pozycji:</span>{' '}
-            <span>{filteredEntries.length}</span>
-            <span>{' · Wycena zespołu: '}{formatPendingSettlementHoursForExport(filteredTeamEstimatedHoursTotal)} h</span>
+          <div className="flex flex-col gap-3 xl:min-w-[420px] xl:max-w-[520px] xl:flex-1 xl:items-end">
+            <div className="w-full relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Szukaj po tytule i szczegółach..."
+                className="w-full rounded-xl border border-white/60 bg-white/90 py-2.5 pl-10 pr-10 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:focus:border-indigo-500 dark:focus:bg-gray-900"
+              />
+              {searchQuery.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  title="Wyczyść wyszukiwanie"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-300 xl:text-right">
+              <span className="font-medium">Dla aktualnie widocznych pozycji:</span>{' '}
+              <span>{filteredEntries.length}</span>
+              <span>{' · Wycena zespołu: '}{formatPendingSettlementHoursForExport(filteredTeamEstimatedHoursTotal)} h</span>
+            </div>
           </div>
         </div>
       </div>
@@ -5823,7 +5863,11 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
               <FileText size={28} className="text-gray-300 dark:text-gray-600" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Brak pozycji dla wybranego filtra</h3>
-            <p className="text-gray-500 dark:text-gray-400">Zmień kafelek u góry, aby zobaczyć inne pozycje `Do rozliczenia`.</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              {normalizedSearchQuery
+                ? 'Zmień wyszukiwaną frazę lub kafelek u góry, aby zobaczyć inne pozycje `Do rozliczenia`.'
+                : 'Zmień kafelek u góry, aby zobaczyć inne pozycje `Do rozliczenia`.'}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -571,6 +571,12 @@
 - 2026-04-16 – Brak podświetlenia tła dla statusu `Zrealizowano`
   -- Dla pozycji ze statusem `Zrealizowano` usunięto kolorowe podświetlenie całego wiersza, pozostawiając sam status oraz pozostałe oznaczenia bez zmian.
   -- Dzięki temu wyróżnienie na liście skupia się na stanach wymagających działania lub uwagi, a zadania wykonane nie dominują wizualnie w tabeli.
+- 2026-04-16 – Wyszukiwarka po tytule i szczegółach w `Do rozliczenia`
+  -- Nad listą `Do rozliczenia` dodano pole wyszukiwania filtrujące po `Tytule` oraz `Szczegółach` wpisu, z możliwością szybkiego wyczyszczenia frazy.
+  -- Wyszukiwanie działa razem z kafelkami statusów, więc zawęża także liczbę widocznych pozycji, sumę godzin oraz zakres danych kopiowanych z aktualnego widoku.
+- 2026-04-16 – Wyszukiwarka przeniesiona do panelu `Suma godzin`
+  -- Pole wyszukiwania w widoku `Do rozliczenia` zostało przeniesione z osobnego kafla bezpośrednio do panelu `Suma godzin`, aby skupić sterowanie widocznymi pozycjami w jednym miejscu.
+  -- Dzięki temu liczba wyników, suma godzin i wyszukiwana fraza są prezentowane w jednym, spójnym obszarze roboczym.
 - 2026-04-14 – Uporządkowanie sekcji wyceny i statusów w formularzu
   -- W formularzu pozycji `Do rozliczenia` przeorganizowano układ pól dotyczących wyceny, akceptacji oraz statusów realizacji do dwóch czytelnych sekcji z wewnętrznymi kartami.
   -- Pola zachowały dotychczasową logikę i dane, ale widok ma teraz równiejszą siatkę, lepsze grupowanie informacji i bardziej spójny układ checkboxów przy różnych szerokościach ekranu.
