@@ -1,11 +1,111 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare, Bot } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
 import type { DailySection } from '../../../types';
 import { getSmartDateRange } from '../utils/dailyUtils';
 import { DailySectionColumn } from './DailySectionColumn';
 import { useYouTrack } from '../../../hooks/useYouTrack';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
+
+const formatIsoDateTime = (value?: number | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const anonymizeDisplayName = (value?: string | null) => {
+  if (!value) return null;
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+};
+
+const normalizeForAnalysis = (value?: string | null) => (value || '').toLowerCase();
+
+const classifyExecutionStage = (sectionName: string, stateName?: string | null) => {
+  const haystack = `${normalizeForAnalysis(sectionName)} ${normalizeForAnalysis(stateName)}`;
+
+  if (/(test.*klient|klient.*test|uat|akceptac|odbior|po stronie klienta)/.test(haystack)) {
+    return 'testing_client';
+  }
+  if (/(test.*u nas|u nas.*test|internal test|qa|testing|testy wewn|weryfikacja)/.test(haystack)) {
+    return 'testing_internal';
+  }
+  if (/(in progress|w trakcie|realiz|development|implement|do zrobienia|analiz)/.test(haystack)) {
+    return 'in_progress';
+  }
+  if (/(blocked|blok|waiting|oczekiwanie)/.test(haystack)) {
+    return 'blocked';
+  }
+  if (/(done|resolved|zakończ|gotowe|wdrożone)/.test(haystack)) {
+    return 'done';
+  }
+
+  return 'other';
+};
+
+const buildNextStepHints = ({
+  sectionName,
+  stateName,
+  hasActivityInRange,
+  hasPmNote,
+  dueDate,
+}: {
+  sectionName: string;
+  stateName?: string | null;
+  hasActivityInRange: boolean;
+  hasPmNote: boolean;
+  dueDate?: number | null;
+}) => {
+  const stage = classifyExecutionStage(sectionName, stateName);
+  const hints: string[] = [];
+
+  if (stage === 'in_progress') {
+    hints.push('Zweryfikować, czy do domknięcia prac potrzebne są dodatkowe decyzje, doprecyzowanie lub przekazanie dalej na testy.');
+  }
+  if (stage === 'testing_internal') {
+    hints.push('Sprawdzić wynik testów wewnętrznych i zdecydować, czy zadanie można przekazać na testy klienta albo do wdrożenia.');
+  }
+  if (stage === 'testing_client') {
+    hints.push('Monitorować feedback klienta, zebrać uwagi i przygotować decyzję: poprawka, akceptacja albo zamknięcie.');
+  }
+  if (stage === 'blocked') {
+    hints.push('Ustalić blokadę i właściciela odblokowania, aby zadanie mogło wrócić do realizacji.');
+  }
+  if (!hasActivityInRange) {
+    hints.push('Brak świeżej aktywności w wybranym zakresie dat. Warto potwierdzić, czy temat nadal jest aktywny.');
+  }
+  if (hasPmNote) {
+    hints.push('Uwzględnić notatkę PM przy ocenie ryzyk, zależności i kolejnych kroków.');
+  }
+  if (dueDate) {
+    hints.push('Sprawdzić termin i priorytet względem pozostałych zadań w sekcji.');
+  }
+
+  return Array.from(new Set(hints));
+};
+
+const pruneJson = (value: unknown): unknown => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  }
+  if (Array.isArray(value)) {
+    const next = value
+      .map((item) => pruneJson(item))
+      .filter((item) => item !== undefined);
+    return next.length ? next : undefined;
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, pruneJson(item)] as const)
+      .filter(([, item]) => item !== undefined);
+    return entries.length ? Object.fromEntries(entries) : undefined;
+  }
+  return value;
+};
 
 interface DailyBoardProps {
   hubId: string;
@@ -17,29 +117,40 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const boardRef = useRef<HTMLDivElement>(null);
 
   const { from: initialFrom, to: initialTo } = useMemo(() => getSmartDateRange(), []);
-  const loadSavedDate = (key: 'dateFrom' | 'dateTo', fallback: string) => {
-    if (typeof window === 'undefined') return fallback;
+  const loadSavedDateFrom = (fallbackFrom: string, currentDateTo: string) => {
+    if (typeof window === 'undefined') return fallbackFrom;
     try {
       const saved = window.localStorage.getItem('daily_date_filters');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.[key]) {
-          return parsed[key];
+        if (parsed?.dateFrom) {
+          return parsed.dateFrom > currentDateTo ? currentDateTo : parsed.dateFrom;
         }
       }
     } catch {
       // ignore malformed entries and fall back to defaults
     }
-    return fallback;
+    return fallbackFrom;
   };
 
-  const [dateFrom, setDateFrom] = useState(() => loadSavedDate('dateFrom', initialFrom));
-  const [dateTo, setDateTo] = useState(() => loadSavedDate('dateTo', initialTo));
+  const [dateFrom, setDateFrom] = useState(() => loadSavedDateFrom(initialFrom, initialTo));
+  const [dateTo, setDateTo] = useState(initialTo);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [showOnlyCommented, setShowOnlyCommented] = useState(false);
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
+  const [isAiExporting, setIsAiExporting] = useState(false);
+  const [isAiCopied, setIsAiCopied] = useState(false);
   const [comments, setComments] = useState<Record<string, string>>({});
+  const [skippedInAiIssues, setSkippedInAiIssues] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = window.localStorage.getItem('daily_ai_skipped_issues');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [issueStates, setIssueStates] = useState<Record<string, boolean>>({});
   const [isSyncing, setIsSyncing] = useState(false);
   const [hasLoadedActivities, setHasLoadedActivities] = useState(false);
@@ -53,13 +164,15 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     data: activityIssues,
     isLoading: isActivityLoading,
     error: activityError,
-    fetchHistory: fetchActivityHistory
+    fetchHistory: fetchActivityHistory,
+    clearData: clearActivityData
   } = useYouTrack();
   const {
     data: boardIssues,
     isLoading: isBoardLoading,
     error: boardError,
-    fetchHistory: fetchBoardHistory
+    fetchHistory: fetchBoardHistory,
+    clearData: clearBoardData
   } = useYouTrack();
 
   const normalizeStatuses = (raw: string) => {
@@ -141,6 +254,11 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   useEffect(() => {
     localStorage.setItem('daily_collapsed_sections', JSON.stringify(collapsedSections));
   }, [collapsedSections]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('daily_ai_skipped_issues', JSON.stringify(skippedInAiIssues));
+  }, [skippedInAiIssues]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -254,6 +372,219 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     return ids;
   }, [filteredActivityIssues, dateFrom, dateTo]);
 
+  const sectionIssuesMap = useMemo(() => {
+    const map = new Map<string, IssueWithHistory[]>();
+
+    sections.forEach((section) => {
+      const sourceIssues = section.id === 'fixed_aktywnosci' ? filteredActivityIssues : filteredBoardIssues;
+      const issues = sourceIssues.filter((issue) => {
+        const hasTimelineInRange = activityIssueIds.has(issue.idReadable);
+
+        if (section.id === 'fixed_aktywnosci') {
+          return hasTimelineInRange;
+        }
+
+        const statuses = normalizeStatuses(section.youtrackStatuses);
+        const currentState = typeof issue.state === 'string' ? issue.state : issue.state?.name;
+        if (!statuses.includes((currentState || '').toLowerCase())) return false;
+        if (section.respectDates) {
+          return hasTimelineInRange;
+        }
+        return true;
+      });
+
+      map.set(section.id, issues);
+    });
+
+    return map;
+  }, [sections, filteredActivityIssues, filteredBoardIssues, activityIssueIds]);
+
+  const aiExportSummary = useMemo(() => {
+    const boardSections = sections.filter((section) => section.id !== 'fixed_aktywnosci');
+    const currentSectionByIssue = new Map<string, DailySection>();
+
+    boardSections.forEach((section) => {
+      (sectionIssuesMap.get(section.id) || []).forEach((issue) => {
+        if (!currentSectionByIssue.has(issue.idReadable)) {
+          currentSectionByIssue.set(issue.idReadable, section);
+        }
+      });
+    });
+
+    const allVisibleIssuesById = new Map<string, IssueWithHistory>();
+    Array.from(sectionIssuesMap.values()).forEach((issues) => {
+      issues.forEach((issue) => {
+        if (skippedInAiIssues[issue.idReadable]) return;
+        if (!allVisibleIssuesById.has(issue.idReadable)) {
+          allVisibleIssuesById.set(issue.idReadable, issue);
+        }
+      });
+    });
+
+    const allVisibleIssues = Array.from(allVisibleIssuesById.values());
+
+    const serializedIssues = allVisibleIssues.map((issue) => {
+      const currentSection = currentSectionByIssue.get(issue.idReadable) || null;
+      const stateName = typeof issue.state === 'string' ? issue.state : issue.state?.name || null;
+      const stage = classifyExecutionStage(currentSection?.name || 'Aktywności', stateName);
+      const pmNote = comments[issue.idReadable]?.trim() || null;
+      const activitiesInRange = (issue.timeline || [])
+        .filter((item) => item.timestamp >= new Date(`${dateFrom}T00:00:00`).getTime() && item.timestamp <= new Date(`${dateTo}T23:59:59`).getTime())
+        .map((item) => ({
+          type: item.type,
+          timestamp: new Date(item.timestamp).toISOString(),
+          author: anonymizeDisplayName(item.author?.name || item.author?.login || null),
+          ...(item.type === 'comment' ? { text: item.text || '' } : {}),
+          ...(item.type === 'field-change' ? { field: item.field || null, from: item.removed || null, to: item.added || null } : {}),
+          ...(item.type === 'work-item'
+            ? {
+                minutes: item.minutes || 0,
+                workType: item.workItemType || null,
+                comments: item.workComments || [],
+              }
+            : {}),
+        }));
+
+      const relatedLinks = (issue.links || [])
+        .map((link) => ({
+          direction: link.direction || null,
+          typeName: link.linkType?.name || link.linkType?.outwardName || link.linkType?.inwardName || null,
+          issues: (link.issues || []).map((linkedIssue) => ({
+            id: linkedIssue.idReadable,
+            summary: linkedIssue.summary || null,
+          })),
+        }))
+        .filter((link) => link.issues.length > 0);
+
+      return {
+        id: issue.idReadable,
+        projectCode: issue.project?.shortName || null,
+        summary: issue.summary,
+        description: issue.description || null,
+        currentSection: currentSection
+          ? {
+              id: currentSection.id,
+              name: currentSection.name,
+              respectDates: !!currentSection.respectDates,
+              configuredStatuses: normalizeStatuses(currentSection.youtrackStatuses),
+            }
+          : null,
+        state: stateName,
+        executionStage: stage,
+        ...(activityIssueIds.has(issue.idReadable) ? { isActiveInRange: true } : {}),
+        ...(pmNote ? { hasPmNote: true, pmNote } : {}),
+        assignee: anonymizeDisplayName(issue.assignee?.fullName || issue.assignee?.name || issue.assignee?.login || null),
+        reporter: anonymizeDisplayName(issue.reporter?.name || issue.reporter?.login || null),
+        priority: issue.priority?.name || null,
+        type: issue.type?.name || null,
+        createdAt: formatIsoDateTime(issue.created),
+        updatedAt: formatIsoDateTime(issue.updated),
+        resolvedAt: formatIsoDateTime(issue.resolved),
+        dueDate: formatIsoDateTime(issue.dueDate),
+        estimation: issue.estimation || null,
+        spentTime: issue.spentTime || null,
+        activitiesInRange,
+        ...(activitiesInRange.length ? { activityCountInRange: activitiesInRange.length } : {}),
+        ...(activitiesInRange.length ? { latestActivityAt: activitiesInRange[activitiesInRange.length - 1].timestamp } : {}),
+        ...(relatedLinks.length ? { relatedLinks } : {}),
+        nextStepHints: buildNextStepHints({
+          sectionName: currentSection?.name || 'Aktywności',
+          stateName,
+          hasActivityInRange: activityIssueIds.has(issue.idReadable),
+          hasPmNote: !!pmNote,
+          dueDate: issue.dueDate,
+        }),
+      };
+    });
+
+    const serializedIssuesById = new Map<string, (typeof serializedIssues)[number]>(
+      serializedIssues.map((issue) => [issue.id, issue])
+    );
+
+    const sectionSummaries = sections.map((section) => {
+      const issues = (sectionIssuesMap.get(section.id) || []).filter((issue) => !skippedInAiIssues[issue.idReadable]);
+      return {
+        id: section.id,
+        name: section.name,
+        type: section.id === 'fixed_aktywnosci' ? 'activity' : 'board',
+        respectDates: !!section.respectDates,
+        configuredStatuses: normalizeStatuses(section.youtrackStatuses),
+        issueCount: issues.length,
+        issueIds: issues.map((issue) => issue.idReadable),
+        issues: issues
+          .map((issue) => serializedIssuesById.get(issue.idReadable))
+          .filter((issue): issue is (typeof serializedIssues)[number] => Boolean(issue))
+          .map((issue) => ({
+            id: issue.id,
+            summary: issue.summary,
+            state: issue.state,
+            executionStage: issue.executionStage,
+            ...(issue.isActiveInRange ? { isActiveInRange: true } : {}),
+            ...(issue.hasPmNote ? { hasPmNote: true } : {}),
+          })),
+      };
+    });
+
+    const stageBuckets = serializedIssues.reduce<Record<string, string[]>>((acc, issue) => {
+      if (!acc[issue.executionStage]) {
+        acc[issue.executionStage] = [];
+      }
+      acc[issue.executionStage].push(issue.id);
+      return acc;
+    }, {});
+
+    return pruneJson({
+      generatedAt: new Date().toISOString(),
+      generatedAtLocal: new Date().toLocaleString('pl-PL'),
+      hub: {
+        id: hubId,
+        projectCodes: projectCodes.split(',').map((item) => item.trim()).filter(Boolean),
+      },
+      filters: {
+        dateFrom,
+        dateTo,
+        selectedProject,
+        ...(selectedProject ? { selectedProject } : {}),
+        ...(selectedAssignee ? { selectedAssignee: selectedAssignee === '__unassigned__' ? 'Nieprzypisane' : anonymizeDisplayName(selectedAssignee) } : {}),
+        ...(showOnlyCommented ? { showOnlyCommented: true } : {}),
+        ...(Object.values(skippedInAiIssues).some(Boolean)
+          ? { skippedInAiIssueIds: Object.entries(skippedInAiIssues).filter(([, skipped]) => skipped).map(([issueId]) => issueId) }
+          : {}),
+      },
+      summary: {
+        visibleSections: sectionSummaries.length,
+        visibleIssues: serializedIssues.length,
+        activeIssuesInRange: serializedIssues.filter((issue) => issue.isActiveInRange).length,
+        issuesWithPmNotes: serializedIssues.filter((issue) => issue.hasPmNote).length,
+        executionStages: Object.fromEntries(Object.entries(stageBuckets).map(([key, value]) => [key, value.length])),
+      },
+      aiContext: {
+        activeIssueIds: serializedIssues.filter((issue) => issue.isActiveInRange).map((issue) => issue.id),
+        issuesInProgress: stageBuckets.in_progress || [],
+        issuesOnInternalTesting: stageBuckets.testing_internal || [],
+        issuesOnClientTesting: stageBuckets.testing_client || [],
+        blockedIssues: stageBuckets.blocked || [],
+        focusHints: [
+          ...(stageBuckets.testing_client?.length ? ['Są zadania na testach klienta. Warto sprawdzić feedback i decyzje akceptacyjne.'] : []),
+          ...(stageBuckets.testing_internal?.length ? ['Są zadania na testach wewnętrznych. Warto ocenić gotowość do przekazania dalej.'] : []),
+          ...(stageBuckets.in_progress?.length ? ['Są zadania w realizacji. Warto wskazać najbliższe kroki i ewentualne blokery.'] : []),
+          ...(serializedIssues.some((issue) => issue.hasPmNote) ? ['W eksporcie są notatki PM, które należy uwzględnić przy opisie ryzyk i dalszych działań.'] : []),
+        ],
+      },
+      sections: sectionSummaries,
+      issues: serializedIssues,
+    }) as {
+      generatedAt: string;
+      generatedAtLocal: string;
+      hub: { id: string; projectCodes: string[] };
+      filters?: Record<string, unknown>;
+      summary: Record<string, unknown>;
+      aiContext?: Record<string, unknown>;
+      sections: Array<Record<string, unknown>>;
+      issues: Array<Record<string, unknown>>;
+    };
+  }, [sections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
+
   const fetchActivitiesFirst = async () => {
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
     if (!dateFrom || !dateTo) return;
@@ -288,21 +619,10 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadInStages = async () => {
-      setHasLoadedActivities(false);
-      await fetchActivitiesFirst();
-      if (cancelled) return;
-      await fetchBoardData();
-    };
-
-    loadInStages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectCodes, dateFrom, dateTo, settings, boardStateFilters.join('|')]);
+    setHasLoadedActivities(false);
+    clearActivityData();
+    clearBoardData();
+  }, [hubId, projectCodes, dateFrom, dateTo, boardStateFilters.join('|'), clearActivityData, clearBoardData]);
 
   const toggleAllSections = () => {
     const isAnySectionCollapsed = sections.some((s: any) => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]);
@@ -328,6 +648,13 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     await window.electron?.saveDailyIssueState({ issueId, isCollapsed });
   };
 
+  const handleToggleSkipInAi = (issueId: string, skipInAi: boolean) => {
+    setSkippedInAiIssues((prev) => ({
+      ...prev,
+      [issueId]: skipInAi,
+    }));
+  };
+
   const syncYouTrack = async () => {
     setIsSyncing(true);
     try {
@@ -336,6 +663,24 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       await fetchBoardData();
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleExportToAi = async () => {
+    if (!hasLoadedActivities || aiExportSummary.issues.length === 0) {
+      window.alert('Najpierw kliknij `Pobierz dane`, aby przygotować eksport aktualnej tablicy.');
+      return;
+    }
+
+    setIsAiExporting(true);
+    setIsAiCopied(false);
+    try {
+      const json = JSON.stringify(aiExportSummary, null, 2);
+      await navigator.clipboard.writeText(json);
+      setIsAiCopied(true);
+      window.setTimeout(() => setIsAiCopied(false), 2500);
+    } finally {
+      setIsAiExporting(false);
     }
   };
 
@@ -423,11 +768,25 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw size={14} />}
               Pobierz dane
             </button>
+            <button
+              onClick={handleExportToAi}
+              disabled={isAiExporting || !hasLoadedActivities || aiExportSummary.issues.length === 0}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                isAiExporting || !hasLoadedActivities || aiExportSummary.issues.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
+              }`}
+            >
+              {isAiExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot size={14} />}
+              {isAiCopied ? 'Skopiowano do schowka' : 'Export do AI'}
+            </button>
           </div>
         </div>
 
         <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
-          {!hasLoadedActivities || isActivityLoading ? (
+          {!hasLoadedActivities && !isActivityLoading ? (
+            <span>Kliknij `Pobierz dane`, aby załadować zgłoszenia dla bieżącego zakresu.</span>
+          ) : !hasLoadedActivities || isActivityLoading ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
               Ładowanie aktywności...
@@ -485,28 +844,16 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
             <DailySectionColumn
               key={section.id}
               section={section}
-              issues={(section.id === 'fixed_aktywnosci' ? filteredActivityIssues : filteredBoardIssues).filter(i => {
-                const hasTimelineInRange = activityIssueIds.has(i.idReadable);
-
-                if (section.id === 'fixed_aktywnosci') {
-                  return !!hasTimelineInRange;
-                }
-
-                const statuses = normalizeStatuses(section.youtrackStatuses);
-                const currentState = typeof i.state === 'string' ? i.state : i.state?.name;
-                if (!statuses.includes(currentState?.toLowerCase() || '')) return false;
-                if (section.respectDates) {
-                  return !!hasTimelineInRange;
-                }
-                return true;
-              })}
+              issues={sectionIssuesMap.get(section.id) || []}
               activityIssueIds={activityIssueIds}
               comments={comments}
+              skippedInAiIssues={skippedInAiIssues}
               issueStates={issueStates}
               onCommentSave={(issueId: string, content: string) => {
                 setComments({ ...comments, [issueId]: content });
                 window.electron?.saveDailyComment({ issueId, content });
               }}
+              onToggleSkipInAi={handleToggleSkipInAi}
               onSaveIssueState={handleSaveIssueState}
               onAssigneeFilter={setSelectedAssignee}
               dateFrom={dateFrom}

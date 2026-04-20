@@ -135,6 +135,15 @@ export const DailyIssueDetailsModal = ({ issue, isOpen, onClose, dateFrom, dateT
     return format(new Date(ts), 'PPP p', { locale: pl });
   };
 
+  const formatIssueDueDate = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined || value === '') return '-';
+
+    const parsed = typeof value === 'number' ? new Date(value) : new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) return String(value);
+
+    return format(parsed, 'PP', { locale: pl });
+  };
+
   const priorityInfo = issue.priority && issue.priority.name.toLowerCase() !== 'normal' ? {
       name: issue.priority.name,
       initial: issue.priority.name.charAt(0).toUpperCase(),
@@ -279,7 +288,7 @@ export const DailyIssueDetailsModal = ({ issue, isOpen, onClose, dateFrom, dateT
                 {issue.dueDate && (
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">Termin (Due):</span>
-                    <span className="font-bold text-amber-600">{format(new Date(issue.dueDate), 'PP', { locale: pl })}</span>
+                    <span className="font-bold text-amber-600">{formatIssueDueDate(issue.dueDate)}</span>
                   </div>
                 )}
               </div>

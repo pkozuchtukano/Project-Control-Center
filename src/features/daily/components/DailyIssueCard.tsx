@@ -6,10 +6,12 @@ import { useProjectContext } from '../../../context/ProjectContext';
 interface DailyIssueCardProps {
   issue: any;
   localComment: string;
+  skipInAi?: boolean;
   isCollapsed: boolean;
   dateFrom: string;
   dateTo: string;
   onSaveComment: (content: string) => void;
+  onToggleSkipInAi?: (skipInAi: boolean) => void;
   onToggleCollapse?: (isCollapsed: boolean) => void;
   onAssigneeFilter: (assignee: string | null) => void;
   showState?: boolean;
@@ -18,10 +20,12 @@ interface DailyIssueCardProps {
 export const DailyIssueCard = ({ 
   issue, 
   localComment, 
+  skipInAi = false,
   isCollapsed, 
   dateFrom,
   dateTo,
   onSaveComment, 
+  onToggleSkipInAi,
   onToggleCollapse,
   onAssigneeFilter,
   showState = true
@@ -65,6 +69,11 @@ export const DailyIssueCard = ({
     if (issue.assignee?.login) {
       onAssigneeFilter(issue.assignee.login);
     }
+  };
+
+  const handleSkipInAiChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    onToggleSkipInAi?.(e.target.checked);
   };
 
   const formatMins = (m: number) => {
@@ -174,6 +183,19 @@ export const DailyIssueCard = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <label
+            className="flex items-center gap-1 text-[10px] font-bold text-gray-400 hover:text-amber-600 cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+            title="Pomiń to zadanie w eksporcie AI"
+          >
+            <input
+              type="checkbox"
+              checked={skipInAi}
+              onChange={handleSkipInAiChange}
+              className="h-3 w-3 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+            />
+            AI
+          </label>
           {onToggleCollapse && (
             <button 
               onClick={(e) => { e.stopPropagation(); onToggleCollapse(false); }}
@@ -256,6 +278,18 @@ export const DailyIssueCard = ({
                >
                   <ExternalLink size={12} /> Szczegóły
                </button>
+               <label
+                  className="w-full px-3 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+               >
+                  <input
+                    type="checkbox"
+                    checked={skipInAi}
+                    onChange={handleSkipInAiChange}
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+                  />
+                  Pomiń w AI
+               </label>
                {onToggleCollapse && (
                   <button 
                     onClick={() => onToggleCollapse(true)}
@@ -328,18 +362,37 @@ export const DailyIssueCard = ({
       </div>
 
       {/* Assignee & Footer */}
-      <div className="px-3 pb-3 pt-1 flex items-center justify-between mt-auto">
-        <div 
-          className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 -ml-1 rounded-lg transition-colors overflow-hidden flex-1"
-          onClick={handleAssigneeClick}
-          title={`Filtruj po: ${issue.assignee?.name || 'Brak'}`}
-        >
-          <div className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-[10px] shrink-0">
-            {issue.assignee?.name?.charAt(0).toUpperCase() || <User size={12} />}
+      <div className="px-3 pb-3 pt-1 flex items-center justify-between mt-auto gap-2">
+        <div className="flex items-center gap-2 overflow-hidden flex-1">
+          <div 
+            className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 -ml-1 rounded-lg transition-colors overflow-hidden flex-1"
+            onClick={handleAssigneeClick}
+            title={`Filtruj po: ${issue.assignee?.name || 'Brak'}`}
+          >
+            <div className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-[10px] shrink-0">
+              {issue.assignee?.name?.charAt(0).toUpperCase() || <User size={12} />}
+            </div>
+            <span className="text-[11px] font-bold text-gray-600 dark:text-gray-400 truncate">
+              {issue.assignee?.name || 'Nieprzypisane'}
+            </span>
           </div>
-          <span className="text-[11px] font-bold text-gray-600 dark:text-gray-400 truncate">
-            {issue.assignee?.name || 'Nieprzypisane'}
-          </span>
+          <label
+            className={`shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
+              skipInAi
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+            title="Pomiń to zadanie w eksporcie AI"
+          >
+            <input
+              type="checkbox"
+              checked={skipInAi}
+              onChange={handleSkipInAiChange}
+              className="h-3 w-3 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+            />
+            Pomiń w AI
+          </label>
         </div>
         
         <button 

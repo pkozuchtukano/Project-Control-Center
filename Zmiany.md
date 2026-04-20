@@ -1,4 +1,17 @@
 ﻿## Daily Command Center
+- 2026-04-20 – Eksport JSON Daily do analizy AI
+  -- W widoku Daily dodano przycisk Export do AI, który kopiuje do schowka JSON z aktualną zawartością tablicy: sekcjami, zadaniami, aktywnościami w wybranym zakresie dat oraz notatkami PM.
+  -- Na kartach zadań dodano checkbox Pomiń w AI; zadania oznaczone tym przełącznikiem są zapamiętywane lokalnie i nie trafiają do eksportu JSON.
+  -- Eksport anonimizuje osoby w polach strukturalnych, np. Jan Kowalski jest zapisywany jako Jan K., a payload zawiera dodatkowo klasyfikację etapów prac i podpowiedzi kontekstowe ułatwiające chatbotowi AI opisanie bieżącego stanu projektu, aktywnych tematów, testów i możliwych dalszych działań.
+  -- JSON jest odchudzany przed skopiowaniem: usuwane są puste pola, puste listy i puste obiekty, aby ograniczyć rozmiar danych przekazywanych do AI.
+  -- Z eksportu usunięto też globalne definicje typów linków YouTrack bez realnie powiązanych zgłoszeń; w relatedLinks pozostają tylko konkretne relacje do innych zadań.
+- 2026-04-20 – Ręczne pobieranie danych po otwarciu Daily
+  -- Widok Daily przestał automatycznie pobierać dane z YouTrack zaraz po kliknięciu kafelka oraz po zmianie zakresu dat; odświeżenie uruchamia teraz wyłącznie przycisk Pobierz dane.
+  -- Pole Data do startuje zawsze z dzisiejszą datą, nawet jeśli w pamięci lokalnej został zapisany starszy zakres, dzięki czemu nowo otwarty widok nie dziedziczy przestarzałej daty końcowej.
+- 2026-04-20 – Formatowanie pola Due date w daily
+  -- W module Daily dodano normalizację wartości pola Due date pochodzącego z aktywności YouTrack, tak aby zmiany tego pola nie wyświetlały już surowego timestampu w milisekundach.
+  -- Widok historii aktywności i szczegóły zadania pokazują teraz termin w czytelnym formacie daty dla użytkownika pl-PL, nawet gdy źródło zwraca liczbę lub tekstowy timestamp.
+
 - 2026-04-10 – HTML dla wysyłki Daily z harmonogramu
   -- Wysyłka `Daily` z globalnego harmonogramu przestała generować wyłącznie tekst i buduje teraz także wariant HTML odwzorowujący układ widoku daily: kolumny sekcji, karty zadań, badge typu/priorytetu/statusu, pasek postępu czasu, przypisaną osobę oraz notatkę PM.
   -- W części HTML dodano również sekcję aktywności z ostatnimi zmianami z wybranego zakresu dat, dzięki czemu wiadomość e-mail pokazuje komentarze, zmiany pól i logi czasu w formie zbliżonej do kart `Aktywności` w aplikacji.
@@ -705,5 +718,8 @@
 - 2026-04-08 – Logowanie Firebase Auth i izolacja danych per użytkownik
   -- Webowa aplikacja web-pcc została rozszerzona o ekran logowania przez Google w Firebase Auth oraz pełne bramkowanie dostępu do modułów po aktywnej sesji użytkownika.
   -- Repozytorium Firestore zapisuje teraz dokumenty z polem ownerUid i odczytuje wyłącznie dane zalogowanego użytkownika, a do projektu dodano gotowy plik irestore.rules z regułami wymagającymi logowania i zgodności ownerUid == auth.uid.
+
+
+
 
 

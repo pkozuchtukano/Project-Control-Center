@@ -7,8 +7,10 @@ interface DailySectionColumnProps {
   issues: any[];
   activityIssueIds: Set<string>;
   comments: Record<string, string>;
+  skippedInAiIssues: Record<string, boolean>;
   issueStates: Record<string, boolean>;
   onCommentSave: (issueId: string, content: string) => void;
+  onToggleSkipInAi: (issueId: string, skipInAi: boolean) => void;
   onSaveIssueState: (issueId: string, isCollapsed: boolean) => void;
   onAssigneeFilter: (assignee: string | null) => void;
   dateFrom: string;
@@ -19,8 +21,8 @@ interface DailySectionColumnProps {
 }
 
 export const DailySectionColumn = ({ 
-  section, issues, activityIssueIds, comments, issueStates, 
-  onCommentSave, onSaveIssueState, 
+  section, issues, activityIssueIds, comments, skippedInAiIssues, issueStates, 
+  onCommentSave, onToggleSkipInAi, onSaveIssueState, 
   onAssigneeFilter, dateFrom, dateTo,
   columnCollapsed = false, onToggleColumnCollapse,
   isGlobalExpanded = false
@@ -80,11 +82,13 @@ export const DailySectionColumn = ({
                   key={issue.idReadable} 
                   issue={issue} 
                   localComment={comments[issue.idReadable] || ''}
+                  skipInAi={!!skippedInAiIssues[issue.idReadable]}
                   isCollapsed={resolvedCollapsed}
                   dateFrom={dateFrom}
                   dateTo={dateTo}
                   onAssigneeFilter={onAssigneeFilter}
                   onSaveComment={(content: string) => onCommentSave(issue.idReadable, content)}
+                  onToggleSkipInAi={(skipInAi: boolean) => onToggleSkipInAi(issue.idReadable, skipInAi)}
                   onToggleCollapse={(collapsed: boolean) => onSaveIssueState(issue.idReadable, collapsed)}
                   showState={isActivitySection}
                 />

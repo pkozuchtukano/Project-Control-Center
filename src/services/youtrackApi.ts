@@ -142,6 +142,17 @@ export const formatMinutesToDuration = (minutesStr: string | number): string => 
     return parts.join(' ');
 };
 
+const formatTimestampFieldValue = (value: string) => {
+    if (value === 'Brak' || value.trim() === '') return value;
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) return value;
+
+    const parsedDate = new Date(numericValue);
+    if (Number.isNaN(parsedDate.getTime())) return value;
+
+    return parsedDate.toLocaleString('pl-PL');
+};
+
 export const fetchIssuesActivity = async (
     baseUrl: string,
     token: string,
@@ -274,13 +285,10 @@ export const fetchIssuesActivity = async (
                     }
 
                     // Formatowanie dat (np. dla pola resolved dostajemy czysty timestamp w ms)
-                    if (fieldName.toLowerCase() === 'resolved date') {
-                        if (added !== 'Brak' && !isNaN(Number(added))) {
-                            added = new Date(Number(added)).toLocaleString('pl-PL');
-                        }
-                        if (removed !== 'Brak' && !isNaN(Number(removed))) {
-                            removed = new Date(Number(removed)).toLocaleString('pl-PL');
-                        }
+                    const normalizedFieldName = fieldName.toLowerCase();
+                    if (normalizedFieldName === 'resolved date' || normalizedFieldName === 'due date' || normalizedFieldName === 'termin') {
+                        added = formatTimestampFieldValue(added);
+                        removed = formatTimestampFieldValue(removed);
                     }
 
                     timeline.push({
