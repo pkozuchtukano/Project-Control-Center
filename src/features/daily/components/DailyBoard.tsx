@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare, Bot } from 'lucide-react';
+import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare, Bot, Sparkles } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
-import type { DailySection } from '../../../types';
+import type { DailySection, GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
 import { getSmartDateRange } from '../utils/dailyUtils';
 import { DailySectionColumn } from './DailySectionColumn';
+import { DailyAiAnalysisModal } from './DailyAiAnalysisModal';
 import { useYouTrack } from '../../../hooks/useYouTrack';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
 
@@ -141,6 +142,8 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
   const [isAiExporting, setIsAiExporting] = useState(false);
   const [isAiCopied, setIsAiCopied] = useState(false);
+  const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [comments, setComments] = useState<Record<string, string>>({});
   const [skippedInAiIssues, setSkippedInAiIssues] = useState<Record<string, boolean>>(() => {
     if (typeof window === 'undefined') return {};
@@ -684,6 +687,28 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     }
   };
 
+  const handleOpenAiAnalysis = () => {
+    if (!hasLoadedActivities || aiExportSummary.issues.length === 0) {
+      window.alert('Najpierw kliknij `Pobierz dane`, aby przygotowac dane do analizy AI.');
+      return;
+    }
+
+    setIsAiAnalysisOpen(true);
+  };
+
+  const handleAnalyzeWithAi = async (request: GeminiGenerateRequest): Promise<GeminiGenerateResponse> => {
+    if (!window.electron?.askGemini) {
+      throw new Error('Integracja Gemini jest dostepna tylko w aplikacji desktopowej Electron.');
+    }
+
+    setIsAiAnalyzing(true);
+    try {
+      return await window.electron.askGemini(request);
+    } finally {
+      setIsAiAnalyzing(false);
+    }
+  };
+
   if (isActivityLoading && activityIssues.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-950/50 min-h-[400px]">
@@ -779,6 +804,18 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
             >
               {isAiExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot size={14} />}
               {isAiCopied ? 'Skopiowano do schowka' : 'Export do AI'}
+            </button>
+            <button
+              onClick={handleOpenAiAnalysis}
+              disabled={isAiAnalyzing || !hasLoadedActivities || aiExportSummary.issues.length === 0}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                isAiAnalyzing || !hasLoadedActivities || aiExportSummary.issues.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-violet-600 text-white hover:bg-violet-700 active:scale-95'
+              }`}
+            >
+              {isAiAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles size={14} />}
+              Analizuj z AI
             </button>
           </div>
         </div>
@@ -890,6 +927,15 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       >
         <ArrowUp size={20} />
       </button>
+
+      <DailyAiAnalysisModal
+        isOpen={isAiAnalysisOpen}
+        onClose={() => setIsAiAnalysisOpen(false)}
+        sourcePayloadText={JSON.stringify(aiExportSummary, null, 2)}
+        defaultModel={settings?.geminiModel || ''}
+        onAnalyze={handleAnalyzeWithAi}
+        isAnalyzing={isAiAnalyzing}
+      />
     </div>
   );
 };

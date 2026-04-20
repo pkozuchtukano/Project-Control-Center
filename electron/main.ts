@@ -28,6 +28,30 @@ const remoteDatabaseFileNamePrefix = 'pcc-baza_danych';
 const googleDriveSharedFolderLink = envSettings.googleDriveSharedFolderLink?.trim() || '';
 const DEFAULT_GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS = [1200, 2800];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isGeminiHighDemandError = (status: number, message: string) => {
+    const normalizedMessage = message.toLowerCase();
+    return (
+        status === 429 ||
+        status === 503 ||
+        normalizedMessage.includes('high demand') ||
+        normalizedMessage.includes('resource exhausted') ||
+        normalizedMessage.includes('try again later') ||
+        normalizedMessage.includes('unavailable')
+    );
+};
+
+const buildGeminiHighDemandMessage = (primaryModel: string, fallbackModel?: string | null) => {
+    if (fallbackModel) {
+        return `Model \`${primaryModel}\` jest chwilowo przeciążony. Aplikacja spróbowała też modelu zapasowego \`${fallbackModel}\`, ale on również nie odpowiedział. Spróbuj ponownie za chwilę albo ręcznie wybierz inny model w formularzu.`;
+    }
+
+    return `Model \`${primaryModel}\` jest chwilowo przeciążony. Spróbuj ponownie za chwilę albo wybierz lżejszy model, np. \`gemini-2.5-flash-lite\`, w formularzu analizy AI.`;
+};
 
 const extractGeminiText = (payload: any): string => {
     const parts = payload?.candidates?.[0]?.content?.parts;
@@ -47,6 +71,8 @@ const generateGeminiContent = async ({
     prompt,
     systemInstruction,
     model,
+    generationConfig,
+    additionalRequestFields,
     temperature,
     topP,
     topK,
@@ -62,13 +88,16 @@ const generateGeminiContent = async ({
     const baseUrl = (envSettings.geminiApiBaseUrl || DEFAULT_GEMINI_API_BASE_URL).trim().replace(/\/+$/, '');
     const endpoint = `${baseUrl}/models/${encodeURIComponent(resolvedModel)}:generateContent`;
 
-    const generationConfig: Record<string, number> = {};
-    if (typeof temperature === 'number') generationConfig.temperature = temperature;
-    if (typeof topP === 'number') generationConfig.topP = topP;
-    if (typeof topK === 'number') generationConfig.topK = topK;
-    if (typeof maxOutputTokens === 'number') generationConfig.maxOutputTokens = maxOutputTokens;
+    const normalizedGenerationConfig: Record<string, unknown> = {
+        ...(generationConfig || {}),
+    };
+    if (typeof temperature === 'number') normalizedGenerationConfig.temperature = temperature;
+    if (typeof topP === 'number') normalizedGenerationConfig.topP = topP;
+    if (typeof topK === 'number') normalizedGenerationConfig.topK = topK;
+    if (typeof maxOutputTokens === 'number') normalizedGenerationConfig.maxOutputTokens = maxOutputTokens;
 
     const requestBody: Record<string, unknown> = {
+        ...(additionalRequestFields || {}),
         contents: [
             {
                 role: 'user',
@@ -83,45 +112,83 @@ const generateGeminiContent = async ({
         };
     }
 
-    if (Object.keys(generationConfig).length > 0) {
-        requestBody.generationConfig = generationConfig;
+    if (Object.keys(normalizedGenerationConfig).length > 0) {
+        requestBody.generationConfig = normalizedGenerationConfig;
     }
 
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify(requestBody),
-    });
+    const sendRequest = async (targetModel: string): Promise<GeminiGenerateResponse> => {
+        const targetEndpoint = `${baseUrl}/models/${encodeURIComponent(targetModel)}:generateContent`;
 
-    const payload = await response.json().catch(async () => ({
-        message: await response.text().catch(() => response.statusText),
-    }));
+        for (let attempt = 0; attempt <= GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS.length; attempt += 1) {
+            const response = await fetch(targetEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify(requestBody),
+            });
 
-    if (!response.ok) {
-        const message =
-            payload?.error?.message ||
-            payload?.message ||
-            `Gemini API zwróciło błąd ${response.status}.`;
-        throw new Error(message);
-    }
+            const payload = await response.json().catch(async () => ({
+                message: await response.text().catch(() => response.statusText),
+            }));
 
-    const text = extractGeminiText(payload);
-    const finishReason = payload?.candidates?.[0]?.finishReason;
+            if (!response.ok) {
+                const message =
+                    payload?.error?.message ||
+                    payload?.message ||
+                    `Gemini API zwróciło błąd ${response.status}.`;
 
-    if (!text && !finishReason) {
-        throw new Error('Gemini API nie zwróciło tekstowej odpowiedzi.');
-    }
+                if (isGeminiHighDemandError(response.status, message) && attempt < GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS.length) {
+                    await sleep(GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS[attempt]);
+                    continue;
+                }
 
-    return {
-        text,
-        model: resolvedModel,
-        usageMetadata: payload?.usageMetadata,
-        finishReason,
-        responseId: payload?.responseId,
+                const error = new Error(message) as Error & { status?: number; isHighDemand?: boolean };
+                error.status = response.status;
+                error.isHighDemand = isGeminiHighDemandError(response.status, message);
+                throw error;
+            }
+
+            const text = extractGeminiText(payload);
+            const finishReason = payload?.candidates?.[0]?.finishReason;
+
+            if (!text && !finishReason) {
+                throw new Error('Gemini API nie zwróciło tekstowej odpowiedzi.');
+            }
+
+            return {
+                text,
+                model: targetModel,
+                usageMetadata: payload?.usageMetadata,
+                finishReason,
+                responseId: payload?.responseId,
+            };
+        }
+
+        throw new Error(`Nie udało się pobrać odpowiedzi z modelu \`${targetModel}\`.`);
     };
+
+    try {
+        return await sendRequest(resolvedModel);
+    } catch (error: any) {
+        const shouldFallback =
+            resolvedModel !== GEMINI_FALLBACK_MODEL &&
+            isGeminiHighDemandError(error?.status || 0, error?.message || '');
+
+        if (!shouldFallback) {
+            throw error;
+        }
+
+        try {
+            return await sendRequest(GEMINI_FALLBACK_MODEL);
+        } catch (fallbackError: any) {
+            if (isGeminiHighDemandError(fallbackError?.status || 0, fallbackError?.message || '')) {
+                throw new Error(buildGeminiHighDemandMessage(resolvedModel, GEMINI_FALLBACK_MODEL));
+            }
+            throw fallbackError;
+        }
+    }
 };
 
 // Inicjalizacja SQLite

@@ -1,4 +1,9 @@
 ﻿## Daily Command Center
+- 2026-04-20 – Analiza Daily bezpośrednio przez Gemini AI
+  -- W widoku Daily dodano przycisk `Analizuj z AI`, otwierający modal z formularzem do wysyłki aktualnego eksportu JSON bezpośrednio do Google Gemini.
+  -- Modal pokazuje i pozwala edytować treść JSON generowaną z tablicy, a także ustawiać parametry `generationConfig` Gemini, pola `thinkingConfig` oraz dodatkowe fragmenty requestu w formacie JSON.
+  -- Preferencje formularza są zapamiętywane lokalnie, a odpowiedź modelu wraz z metadanymi wykonania jest prezentowana od razu w tym samym oknie, z możliwością kopiowania wyniku.
+  -- Przy przeciążeniu modelu integracja wykonuje teraz automatyczne retry z krótkim backoffem, a w razie potrzeby próbuje modelu zapasowego `gemini-2.5-flash-lite`, zamiast kończyć analizę surowym błędem API.
 - 2026-04-20 – Eksport JSON Daily do analizy AI
   -- W widoku Daily dodano przycisk Export do AI, który kopiuje do schowka JSON z aktualną zawartością tablicy: sekcjami, zadaniami, aktywnościami w wybranym zakresie dat oraz notatkami PM.
   -- Na kartach zadań dodano checkbox Pomiń w AI; zadania oznaczone tym przełącznikiem są zapamiętywane lokalnie i nie trafiają do eksportu JSON.
@@ -120,7 +125,7 @@
 ## Ustawienia główne
 - 2026-04-20 – Globalna integracja Google Gemini AI
   -- Rozszerzono globalną konfigurację środowiskową o `GEMINI_API_KEY` oraz opcjonalne `GEMINI_MODEL` i `GEMINI_API_BASE_URL`, odczytywane zarówno w rendererze, jak i w procesie Electron bez zapisu sekretów do SQLite.
-  -- Dodano bezpieczny kanał IPC `ask-gemini`, który wysyła prompt do Google Gemini z procesu głównego aplikacji i zwraca odpowiedź tekstową wraz z metadanymi wykonania.
+  -- Dodano bezpieczny kanał IPC `ask-gemini`, który wysyła prompt do Google Gemini z procesu głównego aplikacji, obsługuje `generationConfig` oraz dodatkowe pola requestu i zwraca odpowiedź tekstową wraz z metadanymi wykonania.
   -- W modalu `Ustawienia Główne` pojawiła się sekcja statusowa dla integracji Gemini, pokazująca stan konfiguracji, aktywny model i endpoint bez ujawniania wartości klucza API.
 - 2026-04-10 – Globalny harmonogram z pierwszym typem akcji `e-mail`
   -- Dodano trwały, globalny harmonogram zadań zapisywany w SQLite, z konfiguracją cyklu `codziennie`, `dni robocze`, `raz w tygodniu`, `raz w miesiącu` oraz `niestandardowa data i godzina`.
@@ -722,6 +727,8 @@
 - 2026-04-08 – Logowanie Firebase Auth i izolacja danych per użytkownik
   -- Webowa aplikacja web-pcc została rozszerzona o ekran logowania przez Google w Firebase Auth oraz pełne bramkowanie dostępu do modułów po aktywnej sesji użytkownika.
   -- Repozytorium Firestore zapisuje teraz dokumenty z polem ownerUid i odczytuje wyłącznie dane zalogowanego użytkownika, a do projektu dodano gotowy plik irestore.rules z regułami wymagającymi logowania i zgodności ownerUid == auth.uid.
+
+
 
 
 

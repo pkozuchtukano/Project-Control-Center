@@ -281,6 +281,8 @@ export type GeminiGenerateRequest = {
   prompt: string;
   systemInstruction?: string;
   model?: string;
+  generationConfig?: Record<string, unknown>;
+  additionalRequestFields?: Record<string, unknown>;
   temperature?: number;
   topP?: number;
   topK?: number;
