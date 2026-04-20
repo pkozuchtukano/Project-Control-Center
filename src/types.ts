@@ -320,6 +320,18 @@ export type DailyComment = {
   lastModified: string;
 };
 
+export type DailyAiAnalysis = {
+  id: string;
+  hubId: string;
+  projectCodes: string[];
+  dateFrom: string;
+  dateTo: string;
+  originalContent: string;
+  currentContent: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type StatusStoryComment = {
   id: string;
   author: string;

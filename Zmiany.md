@@ -1,4 +1,24 @@
 ﻿## Daily Command Center
+- 2026-04-20 – Pełnoekranowy edytor analiz AI z historii Daily
+  -- Panel `Historia` po prawej stronie Daily pokazuje teraz wyłącznie listę wpisów z tytułem, zakresem dat i datą dodania, a kliknięcie pozycji otwiera pełnoekranowe okno edycji treści.
+  -- Treść analizy jest edytowana w bogatym edytorze opartym o istniejący komponent TipTap z toolbarami formatowania, a w oknie pozostaje dostępny przycisk `Przywróć oryginał` dla powrotu do pierwotnej odpowiedzi AI.
+  -- Napisy i opisy w nowym panelu historii oraz pełnoekranowym edytorze zostały poprawione i ujednolicone pod kątem polskiego kodowania.
+- 2026-04-20 – Zabezpieczenie panelu historii AI przed pustym payloadem
+  -- Dodano defensywną obsługę pustej listy `issues` przy wyliczaniu projektów dla zapisu analizy AI w Daily.
+  -- Dzięki temu widok Daily nie przerywa już działania błędem runtime, gdy eksport AI nie zawiera jeszcze żadnych zadań.
+- 2026-04-20 – Historia analiz AI w panelu Daily
+  -- Po prawej stronie widoku Daily dodano panel `Historia`, który przechowuje zapisane podsumowania z analizy AI razem z projektami, zakresem dat i datą dodania wpisu.
+  -- Kliknięcie wpisu otwiera edytor tekstu analizy; można dowolnie modyfikować treść, zapisać zmiany i w każdej chwili wrócić do pierwotnej odpowiedzi AI zapisanej jako oryginał.
+  -- W modalu `Analizuj z AI` dodano przycisk `Zapisz`, który zapisuje odpowiedź modelu do historii Daily jako czytelny tekst dla zespołu.
+- 2026-04-20 – Selectlista modeli Gemini w analizie Daily
+  -- Pole wyboru modelu AI w modalu `Analizuj z AI` zostało zmienione z wolnego inputu na listę wyboru opartą o oficjalne stabilne modele Gemini: `gemini-2.5-flash`, `gemini-2.5-flash-lite` i `gemini-2.5-pro`.
+  -- Formularz zachowuje także opcję `Własny model`, więc nadal można ręcznie wpisać niestandardową nazwę modelu lub wariant preview bez utraty kompatybilności.
+- 2026-04-20 – Poprawa działania filtra `Wszystkie` w Daily
+  -- Usunięto automatyczne zaznaczanie pierwszego projektu przy pustym filtrze, które nadpisywało świadomy wybór przycisku `Wszystkie`.
+  -- Kliknięcie `Wszystkie` pozostawia teraz aktywny ten przycisk i pokazuje sekcje ze wszystkich projektów widocznych w bieżącej tablicy.
+- 2026-04-20 – Przycisk `Wszystkie` w filtrze projektów Daily
+  -- Nad listą skrótów projektów w widoku Daily dodano jawny przycisk `Wszystkie`.
+  -- Przycisk czyści aktywny filtr projektu i pozwala szybko wrócić do pełnej tablicy bez ręcznego odznaczania wybranego kafelka.
 - 2026-04-20 – Analiza Daily bezpośrednio przez Gemini AI
   -- W widoku Daily dodano przycisk `Analizuj z AI`, otwierający modal z formularzem do wysyłki aktualnego eksportu JSON bezpośrednio do Google Gemini.
   -- Modal pokazuje i pozwala edytować treść JSON generowaną z tablicy, a także ustawiać parametry `generationConfig` Gemini, pola `thinkingConfig` oraz dodatkowe fragmenty requestu w formacie JSON.

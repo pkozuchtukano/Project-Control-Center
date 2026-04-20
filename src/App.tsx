@@ -4,7 +4,7 @@ import { useRef } from 'react';
 
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
-   DailyHub, DailySection, DailyComment,
+   DailyHub, DailySection, DailyComment, DailyAiAnalysis,
    Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse
  } from './types';
 
@@ -93,6 +93,8 @@ declare global {
       saveDailyComment: (data: { issueId: string, content: string }) => Promise<{ success: boolean }>;
       getDailyIssueStates: () => Promise<Record<string, boolean>>;
       saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => Promise<{ success: boolean }>;
+      getDailyAiAnalyses: (hubId: string) => Promise<DailyAiAnalysis[]>;
+      saveDailyAiAnalysis: (data: DailyAiAnalysis) => Promise<{ success: boolean }>;
     }
   }
 }

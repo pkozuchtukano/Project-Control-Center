@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Copy, Loader2, RotateCcw, Send, X } from 'lucide-react';
+import { Bot, Copy, Loader2, RotateCcw, Save, Send, X } from 'lucide-react';
 import type { GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
 
 type DailyAiAnalysisModalProps = {
@@ -9,6 +9,8 @@ type DailyAiAnalysisModalProps = {
   defaultModel?: string;
   onAnalyze: (request: GeminiGenerateRequest) => Promise<GeminiGenerateResponse>;
   isAnalyzing: boolean;
+  onSaveAnalysis: (content: string) => Promise<void>;
+  isSavingAnalysis: boolean;
 };
 
 type DailyAiAnalysisFormState = {
@@ -42,6 +44,12 @@ type DailyAiAnalysisFormState = {
 };
 
 const STORAGE_KEY = 'daily_ai_analysis_settings';
+const CUSTOM_MODEL_VALUE = '__custom_model__';
+const GEMINI_MODEL_OPTIONS = [
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
+  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+] as const;
 
 const DEFAULT_SYSTEM_INSTRUCTION = [
   'Jestes analitykiem projektu IT.',
@@ -131,11 +139,17 @@ export const DailyAiAnalysisModal = ({
   defaultModel,
   onAnalyze,
   isAnalyzing,
+  onSaveAnalysis,
+  isSavingAnalysis,
 }: DailyAiAnalysisModalProps) => {
   const [formState, setFormState] = useState<DailyAiAnalysisFormState>(() => createDefaultFormState(defaultModel));
   const [analysisResult, setAnalysisResult] = useState<GeminiGenerateResponse | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<'payload' | 'result' | null>(null);
+  const isCustomModel = useMemo(
+    () => Boolean(formState.model.trim()) && !GEMINI_MODEL_OPTIONS.some((option) => option.value === formState.model.trim()),
+    [formState.model],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -277,6 +291,20 @@ export const DailyAiAnalysisModal = ({
     await copyText(value);
     setCopiedTarget(target);
     window.setTimeout(() => setCopiedTarget((prev) => (prev === target ? null : prev)), 2000);
+  };
+
+  const handleSaveAnalysis = async () => {
+    if (!analysisResult?.text?.trim()) {
+      setAnalysisError('Najpierw uruchom analizę AI, aby zapisać odpowiedź do historii.');
+      return;
+    }
+
+    try {
+      await onSaveAnalysis(analysisResult.text);
+      setAnalysisError(null);
+    } catch (error: any) {
+      setAnalysisError(error?.message || 'Nie udało się zapisać analizy do historii.');
+    }
   };
 
   if (!isOpen) return null;
@@ -432,12 +460,25 @@ export const DailyAiAnalysisModal = ({
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Model</span>
-                  <input
-                    value={formState.model}
-                    onChange={(event) => handleFormChange('model', event.target.value)}
-                    placeholder={defaultModel || 'gemini-2.5-flash'}
+                  <select
+                    value={isCustomModel ? CUSTOM_MODEL_VALUE : (formState.model.trim() || defaultModel || 'gemini-2.5-flash')}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      if (nextValue === CUSTOM_MODEL_VALUE) {
+                        handleFormChange('model', formState.model.trim() || '');
+                        return;
+                      }
+                      handleFormChange('model', nextValue);
+                    }}
                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  />
+                  >
+                    {GEMINI_MODEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_MODEL_VALUE}>Własny model...</option>
+                  </select>
                 </label>
 
                 <label className="space-y-1.5">
@@ -450,6 +491,18 @@ export const DailyAiAnalysisModal = ({
                   />
                 </label>
               </div>
+
+              {isCustomModel && (
+                <label className="space-y-1.5 mt-3 block">
+                  <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Własna nazwa modelu</span>
+                  <input
+                    value={formState.model}
+                    onChange={(event) => handleFormChange('model', event.target.value)}
+                    placeholder="np. gemini-2.5-flash-preview-09-2025"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                  />
+                </label>
+              )}
 
               <label className="space-y-1.5 mt-3 block">
                 <span className="text-xs font-bold uppercase tracking-wide text-gray-500">systemInstruction</span>
@@ -597,6 +650,19 @@ export const DailyAiAnalysisModal = ({
               className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
             >
               Zamknij
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveAnalysis()}
+              disabled={isSavingAnalysis || !analysisResult?.text?.trim()}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white ${
+                isSavingAnalysis || !analysisResult?.text?.trim()
+                  ? 'bg-gray-300 cursor-not-allowed dark:bg-gray-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
+            >
+              {isSavingAnalysis ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {isSavingAnalysis ? 'Zapisywanie...' : 'Zapisz'}
             </button>
             <button
               type="button"

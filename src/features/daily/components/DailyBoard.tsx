@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare, Bot, Sparkles } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
-import type { DailySection, GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
+import type { DailyAiAnalysis, DailySection, GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
 import { getSmartDateRange } from '../utils/dailyUtils';
 import { DailySectionColumn } from './DailySectionColumn';
 import { DailyAiAnalysisModal } from './DailyAiAnalysisModal';
+import { DailyAiAnalysisEditorModal } from './DailyAiAnalysisEditorModal';
+import { DailyAiHistoryPanel } from './DailyAiHistoryPanel';
 import { useYouTrack } from '../../../hooks/useYouTrack';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
 
@@ -108,6 +110,117 @@ const pruneJson = (value: unknown): unknown => {
   return value;
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatInlineMarkdown = (value: string) => {
+  let formatted = escapeHtml(value);
+
+  formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/(^|[^\*])\*(?!\s)(.+?)(?<!\s)\*/g, '$1<em>$2</em>');
+  formatted = formatted.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/(^|[^_])_(?!\s)(.+?)(?<!\s)_/g, '$1<em>$2</em>');
+  formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+  formatted = formatted.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  return formatted;
+};
+
+const markdownToHtml = (value: string) => {
+  const lines = value.replace(/\r\n/g, '\n').split('\n');
+  const blocks: string[] = [];
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    blocks.push(`<p>${paragraphLines.map((line) => formatInlineMarkdown(line)).join('<br>')}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listType || !listItems.length) return;
+    blocks.push(`<${listType}>${listItems.join('')}</${listType}>`);
+    listItems = [];
+    listType = null;
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+
+    if (!line) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    if (/^---+$/.test(line) || /^\*\*\*+$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push('<hr>');
+      return;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      blocks.push(`<h${level}>${formatInlineMarkdown(headingMatch[2])}</h${level}>`);
+      return;
+    }
+
+    const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType && listType !== 'ol') flushList();
+      listType = 'ol';
+      listItems.push(`<li>${formatInlineMarkdown(orderedMatch[2])}</li>`);
+      return;
+    }
+
+    const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
+    if (unorderedMatch) {
+      flushParagraph();
+      if (listType && listType !== 'ul') flushList();
+      listType = 'ul';
+      listItems.push(`<li>${formatInlineMarkdown(unorderedMatch[1])}</li>`);
+      return;
+    }
+
+    flushList();
+    paragraphLines.push(line);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return blocks.join('');
+};
+
+const normalizeAnalysisContentToHtml = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^(#{1,6}\s|[-*]\s|\d+\.\s|---+$|\*\*\*+|.*\*\*.+\*\*.*)/m.test(trimmed)) {
+    return markdownToHtml(trimmed);
+  }
+
+  return trimmed
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+};
+
 interface DailyBoardProps {
   hubId: string;
   projectCodes: string;
@@ -144,7 +257,12 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const [isAiCopied, setIsAiCopied] = useState(false);
   const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [isSavingAiAnalysis, setIsSavingAiAnalysis] = useState(false);
   const [comments, setComments] = useState<Record<string, string>>({});
+  const [savedAiAnalyses, setSavedAiAnalyses] = useState<DailyAiAnalysis[]>([]);
+  const [selectedAiAnalysisId, setSelectedAiAnalysisId] = useState<string | null>(null);
+  const [aiAnalysisDraft, setAiAnalysisDraft] = useState('');
+  const [isAiEditorOpen, setIsAiEditorOpen] = useState(false);
   const [skippedInAiIssues, setSkippedInAiIssues] = useState<Record<string, boolean>>(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -243,6 +361,28 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const loadAnalyses = async () => {
+      if (!window.electron?.getDailyAiAnalyses) return;
+      const loaded = await window.electron.getDailyAiAnalyses(hubId);
+      setSavedAiAnalyses(loaded);
+      if (loaded.length === 0) {
+        setSelectedAiAnalysisId(null);
+        setAiAnalysisDraft('');
+        return;
+      }
+
+      setSelectedAiAnalysisId((prev) => {
+        const nextId = prev && loaded.some((analysis) => analysis.id === prev) ? prev : loaded[0].id;
+        const selected = loaded.find((analysis) => analysis.id === nextId) || loaded[0];
+        setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.currentContent));
+        return nextId;
+      });
+    };
+
+    void loadAnalyses();
+  }, [hubId]);
+
   const sections = useMemo<DailySection[]>(() => {
     const fixed: DailySection = {
       id: 'fixed_aktywnosci',
@@ -289,13 +429,8 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
 
     const configuredCodes = projectCodes.split(',').map(p => p.trim().toUpperCase());
 
-    if (!selectedProject && configuredCodes.length > 0) {
-      const firstProject = configuredCodes.find(code => foundCodes.has(code));
-      if (firstProject) setSelectedProject(firstProject);
-    }
-
     return configuredCodes.filter(code => foundCodes.has(code));
-  }, [combinedIssues, projectCodes, selectedProject]);
+  }, [combinedIssues, projectCodes]);
 
   const uniqueAssignees = useMemo(() => {
     const aMap = new Map<string, { name: string; projects: Set<string> }>();
@@ -588,6 +723,18 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     };
   }, [sections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
 
+  const visibleAnalysisProjectCodes = useMemo(() => {
+    const codes = new Set<string>();
+    const issues = Array.isArray(aiExportSummary?.issues) ? aiExportSummary.issues : [];
+    issues.forEach((issue) => {
+      const projectCode = typeof issue.projectCode === 'string' ? issue.projectCode.trim() : '';
+      if (projectCode) {
+        codes.add(projectCode);
+      }
+    });
+    return Array.from(codes).sort((a, b) => a.localeCompare(b));
+  }, [aiExportSummary]);
+
   const fetchActivitiesFirst = async () => {
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
     if (!dateFrom || !dateTo) return;
@@ -709,6 +856,71 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     }
   };
 
+  const persistAiAnalysis = async (analysis: DailyAiAnalysis) => {
+    if (!window.electron?.saveDailyAiAnalysis) {
+      throw new Error('Zapis historii analiz AI jest dostępny tylko w aplikacji desktopowej Electron.');
+    }
+
+    await window.electron.saveDailyAiAnalysis(analysis);
+    const refreshed = await window.electron.getDailyAiAnalyses(hubId);
+    setSavedAiAnalyses(refreshed);
+    const selected = refreshed.find((item) => item.id === analysis.id) || refreshed[0] || null;
+    setSelectedAiAnalysisId(selected?.id || null);
+    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent) : '');
+  };
+
+  const handleSaveAiAnalysisFromModal = async (content: string) => {
+    setIsSavingAiAnalysis(true);
+    try {
+      const now = new Date().toISOString();
+      const analysis: DailyAiAnalysis = {
+        id: typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        hubId,
+        projectCodes: visibleAnalysisProjectCodes,
+        dateFrom,
+        dateTo,
+        originalContent: normalizeAnalysisContentToHtml(content),
+        currentContent: normalizeAnalysisContentToHtml(content),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await persistAiAnalysis(analysis);
+    } finally {
+      setIsSavingAiAnalysis(false);
+    }
+  };
+
+  const handleSelectAiAnalysis = (analysisId: string) => {
+    setSelectedAiAnalysisId(analysisId);
+    const selected = savedAiAnalyses.find((analysis) => analysis.id === analysisId);
+    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent) : '');
+    setIsAiEditorOpen(Boolean(selected));
+  };
+
+  const handleSaveAiAnalysisDraft = async () => {
+    const selected = savedAiAnalyses.find((analysis) => analysis.id === selectedAiAnalysisId);
+    if (!selected) return;
+
+    setIsSavingAiAnalysis(true);
+    try {
+      await persistAiAnalysis({
+        ...selected,
+        currentContent: aiAnalysisDraft,
+        updatedAt: new Date().toISOString(),
+      });
+    } finally {
+      setIsSavingAiAnalysis(false);
+    }
+  };
+
+  const handleRestoreOriginalAiAnalysis = () => {
+    const selected = savedAiAnalyses.find((analysis) => analysis.id === selectedAiAnalysisId);
+    if (!selected) return;
+    setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.originalContent));
+  };
+
   if (isActivityLoading && activityIssues.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-950/50 min-h-[400px]">
@@ -737,6 +949,16 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       <div className="flex flex-col gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+            <button
+              onClick={() => setSelectedProject(null)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
+                !selectedProject
+                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+              }`}
+            >
+              Wszystkie
+            </button>
             {projects.map(code => (
               <button
                 key={code}
@@ -872,52 +1094,60 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
         </div>
       </div>
 
-      <div
-        ref={boardRef}
-        className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-950/50 scrollbar-thin scroll-smooth"
-      >
-        <div className="flex items-start gap-6 px-6 py-6 min-w-max min-h-full">
-          {sections.map((section) => (
-            <DailySectionColumn
-              key={section.id}
-              section={section}
-              issues={sectionIssuesMap.get(section.id) || []}
-              activityIssueIds={activityIssueIds}
-              comments={comments}
-              skippedInAiIssues={skippedInAiIssues}
-              issueStates={issueStates}
-              onCommentSave={(issueId: string, content: string) => {
-                setComments({ ...comments, [issueId]: content });
-                window.electron?.saveDailyComment({ issueId, content });
-              }}
-              onToggleSkipInAi={handleToggleSkipInAi}
-              onSaveIssueState={handleSaveIssueState}
-              onAssigneeFilter={setSelectedAssignee}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              isGlobalExpanded={isGlobalExpanded}
-              columnCollapsed={!!collapsedSections[section.id]}
-              onToggleColumnCollapse={() => setCollapsedSections(prev => ({
-                ...prev,
-                [section.id]: !prev[section.id]
-              }))}
-            />
-          ))}
+      <div className="flex-1 min-h-0 flex">
+        <div
+          ref={boardRef}
+          className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-950/50 scrollbar-thin scroll-smooth"
+        >
+          <div className="flex items-start gap-6 px-6 py-6 min-w-max min-h-full">
+            {sections.map((section) => (
+              <DailySectionColumn
+                key={section.id}
+                section={section}
+                issues={sectionIssuesMap.get(section.id) || []}
+                activityIssueIds={activityIssueIds}
+                comments={comments}
+                skippedInAiIssues={skippedInAiIssues}
+                issueStates={issueStates}
+                onCommentSave={(issueId: string, content: string) => {
+                  setComments({ ...comments, [issueId]: content });
+                  window.electron?.saveDailyComment({ issueId, content });
+                }}
+                onToggleSkipInAi={handleToggleSkipInAi}
+                onSaveIssueState={handleSaveIssueState}
+                onAssigneeFilter={setSelectedAssignee}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                isGlobalExpanded={isGlobalExpanded}
+                columnCollapsed={!!collapsedSections[section.id]}
+                onToggleColumnCollapse={() => setCollapsedSections(prev => ({
+                  ...prev,
+                  [section.id]: !prev[section.id]
+                }))}
+              />
+            ))}
 
-          <div className="flex flex-col items-center justify-start w-10 shrink-0 pt-2">
-            <button
-              onClick={toggleAllSections}
-              className="p-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 hover:text-indigo-600 hover:border-indigo-600 transition-all shadow-sm group opacity-40 hover:opacity-100"
-              title={sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? 'Rozwiń wszystkie sekcje' : 'Zwiń sekcje'}
-            >
-              {sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? (
-                <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-              ) : (
-                <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
-              )}
-            </button>
+            <div className="flex flex-col items-center justify-start w-10 shrink-0 pt-2">
+              <button
+                onClick={toggleAllSections}
+                className="p-2 rounded-lg bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 hover:text-indigo-600 hover:border-indigo-600 transition-all shadow-sm group opacity-40 hover:opacity-100"
+                title={sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? 'Rozwiń wszystkie sekcje' : 'Zwiń sekcje'}
+              >
+                {sections.some(s => s.id !== 'fixed_aktywnosci' && collapsedSections[s.id]) ? (
+                  <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                ) : (
+                  <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
+
+        <DailyAiHistoryPanel
+          analyses={savedAiAnalyses}
+          selectedAnalysisId={selectedAiAnalysisId}
+          onSelect={handleSelectAiAnalysis}
+        />
       </div>
 
       <button
@@ -935,6 +1165,18 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
         defaultModel={settings?.geminiModel || ''}
         onAnalyze={handleAnalyzeWithAi}
         isAnalyzing={isAiAnalyzing}
+        onSaveAnalysis={handleSaveAiAnalysisFromModal}
+        isSavingAnalysis={isSavingAiAnalysis}
+      />
+
+      <DailyAiAnalysisEditorModal
+        analysis={isAiEditorOpen ? (savedAiAnalyses.find((analysis) => analysis.id === selectedAiAnalysisId) || null) : null}
+        draftContent={aiAnalysisDraft}
+        isSaving={isSavingAiAnalysis}
+        onClose={() => setIsAiEditorOpen(false)}
+        onChange={setAiAnalysisDraft}
+        onSave={() => void handleSaveAiAnalysisDraft()}
+        onRestoreOriginal={handleRestoreOriginalAiAnalysis}
       />
     </div>
   );

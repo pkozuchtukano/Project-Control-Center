@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
-import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse } from '../src/types.js';
+import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -344,6 +344,17 @@ db.exec(`
         issueId TEXT PRIMARY KEY,
         isCollapsed INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS daily_ai_analyses (
+        id TEXT PRIMARY KEY,
+        hubId TEXT NOT NULL,
+        projectCodes TEXT NOT NULL DEFAULT '[]',
+        dateFrom TEXT NOT NULL,
+        dateTo TEXT NOT NULL,
+        originalContent TEXT NOT NULL,
+        currentContent TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
 `);
 db.exec('DROP TABLE IF EXISTS settings');
 
@@ -596,6 +607,17 @@ const initializeDatabase = () => {
         CREATE TABLE IF NOT EXISTS daily_issue_states (
             issueId TEXT PRIMARY KEY,
             isCollapsed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS daily_ai_analyses (
+            id TEXT PRIMARY KEY,
+            hubId TEXT NOT NULL,
+            projectCodes TEXT NOT NULL DEFAULT '[]',
+            dateFrom TEXT NOT NULL,
+            dateTo TEXT NOT NULL,
+            originalContent TEXT NOT NULL,
+            currentContent TEXT NOT NULL,
+            createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS issue_categories (
             issueId TEXT PRIMARY KEY,
@@ -4470,6 +4492,7 @@ ipcMain.handle('delete-daily-hub', async (_, id: string) => {
     try {
         db.prepare('DELETE FROM daily_hubs WHERE id = ?').run(id);
         db.prepare('DELETE FROM daily_sections WHERE hubId = ?').run(id);
+        db.prepare('DELETE FROM daily_ai_analyses WHERE hubId = ?').run(id);
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d usuwania daily_hub:', error);
@@ -4588,6 +4611,73 @@ ipcMain.handle('save-daily-issue-state', async (_, { issueId, isCollapsed }: { i
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d zapisu daily_issue_state:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-daily-ai-analyses', async (_, hubId: string) => {
+    try {
+        const rows = db.prepare(`
+            SELECT *
+            FROM daily_ai_analyses
+            WHERE hubId = ?
+            ORDER BY datetime(createdAt) DESC
+        `).all(hubId) as Array<Omit<DailyAiAnalysis, 'projectCodes'> & { projectCodes: string }>;
+
+        return rows.map((row) => ({
+            ...row,
+            projectCodes: (() => {
+                try {
+                    return JSON.parse(row.projectCodes || '[]');
+                } catch {
+                    return [];
+                }
+            })(),
+        }));
+    } catch (error) {
+        console.error('Błąd pobierania daily_ai_analyses:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-ai-analysis', async (_, analysis: DailyAiAnalysis) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_ai_analyses (
+                id,
+                hubId,
+                projectCodes,
+                dateFrom,
+                dateTo,
+                originalContent,
+                currentContent,
+                createdAt,
+                updatedAt
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                hubId = excluded.hubId,
+                projectCodes = excluded.projectCodes,
+                dateFrom = excluded.dateFrom,
+                dateTo = excluded.dateTo,
+                originalContent = excluded.originalContent,
+                currentContent = excluded.currentContent,
+                createdAt = excluded.createdAt,
+                updatedAt = excluded.updatedAt
+        `).run(
+            analysis.id,
+            analysis.hubId,
+            JSON.stringify(analysis.projectCodes || []),
+            analysis.dateFrom,
+            analysis.dateTo,
+            analysis.originalContent,
+            analysis.currentContent,
+            analysis.createdAt,
+            analysis.updatedAt,
+        );
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_ai_analysis:', error);
         throw error;
     }
 });
