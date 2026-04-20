@@ -118,6 +118,10 @@
   -- Docelowo tray został przepięty na wskazany plik `electron/tray-icon.png`, ładowany jako realny asset PNG z fallbackiem do wewnętrznego SVG, dzięki czemu aplikacja może używać przekazanej grafiki zamiast generowanej ikony zastępczej.
 
 ## Ustawienia główne
+- 2026-04-20 – Globalna integracja Google Gemini AI
+  -- Rozszerzono globalną konfigurację środowiskową o `GEMINI_API_KEY` oraz opcjonalne `GEMINI_MODEL` i `GEMINI_API_BASE_URL`, odczytywane zarówno w rendererze, jak i w procesie Electron bez zapisu sekretów do SQLite.
+  -- Dodano bezpieczny kanał IPC `ask-gemini`, który wysyła prompt do Google Gemini z procesu głównego aplikacji i zwraca odpowiedź tekstową wraz z metadanymi wykonania.
+  -- W modalu `Ustawienia Główne` pojawiła się sekcja statusowa dla integracji Gemini, pokazująca stan konfiguracji, aktywny model i endpoint bez ujawniania wartości klucza API.
 - 2026-04-10 – Globalny harmonogram z pierwszym typem akcji `e-mail`
   -- Dodano trwały, globalny harmonogram zadań zapisywany w SQLite, z konfiguracją cyklu `codziennie`, `dni robocze`, `raz w tygodniu`, `raz w miesiącu` oraz `niestandardowa data i godzina`.
   -- W `Ustawieniach Głównych` pojawiła się sekcja do definiowania aktywnych zadań harmonogramu, ich odbiorców, tytułu i treści wiadomości e-mail oraz podglądu ostatniego wykonania i błędów.

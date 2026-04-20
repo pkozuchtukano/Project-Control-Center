@@ -272,6 +272,27 @@ export type Settings = {
   googleClientId?: string;
   googleClientSecret?: string;
   googleDriveSharedFolderLink?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
+  geminiApiBaseUrl?: string;
+};
+
+export type GeminiGenerateRequest = {
+  prompt: string;
+  systemInstruction?: string;
+  model?: string;
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  maxOutputTokens?: number;
+};
+
+export type GeminiGenerateResponse = {
+  text: string;
+  model: string;
+  usageMetadata?: Record<string, unknown>;
+  finishReason?: string;
+  responseId?: string;
 };
 
 // Daily Feature Types

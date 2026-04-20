@@ -35,6 +35,9 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
         googleClientId: parsed.VITE_GOOGLE_CLIENT_ID || '',
         googleClientSecret: parsed.VITE_GOOGLE_CLIENT_SECRET || '',
         googleDriveSharedFolderLink: parsed.GOOGLE_DRIVE_SHARED_FOLDER_LINK || parsed.VITE_GOOGLE_DRIVE_SHARED_FOLDER_LINK || '',
+        geminiApiKey: parsed.GEMINI_API_KEY || parsed.VITE_GEMINI_API_KEY || '',
+        geminiModel: parsed.GEMINI_MODEL || parsed.VITE_GEMINI_MODEL || '',
+        geminiApiBaseUrl: parsed.GEMINI_API_BASE_URL || parsed.VITE_GEMINI_API_BASE_URL || '',
       };
     } catch {
       continue;
@@ -47,6 +50,9 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
     googleClientId: '',
     googleClientSecret: '',
     googleDriveSharedFolderLink: '',
+    geminiApiKey: '',
+    geminiModel: '',
+    geminiApiBaseUrl: '',
   };
 };
 

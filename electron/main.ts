@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
-import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent } from '../src/types.js';
+import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -26,6 +26,103 @@ const dbWalPath = `${dbPath}-wal`;
 const dbShmPath = `${dbPath}-shm`;
 const remoteDatabaseFileNamePrefix = 'pcc-baza_danych';
 const googleDriveSharedFolderLink = envSettings.googleDriveSharedFolderLink?.trim() || '';
+const DEFAULT_GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
+const extractGeminiText = (payload: any): string => {
+    const parts = payload?.candidates?.[0]?.content?.parts;
+
+    if (!Array.isArray(parts)) {
+        return '';
+    }
+
+    return parts
+        .map((part: any) => typeof part?.text === 'string' ? part.text : '')
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+};
+
+const generateGeminiContent = async ({
+    prompt,
+    systemInstruction,
+    model,
+    temperature,
+    topP,
+    topK,
+    maxOutputTokens,
+}: GeminiGenerateRequest): Promise<GeminiGenerateResponse> => {
+    const apiKey = envSettings.geminiApiKey?.trim();
+
+    if (!apiKey) {
+        throw new Error('Brak GEMINI_API_KEY w pliku .env.');
+    }
+
+    const resolvedModel = (model || envSettings.geminiModel || DEFAULT_GEMINI_MODEL).trim();
+    const baseUrl = (envSettings.geminiApiBaseUrl || DEFAULT_GEMINI_API_BASE_URL).trim().replace(/\/+$/, '');
+    const endpoint = `${baseUrl}/models/${encodeURIComponent(resolvedModel)}:generateContent`;
+
+    const generationConfig: Record<string, number> = {};
+    if (typeof temperature === 'number') generationConfig.temperature = temperature;
+    if (typeof topP === 'number') generationConfig.topP = topP;
+    if (typeof topK === 'number') generationConfig.topK = topK;
+    if (typeof maxOutputTokens === 'number') generationConfig.maxOutputTokens = maxOutputTokens;
+
+    const requestBody: Record<string, unknown> = {
+        contents: [
+            {
+                role: 'user',
+                parts: [{ text: prompt }],
+            },
+        ],
+    };
+
+    if (systemInstruction?.trim()) {
+        requestBody.system_instruction = {
+            parts: [{ text: systemInstruction.trim() }],
+        };
+    }
+
+    if (Object.keys(generationConfig).length > 0) {
+        requestBody.generationConfig = generationConfig;
+    }
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify(requestBody),
+    });
+
+    const payload = await response.json().catch(async () => ({
+        message: await response.text().catch(() => response.statusText),
+    }));
+
+    if (!response.ok) {
+        const message =
+            payload?.error?.message ||
+            payload?.message ||
+            `Gemini API zwróciło błąd ${response.status}.`;
+        throw new Error(message);
+    }
+
+    const text = extractGeminiText(payload);
+    const finishReason = payload?.candidates?.[0]?.finishReason;
+
+    if (!text && !finishReason) {
+        throw new Error('Gemini API nie zwróciło tekstowej odpowiedzi.');
+    }
+
+    return {
+        text,
+        model: resolvedModel,
+        usageMetadata: payload?.usageMetadata,
+        finishReason,
+        responseId: payload?.responseId,
+    };
+};
 
 // Inicjalizacja SQLite
 let db = new Database(dbPath);
@@ -1386,6 +1483,23 @@ const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
         hubId: source.hubId || '',
         sectionIds: Array.isArray(source.sectionIds) ? source.sectionIds : [],
     })),
+});
+
+ipcMain.handle('ask-gemini', async (_, request: GeminiGenerateRequest) => {
+    try {
+        if (!request?.prompt?.trim()) {
+            throw new Error('Prompt do Gemini nie może być pusty.');
+        }
+
+        return await generateGeminiContent({
+            ...request,
+            prompt: request.prompt.trim(),
+            systemInstruction: request.systemInstruction?.trim(),
+        });
+    } catch (error: any) {
+        console.error('Błąd zapytania ask-gemini:', error);
+        throw error;
+    }
 });
 
 const getScheduledTasks = (): ScheduledTask[] => {

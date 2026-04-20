@@ -4,9 +4,9 @@ import { useRef } from 'react';
 
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
-  DailyHub, DailySection, DailyComment,
-  Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType, ServiceObligation, ServiceTask, ServiceEvent
-} from './types';
+   DailyHub, DailySection, DailyComment,
+   Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate, StatusReport, ProjectLink, MaintenanceEntry, PendingSettlementEntry, OrderProtocolEmailTemplateData, OrderAcceptanceEmailTemplateData, MaintenanceSettlementEmailTemplateData, OrderProtocolFlow, ScheduledTask, GlobalScheduleType, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse
+ } from './types';
 
 declare global {
   interface Window {
@@ -70,6 +70,7 @@ declare global {
       onServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       offServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       writeClipboardHtml: (data: { html: string; text?: string; imageDataUrl?: string }) => Promise<{ success: boolean }>;
+      askGemini: (data: GeminiGenerateRequest) => Promise<GeminiGenerateResponse>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
       getGoogleAuthUrl: () => Promise<string>;
@@ -8861,6 +8862,49 @@ const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clien
   );
 };
 
+const GeminiConfigSection = ({ settings }: { settings: Settings | null }) => {
+  const hasApiKey = Boolean(settings?.geminiApiKey?.trim());
+  const effectiveModel = settings?.geminiModel?.trim() || 'gemini-2.5-flash';
+  const effectiveBaseUrl = settings?.geminiApiBaseUrl?.trim() || 'https://generativelanguage.googleapis.com/v1beta';
+
+  return (
+    <div className="rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 p-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900 dark:text-white">Google Gemini AI</h4>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            Globalna integracja AI działa z konfiguracji środowiskowej `.env` i jest wywoływana przez proces Electron, więc klucz API nie trafia do interfejsu.
+          </p>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hasApiKey ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+          {hasApiKey ? 'Skonfigurowano' : 'Brak konfiguracji'}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4">
+          <div className="text-xs font-bold uppercase tracking-wide text-gray-400">API Key</div>
+          <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+            {hasApiKey ? 'Ustawiony w `.env`' : 'Dodaj `GEMINI_API_KEY`'}
+          </div>
+        </div>
+        <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4">
+          <div className="text-xs font-bold uppercase tracking-wide text-gray-400">Model</div>
+          <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white break-all">{effectiveModel}</div>
+        </div>
+        <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 p-4">
+          <div className="text-xs font-bold uppercase tracking-wide text-gray-400">Endpoint</div>
+          <div className="mt-2 text-sm font-medium text-gray-900 dark:text-white break-all">{effectiveBaseUrl}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/50 p-4 text-sm text-gray-600 dark:text-gray-300">
+        Wspierane zmienne środowiskowe: `GEMINI_API_KEY`, opcjonalnie `GEMINI_MODEL` i `GEMINI_API_BASE_URL`. Po zmianie `.env` uruchom aplikację ponownie, aby Electron wczytał nową konfigurację.
+      </div>
+    </div>
+  );
+};
+
 const scheduledTaskTypeOptions: { value: GlobalScheduleType; label: string }[] = [
   { value: 'daily', label: 'Codziennie' },
   { value: 'weekdays', label: 'Codziennie oprócz sobót i niedziel' },
@@ -10307,6 +10351,11 @@ const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
               <div className="space-y-4">
                 <GoogleAuthSection clientId={settings?.googleClientId || ''} clientSecret={settings?.googleClientSecret || ''} />
               </div>
+            </div>
+
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Gemini AI</h3>
+              <GeminiConfigSection settings={settings} />
             </div>
 
             <div className="border-t border-gray-100 dark:border-gray-700 pt-6">
