@@ -204,9 +204,10 @@ export type ScheduledTask = {
   id: string;
   name: string;
   isActive: boolean;
-  actionType: 'email';
+  actionType: 'email' | 'daily_ai';
   schedule: ScheduledTaskSchedule;
   emailTemplate: EmailTemplate;
+  aiSystemInstruction?: string;
   contentSources?: ScheduledTaskContentSource[];
   createdAt: string;
   updatedAt: string;

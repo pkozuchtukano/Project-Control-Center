@@ -1555,7 +1555,7 @@ const getTimeKey = (date: Date) =>
 const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
     ...task,
     isActive: task.isActive ?? true,
-    actionType: 'email',
+    actionType: task.actionType === 'daily_ai' ? 'daily_ai' : 'email',
     schedule: {
         type: task.schedule?.type || 'daily',
         time: task.schedule?.time || '22:00',
@@ -1570,6 +1570,7 @@ const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
         body: task.emailTemplate?.body || '',
         variables: task.emailTemplate?.variables || {},
     },
+    aiSystemInstruction: task.aiSystemInstruction || '',
     contentSources: (task.contentSources || []).map((source) => ({
         ...source,
         type: 'daily',
@@ -1799,6 +1800,95 @@ const textToSimpleHtml = (value: string) => {
         .join('');
 };
 
+const linkifyScheduledEmailText = (value: string) => {
+    const escaped = escapeHtml(value);
+    return escaped
+        .replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, (issueCode) => {
+            const issueUrl = buildYouTrackIssueUrl(issueCode);
+            if (!issueUrl) return issueCode;
+            return `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5; font-weight:800; text-decoration:none;">${issueCode}</a>`;
+        })
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code style="padding:1px 5px; border-radius:6px; background:#eef2ff; color:#3730a3; font-family:Consolas,monospace; font-size:12px;">$1</code>');
+};
+
+const markdownToScheduledEmailHtml = (value: string) => {
+    const lines = value.replace(/\r\n/g, '\n').split('\n');
+    const blocks: string[] = [];
+    let paragraphLines: string[] = [];
+    let listItems: string[] = [];
+    let listType: 'ul' | 'ol' | null = null;
+
+    const flushParagraph = () => {
+        if (!paragraphLines.length) return;
+        blocks.push(`<p style="margin:0 0 14px 0; font-size:14px; line-height:1.7; color:#334155;">${paragraphLines.map(linkifyScheduledEmailText).join('<br />')}</p>`);
+        paragraphLines = [];
+    };
+
+    const flushList = () => {
+        if (!listType || !listItems.length) return;
+        const tag = listType;
+        blocks.push(`<${tag} style="margin:0 0 16px 0; padding-left:22px; color:#334155;">${listItems.join('')}</${tag}>`);
+        listItems = [];
+        listType = null;
+    };
+
+    lines.forEach((rawLine) => {
+        const line = rawLine.trim();
+
+        if (!line) {
+            flushParagraph();
+            flushList();
+            return;
+        }
+
+        if (/^---+$/.test(line) || /^\*\*\*+$/.test(line)) {
+            flushParagraph();
+            flushList();
+            blocks.push('<hr style="margin:18px 0; border:0; border-top:1px solid #e2e8f0;" />');
+            return;
+        }
+
+        const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+            flushParagraph();
+            flushList();
+            const level = headingMatch[1].length;
+            const fontSize = level <= 2 ? 18 : 15;
+            const color = level <= 2 ? '#0f172a' : '#334155';
+            blocks.push(`<h${Math.min(level + 1, 6)} style="margin:18px 0 10px 0; font-size:${fontSize}px; line-height:1.35; font-weight:900; color:${color};">${linkifyScheduledEmailText(headingMatch[2])}</h${Math.min(level + 1, 6)}>`);
+            return;
+        }
+
+        const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+        if (orderedMatch) {
+            flushParagraph();
+            if (listType && listType !== 'ol') flushList();
+            listType = 'ol';
+            listItems.push(`<li style="margin:0 0 10px 0; font-size:14px; line-height:1.65;">${linkifyScheduledEmailText(orderedMatch[2])}</li>`);
+            return;
+        }
+
+        const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
+        if (unorderedMatch) {
+            flushParagraph();
+            if (listType && listType !== 'ul') flushList();
+            listType = 'ul';
+            listItems.push(`<li style="margin:0 0 10px 0; font-size:14px; line-height:1.65;">${linkifyScheduledEmailText(unorderedMatch[1])}</li>`);
+            return;
+        }
+
+        flushList();
+        paragraphLines.push(line);
+    });
+
+    flushParagraph();
+    flushList();
+
+    return blocks.join('');
+};
+
 const sanitizeScheduledEmailIntro = (value?: string | null) => {
     const normalized = value?.replace(/\r\n/g, '\n').trim();
     if (!normalized) return '';
@@ -1876,6 +1966,7 @@ const writeScheduledEmailDebugOutput = async (
             JSON.stringify({
                 taskId: task.id,
                 taskName: task.name,
+                actionType: task.actionType,
                 executionDate: executionDate.toISOString(),
                 to: task.emailTemplate.to,
                 cc: task.emailTemplate.cc,
@@ -1933,6 +2024,35 @@ const formatTimelineActivity = (activity: DailyReportIssue['timeline'][number]) 
         return `${activity.author.name}: Utworzono zadanie`;
     }
     return `${activity.author.name}: ${activity.added || activity.text || 'Aktualizacja'}`;
+};
+
+const anonymizeDailyDisplayName = (value?: string | null) => {
+    if (!value) return null;
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return null;
+    if (parts.length === 1) return parts[0];
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+};
+
+const pruneScheduledDailyJson = (value: unknown): unknown => {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed ? trimmed : undefined;
+    }
+    if (Array.isArray(value)) {
+        const next = value
+            .map((item) => pruneScheduledDailyJson(item))
+            .filter((item) => item !== undefined);
+        return next.length ? next : undefined;
+    }
+    if (typeof value === 'object') {
+        const entries = Object.entries(value as Record<string, unknown>)
+            .map(([key, item]) => [key, pruneScheduledDailyJson(item)] as const)
+            .filter(([, item]) => item !== undefined);
+        return entries.length ? Object.fromEntries(entries) : undefined;
+    }
+    return value;
 };
 
 const shouldIncludeDailyActivity = (activity: DailyReportIssue['timeline'][number]) => {
@@ -2568,6 +2688,145 @@ const renderDailyContentSourceHtml = async (
     `;
 };
 
+const getScheduledDailySectionIssues = (
+    section: DailySection,
+    activityIssues: DailyReportIssue[],
+    boardIssues: DailyReportIssue[],
+    activityIssueIds: Set<string>,
+) => {
+    return (section.id === 'fixed_aktywnosci' ? activityIssues : boardIssues).filter((issue) => {
+        const hasTimelineInRange = activityIssueIds.has(issue.idReadable);
+
+        if (section.id === 'fixed_aktywnosci') {
+            return hasTimelineInRange;
+        }
+
+        const statuses = normalizeDailyStatuses(section.youtrackStatuses);
+        const currentState = issue.state?.name || '';
+        if (!statuses.includes(currentState.toLowerCase())) return false;
+        if (section.respectDates) {
+            return hasTimelineInRange;
+        }
+        return true;
+    });
+};
+
+const buildScheduledDailyAiPayload = (
+    task: ScheduledTask,
+    source: ScheduledTaskContentSource,
+    executionDate: Date,
+    payload: DailyContentSourcePayload,
+) => {
+    const { hub, sections, from, to, comments, activityIssues, boardIssues, activityIssueIds } = payload;
+    const fromTime = new Date(`${from}T00:00:00`).getTime();
+    const toTime = new Date(`${to}T23:59:59`).getTime();
+    const issuesById = new Map<string, DailyReportIssue>();
+    const currentSectionByIssue = new Map<string, DailySection>();
+
+    const sectionSummaries = sections.map((section) => {
+        const issues = getScheduledDailySectionIssues(section, activityIssues, boardIssues, activityIssueIds);
+
+        issues.forEach((issue) => {
+            if (!issuesById.has(issue.idReadable)) {
+                issuesById.set(issue.idReadable, issue);
+                currentSectionByIssue.set(issue.idReadable, section);
+            }
+        });
+
+        return {
+            id: section.id,
+            name: section.name,
+            type: section.id === 'fixed_aktywnosci' ? 'activity' : 'board',
+            respectDates: !!section.respectDates,
+            configuredStatuses: normalizeDailyStatuses(section.youtrackStatuses),
+            issueCount: issues.length,
+            issueIds: issues.map((issue) => issue.idReadable),
+        };
+    });
+
+    const serializedIssues = Array.from(issuesById.values()).map((issue) => {
+        const currentSection = currentSectionByIssue.get(issue.idReadable) || null;
+        const activitiesInRange = issue.timeline
+            .filter((activity) =>
+                activity.timestamp >= fromTime
+                && activity.timestamp <= toTime
+                && shouldIncludeDailyActivity(activity),
+            )
+            .map((activity) => ({
+                type: activity.type,
+                timestamp: new Date(activity.timestamp).toISOString(),
+                author: anonymizeDailyDisplayName(activity.author?.name || activity.author?.login || null),
+                ...(activity.type === 'comment' ? { text: sanitizeDailyCommentText(activity.text) } : {}),
+                ...(activity.type === 'field-change'
+                    ? { field: activity.field || null, from: activity.removed || null, to: activity.added || null }
+                    : {}),
+                ...(activity.type === 'work-item'
+                    ? { minutes: activity.minutes || 0, comments: activity.workComments || [] }
+                    : {}),
+            }));
+
+        const pmNote = comments[issue.idReadable]?.trim() || null;
+
+        return {
+            id: issue.idReadable,
+            projectCode: resolveDailyProjectCode(issue),
+            summary: issue.summary,
+            currentSection: currentSection
+                ? {
+                    id: currentSection.id,
+                    name: currentSection.name,
+                    respectDates: !!currentSection.respectDates,
+                    configuredStatuses: normalizeDailyStatuses(currentSection.youtrackStatuses),
+                }
+                : null,
+            state: issue.state?.name || null,
+            type: issue.type?.name || null,
+            priority: issue.priority?.name || null,
+            assignee: anonymizeDailyDisplayName(issue.assignee?.fullName || issue.assignee?.name || issue.assignee?.login || null),
+            spentTime: issue.spentTime || null,
+            estimation: issue.estimation || null,
+            isActiveInRange: activityIssueIds.has(issue.idReadable),
+            ...(pmNote ? { hasPmNote: true, pmNote } : {}),
+            activitiesInRange,
+            ...(activitiesInRange.length ? { activityCountInRange: activitiesInRange.length } : {}),
+            ...(activitiesInRange.length ? { latestActivityAt: activitiesInRange[activitiesInRange.length - 1].timestamp } : {}),
+            url: buildYouTrackIssueUrl(issue.idReadable),
+        };
+    });
+
+    return pruneScheduledDailyJson({
+        generatedAt: executionDate.toISOString(),
+        generatedAtLocal: executionDate.toLocaleString('pl-PL'),
+        source: {
+            id: source.id,
+            type: source.type,
+        },
+        task: {
+            id: task.id,
+            name: task.name,
+            actionType: task.actionType,
+        },
+        hub: {
+            id: hub.id,
+            name: hub.name,
+            projectCodes: hub.projectCodes.split(',').map((code) => code.trim()).filter(Boolean),
+        },
+        filters: {
+            dateFrom: from,
+            dateTo: to,
+            selectedSectionIds: source.sectionIds,
+        },
+        summary: {
+            sections: sectionSummaries.length,
+            issues: serializedIssues.length,
+            activeIssuesInRange: serializedIssues.filter((issue) => issue.isActiveInRange).length,
+            issuesWithPmNotes: serializedIssues.filter((issue) => issue.hasPmNote).length,
+        },
+        sections: sectionSummaries,
+        issues: serializedIssues,
+    });
+};
+
 const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: Date) => {
     const textBlocks: string[] = [];
     const htmlBlocks: string[] = [];
@@ -2578,6 +2837,10 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
         htmlBlocks.push(textToSimpleHtml(baseBody));
     }
 
+    if (task.actionType === 'daily_ai' && !task.aiSystemInstruction?.trim()) {
+        throw new Error('Brak promptu systemowego AI w zadaniu harmonogramu.');
+    }
+
     for (const source of task.contentSources || []) {
         if (source.type === 'daily') {
             const cacheKey = `${source.id}:${source.hubId}:${source.sectionIds.join(',')}:${executionDate.toISOString()}`;
@@ -2586,14 +2849,37 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
             }
             const payload = await dailyPayloadCache.get(cacheKey)!;
 
-            const renderedDaily = await renderDailyContentSource(task, source, executionDate, payload);
-            if (renderedDaily.trim()) {
-                textBlocks.push(renderedDaily);
-            }
+            if (task.actionType === 'daily_ai') {
+                const aiPayload = buildScheduledDailyAiPayload(task, source, executionDate, payload);
+                const response = await generateGeminiContent({
+                    prompt: JSON.stringify(aiPayload, null, 2),
+                    systemInstruction: task.aiSystemInstruction,
+                    model: envSettings.geminiModel || DEFAULT_GEMINI_MODEL,
+                    temperature: 0.2,
+                    maxOutputTokens: 12000,
+                });
+                const analysisText = response.text.trim();
+                if (analysisText) {
+                    const heading = `Analiza AI: ${payload.hub.name}`;
+                    textBlocks.push(`# ${heading}\n\n${analysisText}`);
+                    htmlBlocks.push(`
+                        <section style="margin:0 0 20px 0; padding:18px; border-radius:18px; background:#ffffff; border:1px solid rgba(148,163,184,0.22); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
+                            <div style="margin-bottom:12px; font-size:20px; font-weight:900; color:#0f172a;">${escapeHtml(heading)}</div>
+                            <div style="margin-bottom:14px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
+                            ${markdownToScheduledEmailHtml(analysisText)}
+                        </section>
+                    `);
+                }
+            } else {
+                const renderedDaily = await renderDailyContentSource(task, source, executionDate, payload);
+                if (renderedDaily.trim()) {
+                    textBlocks.push(renderedDaily);
+                }
 
-            const renderedDailyHtml = await renderDailyContentSourceHtml(task, source, executionDate, payload);
-            if (renderedDailyHtml.trim()) {
-                htmlBlocks.push(renderedDailyHtml);
+                const renderedDailyHtml = await renderDailyContentSourceHtml(task, source, executionDate, payload);
+                if (renderedDailyHtml.trim()) {
+                    htmlBlocks.push(renderedDailyHtml);
+                }
             }
         }
     }

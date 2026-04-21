@@ -1,4 +1,10 @@
-﻿## Daily Command Center
+## Daily Command Center
+- 2026-04-21 – HTML dla maila `Daily z AI`
+  -- Wynik analizy AI wysyłany z harmonogramu jest teraz konwertowany z Markdown do czytelnego HTML z nagłówkami, listami, pogrubieniami, separatorami i linkami do zadań YouTrack.
+  -- Limit odpowiedzi Gemini dla harmonogramu `Daily z AI` podniesiono do 12000 tokenów, aby zmniejszyć ryzyko ucięcia maila do samego początku analizy.
+- 2026-04-21 – Daily z AI w globalnym harmonogramie
+  -- Harmonogram może teraz użyć typu akcji `Daily z AI`, który przed wysyłką pobiera zadania i aktywności Daily, buduje JSON z wybranymi sekcjami, statusami, notatkami PM i aktywnościami w zakresie dat.
+  -- JSON jest przekazywany do Gemini z promptem systemowym zapisanym przy zadaniu, a do e-maila trafia dopiero wynik analizy AI.
 - 2026-04-21 – Usuwanie wpisów historii analiz AI Daily
   -- Panel `Historia analiz AI` dostał przycisk usuwania pojedynczego wpisu z potwierdzeniem operacji.
   -- Usunięcie wykonuje fizyczny `DELETE` rekordu z tabeli `daily_ai_analyses`, bez pozostawiania wpisu archiwalnego, aby zwolnić miejsce w lokalnej bazie.
@@ -162,6 +168,14 @@
   -- Docelowo tray został przepięty na wskazany plik `electron/tray-icon.png`, ładowany jako realny asset PNG z fallbackiem do wewnętrznego SVG, dzięki czemu aplikacja może używać przekazanej grafiki zamiast generowanej ikony zastępczej.
 
 ## Ustawienia główne
+- 2026-04-21 – Zapis przed ręcznym uruchomieniem zadania harmonogramu
+  -- Przycisk `Wykonaj teraz` w globalnym harmonogramie zapisuje teraz aktualny stan formularza zadania przed uruchomieniem wykonania.
+  -- Dzięki temu zmiana typu akcji na `Daily z AI`, prompt systemowy AI oraz wybór źródeł Daily nie są pomijane, gdy użytkownik uruchomi zadanie od razu po edycji.
+  -- Debugowy plik metadanych wysyłki maila zapisuje teraz także `actionType`, aby łatwiej potwierdzić, czy wykonano klasyczny e-mail czy `Daily z AI`.
+- 2026-04-21 – Typ akcji `Daily z AI` w globalnym harmonogramie
+  -- Formularz zadania harmonogramu dostał wybór typu akcji: klasyczna wysyłka e-mail albo `Daily z AI`.
+  -- Dla `Daily z AI` dodano pole promptu systemowego AI oraz opis przepływu: pobranie danych Daily, zbudowanie JSON, analiza Gemini i wysłanie wyniku e-mailem.
+  -- Istniejące zadania harmonogramu pozostają zgodne wstecznie i są normalizowane jako typ `email`, więc zmiana nie wymaga przebudowy tabel ani migracji danych.
 - 2026-04-20 – Globalna integracja Google Gemini AI
   -- Rozszerzono globalną konfigurację środowiskową o `GEMINI_API_KEY` oraz opcjonalne `GEMINI_MODEL` i `GEMINI_API_BASE_URL`, odczytywane zarówno w rendererze, jak i w procesie Electron bez zapisu sekretów do SQLite.
   -- Dodano bezpieczny kanał IPC `ask-gemini`, który wysyła prompt do Google Gemini z procesu głównego aplikacji, obsługuje `generationConfig` oraz dodatkowe pola requestu i zwraca odpowiedź tekstową wraz z metadanymi wykonania.

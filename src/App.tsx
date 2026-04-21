@@ -109,7 +109,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search, Bot
 } from 'lucide-react';
 
 import { 
@@ -8960,6 +8960,7 @@ const createScheduledTaskDraft = (): ScheduledTask => {
       dateTime: '',
     },
     emailTemplate: createEmptyEmailTemplate(),
+    aiSystemInstruction: '',
     contentSources: [],
     createdAt: now,
     updatedAt: now,
@@ -9149,6 +9150,9 @@ const GlobalSchedulerSection = () => {
     setPendingTaskId(task.id);
     setError('');
     try {
+      if (task.actionType === 'daily_ai' && !task.aiSystemInstruction?.trim()) {
+        throw new Error('Uzupełnij prompt systemowy AI przed zapisaniem zadania Daily z AI.');
+      }
       await window.electron.saveScheduledTask({
         ...task,
         updatedAt: new Date().toISOString(),
@@ -9179,13 +9183,20 @@ const GlobalSchedulerSection = () => {
     }
   };
 
-  const handleRunTaskNow = async (taskId: string) => {
-    if (!window.electron?.runScheduledTaskNow) return;
+  const handleRunTaskNow = async (task: ScheduledTask) => {
+    if (!window.electron?.runScheduledTaskNow || !window.electron?.saveScheduledTask) return;
 
-    setPendingTaskId(taskId);
+    setPendingTaskId(task.id);
     setError('');
     try {
-      await window.electron.runScheduledTaskNow(taskId);
+      if (task.actionType === 'daily_ai' && !task.aiSystemInstruction?.trim()) {
+        throw new Error('Uzupełnij prompt systemowy AI przed wykonaniem zadania Daily z AI.');
+      }
+      await window.electron.saveScheduledTask({
+        ...task,
+        updatedAt: new Date().toISOString(),
+      });
+      await window.electron.runScheduledTaskNow(task.id);
       await loadTasks();
     } catch (runError: any) {
       setError(runError?.message || 'Nie udało się wykonać zadania harmonogramu.');
@@ -9263,7 +9274,7 @@ const GlobalSchedulerSection = () => {
         <div>
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Globalny harmonogram</h3>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-6">
-            Zadania wykonują się, gdy aplikacja jest uruchomiona, także po schowaniu do traya. Pierwszy typ akcji to automatyczna wysyłka e-mail.
+            Zadania wykonują się, gdy aplikacja jest uruchomiona, także po schowaniu do traya. Typ akcji decyduje, czy e-mail dostanie gotowy raport Daily, czy wynik analizy AI.
           </p>
           <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
             Jeśli Google było autoryzowane wcześniej, po dodaniu harmonogramu e-mail może być potrzebne wylogowanie i ponowna autoryzacja, aby nadać uprawnienie Gmail Send.
@@ -9310,13 +9321,20 @@ const GlobalSchedulerSection = () => {
                     />
                   </label>
 
-                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5">
-                    <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Typ akcji</span>
-                    <div className="mt-1.5 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                      <Mail size={15} className="text-indigo-500" />
-                      Wysyłka wiadomości e-mail
-                    </div>
-                  </div>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Typ akcji</span>
+                    <select
+                      value={task.actionType}
+                      onChange={(event) => updateTask(task.id, (current) => ({
+                        ...current,
+                        actionType: event.target.value as ScheduledTask['actionType'],
+                      }))}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                    >
+                      <option value="email">Wysyłka wiadomości e-mail</option>
+                      <option value="daily_ai">Daily z AI</option>
+                    </select>
+                  </label>
                 </div>
 
                 <label className="inline-flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -9449,7 +9467,7 @@ const GlobalSchedulerSection = () => {
                 <div className="mt-4 space-y-3">
                   {(task.contentSources || []).length === 0 ? (
                     <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/40 bg-white/70 dark:bg-gray-900/40 px-4 py-4 text-sm text-indigo-800/80 dark:text-indigo-200/80">
-                      Brak wybranych źródeł. Dodaj `Daily`, jeśli wynik ma zostać automatycznie wstawiony do wiadomości.
+                      Brak wybranych źródeł. Dodaj `Daily`, jeśli wynik ma zostać automatycznie wstawiony do wiadomości albo przekazany do analizy AI.
                     </div>
                   ) : (
                     (task.contentSources || []).map((source, sourceIndex) => {
@@ -9464,8 +9482,10 @@ const GlobalSchedulerSection = () => {
                               <div className="rounded-lg border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-950/20 px-3 py-2.5">
                                 <span className="block text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Typ źródła</span>
                                 <div className="mt-1.5 flex items-center gap-2 text-sm font-medium text-indigo-950 dark:text-indigo-100">
-                                  <Mail size={15} className="text-indigo-500" />
-                                  Wyślij Daily #{sourceIndex + 1}
+                                  {task.actionType === 'daily_ai'
+                                    ? <Bot size={15} className="text-violet-500" />
+                                    : <Mail size={15} className="text-indigo-500" />}
+                                  {task.actionType === 'daily_ai' ? 'Analizuj Daily' : 'Wyślij Daily'} #{sourceIndex + 1}
                                 </div>
                               </div>
 
@@ -9588,6 +9608,28 @@ const GlobalSchedulerSection = () => {
                 />
               </label>
 
+              {task.actionType === 'daily_ai' && (
+                <label className="block rounded-2xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 p-4">
+                  <span className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                    <Bot size={14} />
+                    Prompt systemowy AI
+                  </span>
+                  <textarea
+                    rows={6}
+                    value={task.aiSystemInstruction || ''}
+                    onChange={(event) => updateTask(task.id, (current) => ({
+                      ...current,
+                      aiSystemInstruction: event.target.value,
+                    }))}
+                    placeholder="Opisz, jak AI ma przeanalizować JSON Daily i w jakiej formie przygotować wynik do wysłania e-mailem."
+                    className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                  />
+                  <span className="mt-2 block text-xs leading-5 text-violet-700/80 dark:text-violet-300/80">
+                    Przed wysyłką harmonogram pobierze zadania i aktywności Daily, utworzy JSON z zaznaczonymi sekcjami oraz statusami, przekaże go do AI, a do e-maila trafi wynik analizy.
+                  </span>
+                </label>
+              )}
+
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                   <div>Ostatnie wykonanie: {task.lastRunAt ? new Date(task.lastRunAt).toLocaleString('pl-PL') : 'jeszcze nie uruchomiono'}</div>
@@ -9607,7 +9649,7 @@ const GlobalSchedulerSection = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleRunTaskNow(task.id)}
+                    onClick={() => void handleRunTaskNow(task)}
                     disabled={pendingTaskId === task.id}
                     className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/40 dark:bg-gray-800 dark:text-emerald-400 dark:hover:bg-emerald-950/20 disabled:opacity-60"
                   >
