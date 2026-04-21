@@ -95,6 +95,7 @@ declare global {
       saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => Promise<{ success: boolean }>;
       getDailyAiAnalyses: (hubId: string) => Promise<DailyAiAnalysis[]>;
       saveDailyAiAnalysis: (data: DailyAiAnalysis) => Promise<{ success: boolean }>;
+      deleteDailyAiAnalysis: (id: string) => Promise<{ success: boolean }>;
     }
   }
 }

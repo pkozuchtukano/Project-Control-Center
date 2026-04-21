@@ -1,4 +1,7 @@
 ﻿## Daily Command Center
+- 2026-04-21 – Usuwanie wpisów historii analiz AI Daily
+  -- Panel `Historia analiz AI` dostał przycisk usuwania pojedynczego wpisu z potwierdzeniem operacji.
+  -- Usunięcie wykonuje fizyczny `DELETE` rekordu z tabeli `daily_ai_analyses`, bez pozostawiania wpisu archiwalnego, aby zwolnić miejsce w lokalnej bazie.
 - 2026-04-21 – Tooltipy z tytułami zadań YouTrack w edytorze analiz AI
   -- Analizy AI Daily zapisują teraz mapę kodów YouTrack do tytułów zadań razem z wpisem historii, przez bezstratną migrację nowej kolumny `issueTitles` w SQLite.
   -- Podczas otwierania wpisu w edytorze kody zadań linkowane do YouTrack dostają atrybut `title`, więc po najechaniu kursorem pokazują tytuł zadania.

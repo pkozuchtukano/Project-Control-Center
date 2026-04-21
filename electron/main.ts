@@ -4696,3 +4696,13 @@ ipcMain.handle('save-daily-ai-analysis', async (_, analysis: DailyAiAnalysis) =>
     }
 });
 
+ipcMain.handle('delete-daily-ai-analysis', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM daily_ai_analyses WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd usuwania daily_ai_analysis:', error);
+        throw error;
+    }
+});
+

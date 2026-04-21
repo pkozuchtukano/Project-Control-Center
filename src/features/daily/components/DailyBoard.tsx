@@ -1083,6 +1083,29 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.originalContent, settings?.youtrackBaseUrl, resolveIssueTitleMap(selected, aiIssueTitleMap)));
   };
 
+  const handleDeleteAiAnalysis = async (analysis: DailyAiAnalysis) => {
+    if (!window.electron?.deleteDailyAiAnalysis) {
+      window.alert('Usuwanie historii analiz AI jest dost\u0119pne tylko w aplikacji desktopowej Electron.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Usun\u0105\u0107 wpis historii AI dla ${analysis.projectCodes.join(', ') || 'braku projekt\u00f3w'} z ${analysis.dateFrom} - ${analysis.dateTo}? Tej operacji nie mo\u017cna cofn\u0105\u0107.`
+    );
+    if (!confirmed) return;
+
+    await window.electron.deleteDailyAiAnalysis(analysis.id);
+    const refreshed = await window.electron.getDailyAiAnalyses(hubId);
+    setSavedAiAnalyses(refreshed);
+
+    if (selectedAiAnalysisId === analysis.id) {
+      const nextSelected = refreshed[0] || null;
+      setSelectedAiAnalysisId(nextSelected?.id || null);
+      setAiAnalysisDraft(nextSelected ? normalizeAnalysisContentToHtml(nextSelected.currentContent, settings?.youtrackBaseUrl, resolveIssueTitleMap(nextSelected, aiIssueTitleMap)) : '');
+      setIsAiEditorOpen(false);
+    }
+  };
+
   if (isActivityLoading && activityIssues.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-gray-950/50 min-h-[400px]">
@@ -1309,6 +1332,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
           analyses={savedAiAnalyses}
           selectedAnalysisId={selectedAiAnalysisId}
           onSelect={handleSelectAiAnalysis}
+          onDelete={(analysis) => void handleDeleteAiAnalysis(analysis)}
         />
       </div>
 

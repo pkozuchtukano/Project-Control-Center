@@ -90,5 +90,6 @@ contextBridge.exposeInMainWorld('electron', {
     saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => ipcRenderer.invoke('save-daily-issue-state', data),
     getDailyAiAnalyses: (hubId: string) => ipcRenderer.invoke('get-daily-ai-analyses', hubId),
     saveDailyAiAnalysis: (data: any) => ipcRenderer.invoke('save-daily-ai-analysis', data),
+    deleteDailyAiAnalysis: (id: string) => ipcRenderer.invoke('delete-daily-ai-analysis', id),
 });
 
