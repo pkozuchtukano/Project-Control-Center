@@ -500,8 +500,15 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       if (window.electron) {
         const savedComments = (await window.electron.getDailyComments()) as unknown as Record<string, string>;
         const savedStates = (await window.electron.getDailyIssueStates()) as Record<string, boolean>;
+        const savedSkippedInAi = window.electron.getDailyAiSkippedIssueStates
+          ? await window.electron.getDailyAiSkippedIssueStates()
+          : {};
         setComments(savedComments);
         setIssueStates(savedStates);
+        setSkippedInAiIssues((current) => ({
+          ...current,
+          ...savedSkippedInAi,
+        }));
       }
     };
     loadData();
@@ -547,6 +554,12 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('daily_ai_skipped_issues', JSON.stringify(skippedInAiIssues));
+    if (!window.electron?.saveDailyAiSkippedIssueState) return;
+    Object.entries(skippedInAiIssues)
+      .filter(([, skipInAi]) => skipInAi)
+      .forEach(([issueId]) => {
+        void window.electron?.saveDailyAiSkippedIssueState?.({ issueId, skipInAi: true });
+      });
   }, [skippedInAiIssues]);
 
   useEffect(() => {
@@ -959,11 +972,12 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     await window.electron?.saveDailyIssueState({ issueId, isCollapsed });
   };
 
-  const handleToggleSkipInAi = (issueId: string, skipInAi: boolean) => {
+  const handleToggleSkipInAi = async (issueId: string, skipInAi: boolean) => {
     setSkippedInAiIssues((prev) => ({
       ...prev,
       [issueId]: skipInAi,
     }));
+    await window.electron?.saveDailyAiSkippedIssueState?.({ issueId, skipInAi });
   };
 
   const syncYouTrack = async () => {

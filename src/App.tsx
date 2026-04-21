@@ -93,6 +93,8 @@ declare global {
       saveDailyComment: (data: { issueId: string, content: string }) => Promise<{ success: boolean }>;
       getDailyIssueStates: () => Promise<Record<string, boolean>>;
       saveDailyIssueState: (data: { issueId: string, isCollapsed: boolean }) => Promise<{ success: boolean }>;
+      getDailyAiSkippedIssueStates: () => Promise<Record<string, boolean>>;
+      saveDailyAiSkippedIssueState: (data: { issueId: string, skipInAi: boolean }) => Promise<{ success: boolean }>;
       getDailyAiAnalyses: (hubId: string) => Promise<DailyAiAnalysis[]>;
       saveDailyAiAnalysis: (data: DailyAiAnalysis) => Promise<{ success: boolean }>;
       deleteDailyAiAnalysis: (id: string) => Promise<{ success: boolean }>;

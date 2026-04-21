@@ -1,4 +1,12 @@
 ## Daily Command Center
+- 2026-04-21 – Czytelniejsze karty zadań w mailu `Daily z AI`
+  -- Lista zadań w mailu `Daily z AI` jest teraz renderowana jako osobne karty z wyróżnionym kodem YouTrack, tytułem zadania i opisem poniżej.
+  -- Kontener maila dostał ograniczoną szerokość, większe odstępy i nagłówek z separatorem, aby raport był łatwiejszy do czytania w Gmailu.
+  -- Do instrukcji AI dodano wymóg krótkich sekcji projektowych oraz osobnych punktów zaczynających się od `KOD - Tytuł zadania`.
+- 2026-04-21 – Pomijanie zadań w AI harmonogramu
+  -- Oznaczenie `Pomiń w AI` jest teraz zapisywane w SQLite w tabeli `daily_ai_skipped_issue_states`, a nie tylko lokalnie w przeglądarce.
+  -- Harmonogram `Daily z AI` odczytuje te flagi i usuwa pominięte zadania już na etapie budowania JSON przekazywanego do Gemini.
+  -- JSON dla AI zawiera teraz przy zadaniach pola `title` i `displayName` oraz mapę `issueTitles`, aby kod YouTrack był zawsze dostępny razem z tytułem zadania.
 - 2026-04-21 – HTML dla maila `Daily z AI`
   -- Wynik analizy AI wysyłany z harmonogramu jest teraz konwertowany z Markdown do czytelnego HTML z nagłówkami, listami, pogrubieniami, separatorami i linkami do zadań YouTrack.
   -- Limit odpowiedzi Gemini dla harmonogramu `Daily z AI` podniesiono do 12000 tokenów, aby zmniejszyć ryzyko ucięcia maila do samego początku analizy.

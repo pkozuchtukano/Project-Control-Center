@@ -344,6 +344,11 @@ db.exec(`
         issueId TEXT PRIMARY KEY,
         isCollapsed INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS daily_ai_skipped_issue_states (
+        issueId TEXT PRIMARY KEY,
+        skipInAi INTEGER NOT NULL DEFAULT 0,
+        updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS daily_ai_analyses (
         id TEXT PRIMARY KEY,
         hubId TEXT NOT NULL,
@@ -609,6 +614,11 @@ const initializeDatabase = () => {
         CREATE TABLE IF NOT EXISTS daily_issue_states (
             issueId TEXT PRIMARY KEY,
             isCollapsed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS daily_ai_skipped_issue_states (
+            issueId TEXT PRIMARY KEY,
+            skipInAi INTEGER NOT NULL DEFAULT 0,
+            updatedAt TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS daily_ai_analyses (
             id TEXT PRIMARY KEY,
@@ -1641,6 +1651,14 @@ const getDailyCommentsMap = (): Record<string, string> => {
     }, {});
 };
 
+const getDailyAiSkippedIssueMap = (): Record<string, boolean> => {
+    const rows = db.prepare('SELECT issueId, skipInAi FROM daily_ai_skipped_issue_states WHERE skipInAi = 1').all() as { issueId: string; skipInAi: number }[];
+    return rows.reduce<Record<string, boolean>>((acc, row) => {
+        acc[row.issueId] = row.skipInAi === 1;
+        return acc;
+    }, {});
+};
+
 const normalizeDailyStatuses = (raw: string) => {
     if (!raw) return [];
     return raw
@@ -1800,20 +1818,72 @@ const textToSimpleHtml = (value: string) => {
         .join('');
 };
 
-const linkifyScheduledEmailText = (value: string) => {
+const linkifyScheduledEmailText = (value: string, issueTitles?: Record<string, string>) => {
     const escaped = escapeHtml(value);
     return escaped
         .replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, (issueCode) => {
             const issueUrl = buildYouTrackIssueUrl(issueCode);
-            if (!issueUrl) return issueCode;
-            return `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5; font-weight:800; text-decoration:none;">${issueCode}</a>`;
+            const title = issueTitles?.[issueCode] || issueTitles?.[issueCode.toUpperCase()];
+            const label = title ? `${issueCode} - ${title}` : issueCode;
+            if (!issueUrl) return escapeHtml(label);
+            return `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4f46e5; font-weight:800; text-decoration:none;">${escapeHtml(label)}</a>`;
         })
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/__(.+?)__/g, '<strong>$1</strong>')
         .replace(/`([^`]+)`/g, '<code style="padding:1px 5px; border-radius:6px; background:#eef2ff; color:#3730a3; font-family:Consolas,monospace; font-size:12px;">$1</code>');
 };
 
-const markdownToScheduledEmailHtml = (value: string) => {
+const parseScheduledIssueListItem = (value: string, issueTitles?: Record<string, string>) => {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^([A-Z][A-Z0-9]+-\d+)(?:\s*[-–—:]\s*([^:]+?))?(?::|\s-\s)?\s*(.*)$/);
+    if (!match) return null;
+
+    const issueCode = match[1];
+    const titleFromText = (match[2] || '').trim();
+    const mappedTitle = issueTitles?.[issueCode] || issueTitles?.[issueCode.toUpperCase()] || '';
+    const title = titleFromText || mappedTitle;
+    const duplicatedPrefix = title ? `${issueCode} - ${title}` : issueCode;
+    let description = (match[3] || '').trim();
+
+    if (description.startsWith(duplicatedPrefix)) {
+        description = description.slice(duplicatedPrefix.length).replace(/^[:\s-]+/, '').trim();
+    }
+    if (title && description.startsWith(title)) {
+        description = description.slice(title.length).replace(/^[:\s-]+/, '').trim();
+    }
+
+    return {
+        issueCode,
+        title,
+        description,
+    };
+};
+
+const renderScheduledIssueListItemHtml = (value: string, issueTitles?: Record<string, string>) => {
+    const parsed = parseScheduledIssueListItem(value, issueTitles);
+    if (!parsed) {
+        return `<li style="margin:0 0 10px 0; font-size:14px; line-height:1.65;">${linkifyScheduledEmailText(value, issueTitles)}</li>`;
+    }
+
+    const issueUrl = buildYouTrackIssueUrl(parsed.issueCode);
+    const codeHtml = issueUrl
+        ? `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:4px 8px; border-radius:8px; background:#eef2ff; color:#4f46e5; font-family:Consolas,'Courier New',monospace; font-size:12px; font-weight:900; text-decoration:none; border:1px solid rgba(79,70,229,0.14);">${escapeHtml(parsed.issueCode)}</a>`
+        : `<span style="display:inline-block; padding:4px 8px; border-radius:8px; background:#eef2ff; color:#4f46e5; font-family:Consolas,'Courier New',monospace; font-size:12px; font-weight:900; border:1px solid rgba(79,70,229,0.14);">${escapeHtml(parsed.issueCode)}</span>`;
+
+    return `
+        <li style="display:block; margin:0 0 12px 0; padding:12px 14px; border:1px solid #e2e8f0; border-radius:12px; background:#ffffff; box-shadow:0 6px 18px rgba(15,23,42,0.05); list-style:none;">
+            <div style="display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-bottom:${parsed.description ? '8px' : '0'};">
+                ${codeHtml}
+                <div style="flex:1; min-width:220px; font-size:14px; line-height:1.45; font-weight:900; color:#0f172a;">
+                    ${escapeHtml(parsed.title || parsed.issueCode)}
+                </div>
+            </div>
+            ${parsed.description ? `<div style="font-size:13px; line-height:1.65; color:#475569;">${linkifyScheduledEmailText(parsed.description, issueTitles)}</div>` : ''}
+        </li>
+    `;
+};
+
+const markdownToScheduledEmailHtml = (value: string, issueTitles?: Record<string, string>) => {
     const lines = value.replace(/\r\n/g, '\n').split('\n');
     const blocks: string[] = [];
     let paragraphLines: string[] = [];
@@ -1822,14 +1892,14 @@ const markdownToScheduledEmailHtml = (value: string) => {
 
     const flushParagraph = () => {
         if (!paragraphLines.length) return;
-        blocks.push(`<p style="margin:0 0 14px 0; font-size:14px; line-height:1.7; color:#334155;">${paragraphLines.map(linkifyScheduledEmailText).join('<br />')}</p>`);
+        blocks.push(`<p style="margin:0 0 14px 0; font-size:14px; line-height:1.7; color:#334155;">${paragraphLines.map((line) => linkifyScheduledEmailText(line, issueTitles)).join('<br />')}</p>`);
         paragraphLines = [];
     };
 
     const flushList = () => {
         if (!listType || !listItems.length) return;
         const tag = listType;
-        blocks.push(`<${tag} style="margin:0 0 16px 0; padding-left:22px; color:#334155;">${listItems.join('')}</${tag}>`);
+        blocks.push(`<${tag} style="margin:0 0 16px 0; padding-left:0; color:#334155; list-style:none;">${listItems.join('')}</${tag}>`);
         listItems = [];
         listType = null;
     };
@@ -1857,7 +1927,7 @@ const markdownToScheduledEmailHtml = (value: string) => {
             const level = headingMatch[1].length;
             const fontSize = level <= 2 ? 18 : 15;
             const color = level <= 2 ? '#0f172a' : '#334155';
-            blocks.push(`<h${Math.min(level + 1, 6)} style="margin:18px 0 10px 0; font-size:${fontSize}px; line-height:1.35; font-weight:900; color:${color};">${linkifyScheduledEmailText(headingMatch[2])}</h${Math.min(level + 1, 6)}>`);
+            blocks.push(`<h${Math.min(level + 1, 6)} style="margin:18px 0 10px 0; font-size:${fontSize}px; line-height:1.35; font-weight:900; color:${color};">${linkifyScheduledEmailText(headingMatch[2], issueTitles)}</h${Math.min(level + 1, 6)}>`);
             return;
         }
 
@@ -1866,7 +1936,7 @@ const markdownToScheduledEmailHtml = (value: string) => {
             flushParagraph();
             if (listType && listType !== 'ol') flushList();
             listType = 'ol';
-            listItems.push(`<li style="margin:0 0 10px 0; font-size:14px; line-height:1.65;">${linkifyScheduledEmailText(orderedMatch[2])}</li>`);
+            listItems.push(renderScheduledIssueListItemHtml(orderedMatch[2], issueTitles));
             return;
         }
 
@@ -1875,7 +1945,7 @@ const markdownToScheduledEmailHtml = (value: string) => {
             flushParagraph();
             if (listType && listType !== 'ul') flushList();
             listType = 'ul';
-            listItems.push(`<li style="margin:0 0 10px 0; font-size:14px; line-height:1.65;">${linkifyScheduledEmailText(unorderedMatch[1])}</li>`);
+            listItems.push(renderScheduledIssueListItemHtml(unorderedMatch[1], issueTitles));
             return;
         }
 
@@ -2286,6 +2356,7 @@ type DailyContentSourcePayload = {
     from: string;
     to: string;
     comments: Record<string, string>;
+    skippedInAiIssues: Record<string, boolean>;
     activityIssues: DailyReportIssue[];
     boardIssues: DailyReportIssue[];
     activityIssueIds: Set<string>;
@@ -2353,6 +2424,7 @@ const loadDailyContentSourcePayload = async (
         from,
         to,
         comments: getDailyCommentsMap(),
+        skippedInAiIssues: getDailyAiSkippedIssueMap(),
         activityIssues,
         boardIssues,
         activityIssueIds,
@@ -2693,8 +2765,10 @@ const getScheduledDailySectionIssues = (
     activityIssues: DailyReportIssue[],
     boardIssues: DailyReportIssue[],
     activityIssueIds: Set<string>,
+    skippedInAiIssues: Record<string, boolean>,
 ) => {
     return (section.id === 'fixed_aktywnosci' ? activityIssues : boardIssues).filter((issue) => {
+        if (skippedInAiIssues[issue.idReadable]) return false;
         const hasTimelineInRange = activityIssueIds.has(issue.idReadable);
 
         if (section.id === 'fixed_aktywnosci') {
@@ -2717,14 +2791,14 @@ const buildScheduledDailyAiPayload = (
     executionDate: Date,
     payload: DailyContentSourcePayload,
 ) => {
-    const { hub, sections, from, to, comments, activityIssues, boardIssues, activityIssueIds } = payload;
+    const { hub, sections, from, to, comments, skippedInAiIssues, activityIssues, boardIssues, activityIssueIds } = payload;
     const fromTime = new Date(`${from}T00:00:00`).getTime();
     const toTime = new Date(`${to}T23:59:59`).getTime();
     const issuesById = new Map<string, DailyReportIssue>();
     const currentSectionByIssue = new Map<string, DailySection>();
 
     const sectionSummaries = sections.map((section) => {
-        const issues = getScheduledDailySectionIssues(section, activityIssues, boardIssues, activityIssueIds);
+        const issues = getScheduledDailySectionIssues(section, activityIssues, boardIssues, activityIssueIds, skippedInAiIssues);
 
         issues.forEach((issue) => {
             if (!issuesById.has(issue.idReadable)) {
@@ -2741,6 +2815,11 @@ const buildScheduledDailyAiPayload = (
             configuredStatuses: normalizeDailyStatuses(section.youtrackStatuses),
             issueCount: issues.length,
             issueIds: issues.map((issue) => issue.idReadable),
+            issueRefs: issues.map((issue) => ({
+                id: issue.idReadable,
+                title: issue.summary,
+                displayName: `${issue.idReadable} - ${issue.summary}`,
+            })),
         };
     });
 
@@ -2769,6 +2848,8 @@ const buildScheduledDailyAiPayload = (
 
         return {
             id: issue.idReadable,
+            title: issue.summary,
+            displayName: `${issue.idReadable} - ${issue.summary}`,
             projectCode: resolveDailyProjectCode(issue),
             summary: issue.summary,
             currentSection: currentSection
@@ -2815,6 +2896,9 @@ const buildScheduledDailyAiPayload = (
             dateFrom: from,
             dateTo: to,
             selectedSectionIds: source.sectionIds,
+            skippedInAiIssueIds: Object.entries(skippedInAiIssues)
+                .filter(([, skipped]) => skipped)
+                .map(([issueId]) => issueId),
         },
         summary: {
             sections: sectionSummaries.length,
@@ -2822,10 +2906,18 @@ const buildScheduledDailyAiPayload = (
             activeIssuesInRange: serializedIssues.filter((issue) => issue.isActiveInRange).length,
             issuesWithPmNotes: serializedIssues.filter((issue) => issue.hasPmNote).length,
         },
+        issueTitles: Object.fromEntries(serializedIssues.map((issue) => [issue.id, issue.title])),
         sections: sectionSummaries,
         issues: serializedIssues,
     });
 };
+
+const appendScheduledDailyAiSystemRules = (systemInstruction: string) => [
+    systemInstruction.trim(),
+    'W każdej odpowiedzi, gdy wymieniasz zadanie z YouTrack, podawaj kod razem z tytułem w formacie `KOD-123 - Tytuł zadania`. Nie wypisuj samego kodu bez tytułu.',
+    'Pisz raport w krótkich sekcjach projektowych. Dla każdego zadania użyj osobnego punktu listy, zaczynając punkt od `KOD-123 - Tytuł zadania:`, a po dwukropku dodaj krótki opis statusu i najważniejszych aktywności. Unikaj bardzo długich akapitów.',
+    'Nie analizuj i nie wspominaj zadań, których nie ma w przekazanym JSON. Zadania oznaczone jako pominięte w AI są usunięte z JSON i mają być traktowane jako niewidoczne.',
+].filter(Boolean).join('\n\n');
 
 const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: Date) => {
     const textBlocks: string[] = [];
@@ -2851,9 +2943,10 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
 
             if (task.actionType === 'daily_ai') {
                 const aiPayload = buildScheduledDailyAiPayload(task, source, executionDate, payload);
+                const issueTitles = ((aiPayload as Record<string, unknown>).issueTitles || {}) as Record<string, string>;
                 const response = await generateGeminiContent({
                     prompt: JSON.stringify(aiPayload, null, 2),
-                    systemInstruction: task.aiSystemInstruction,
+                    systemInstruction: appendScheduledDailyAiSystemRules(task.aiSystemInstruction || ''),
                     model: envSettings.geminiModel || DEFAULT_GEMINI_MODEL,
                     temperature: 0.2,
                     maxOutputTokens: 12000,
@@ -2863,10 +2956,12 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
                     const heading = `Analiza AI: ${payload.hub.name}`;
                     textBlocks.push(`# ${heading}\n\n${analysisText}`);
                     htmlBlocks.push(`
-                        <section style="margin:0 0 20px 0; padding:18px; border-radius:18px; background:#ffffff; border:1px solid rgba(148,163,184,0.22); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
-                            <div style="margin-bottom:12px; font-size:20px; font-weight:900; color:#0f172a;">${escapeHtml(heading)}</div>
-                            <div style="margin-bottom:14px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
-                            ${markdownToScheduledEmailHtml(analysisText)}
+                        <section style="margin:0 auto 20px auto; padding:22px; max-width:960px; border-radius:18px; background:#ffffff; border:1px solid rgba(148,163,184,0.22); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
+                            <div style="margin-bottom:12px; padding-bottom:14px; border-bottom:1px solid #e2e8f0;">
+                                <div style="font-size:22px; font-weight:900; color:#0f172a; line-height:1.25;">${escapeHtml(heading)}</div>
+                                <div style="margin-top:8px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
+                            </div>
+                            ${markdownToScheduledEmailHtml(analysisText, issueTitles)}
                         </section>
                     `);
                 }
@@ -2885,7 +2980,7 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
     }
 
     const htmlBody = htmlBlocks.length > 0
-        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:12px; background:#eef2ff; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:100%; min-width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
+        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:18px; background:#eef2ff; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:1020px; width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
         : '';
 
     return {
@@ -4901,6 +4996,31 @@ ipcMain.handle('save-daily-issue-state', async (_, { issueId, isCollapsed }: { i
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d zapisu daily_issue_state:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-daily-ai-skipped-issue-states', async () => {
+    try {
+        return getDailyAiSkippedIssueMap();
+    } catch (error) {
+        console.error('Błąd pobierania daily_ai_skipped_issue_states:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-daily-ai-skipped-issue-state', async (_, { issueId, skipInAi }: { issueId: string, skipInAi: boolean }) => {
+    try {
+        db.prepare(`
+            INSERT INTO daily_ai_skipped_issue_states (issueId, skipInAi, updatedAt)
+            VALUES (?, ?, ?)
+            ON CONFLICT(issueId) DO UPDATE SET
+                skipInAi = excluded.skipInAi,
+                updatedAt = excluded.updatedAt
+        `).run(issueId, skipInAi ? 1 : 0, new Date().toISOString());
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu daily_ai_skipped_issue_state:', error);
         throw error;
     }
 });
