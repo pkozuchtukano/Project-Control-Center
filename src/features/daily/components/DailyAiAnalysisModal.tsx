@@ -55,6 +55,9 @@ const DEFAULT_SYSTEM_INSTRUCTION = [
   'Jestes analitykiem projektu IT.',
   'Na podstawie otrzymanego JSON opisz po polsku aktualny stan projektu.',
   'Wskaz aktywne zadania, tematy w realizacji, testy wewnetrzne, testy po stronie klienta, blokery, ryzyka, notatki PM oraz rekomendowane kolejne kroki.',
+  'Formatuj zadania jako glowna liste punktowana: jeden punkt to jedno zadanie z kodem YouTrack i tytulem.',
+  'Wydarzenia, komentarze, zmiany statusu i logi czasu wewnatrz zadania opisuj jako zwarty blok tekstu w tym samym punkcie zadania, bez dodatkowej listy zagniezdzonej.',
+  'Oddzielaj kolejne zadania pusta linia, aby wpis w historii byl czytelny po otwarciu w edytorze.',
   'Pisz konkretnie, technicznie i syntetycznie.',
 ].join(' ');
 

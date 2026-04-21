@@ -329,6 +329,7 @@ export type DailyAiAnalysis = {
   dateTo: string;
   originalContent: string;
   currentContent: string;
+  issueTitles?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 };

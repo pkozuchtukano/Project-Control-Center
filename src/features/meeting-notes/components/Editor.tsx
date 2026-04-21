@@ -60,11 +60,6 @@ export const Editor = ({
   minHeight = 380,
   onEditorReady
 }: EditorProps) => {
-  const normalizeEditorHtml = (value: string) => {
-    const trimmed = value.trim();
-    return trimmed === '' || trimmed === '<p></p>' ? '' : trimmed;
-  };
-
   const effectivePlaceholder = placeholder.includes('Ä')
     ? 'Zacznij pisa\u0107 notatki...'
     : placeholder;
@@ -259,6 +254,8 @@ export const Editor = ({
         .ProseMirror blockquote { border-left: 4px solid #e5e7eb; padding-left: 1rem; color: #6b7280; font-style: italic; margin-top: 1.5em; margin-bottom: 1.5em; }
         .ProseMirror ul { list-style-type: disc; padding-left: 1.5em; margin-top: 1em; margin-bottom: 1em; }
         .ProseMirror ol { list-style-type: decimal; padding-left: 1.5em; margin-top: 1em; margin-bottom: 1em; }
+        .ProseMirror li { margin-top: 0.9em; margin-bottom: 0.9em; }
+        .ProseMirror li p { margin-top: 0.35em; margin-bottom: 0.35em; }
         .ProseMirror p { margin-top: 0.75em; margin-bottom: 0.75em; line-height: 1.6; }
         .ProseMirror p.is-editor-empty:first-child::before {
           content: attr(data-placeholder);

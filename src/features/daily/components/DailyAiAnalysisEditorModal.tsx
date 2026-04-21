@@ -72,6 +72,7 @@ export const DailyAiAnalysisEditorModal = ({
             content={draftContent}
             onChange={onChange}
             placeholder="Edytuj treść analizy dla zespołu..."
+            openLinksOnClick
             minHeight={720}
           />
         </div>

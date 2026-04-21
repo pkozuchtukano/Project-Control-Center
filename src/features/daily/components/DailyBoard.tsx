@@ -10,6 +10,8 @@ import { DailyAiHistoryPanel } from './DailyAiHistoryPanel';
 import { useYouTrack } from '../../../hooks/useYouTrack';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
 
+type IssueTitleMap = Record<string, string>;
+
 const formatIsoDateTime = (value?: number | null) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -118,9 +120,97 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const formatInlineMarkdown = (value: string) => {
+const buildYouTrackIssueUrl = (youtrackBaseUrl: string | undefined, issueCode: string) => {
+  const baseUrl = youtrackBaseUrl?.trim();
+  if (!baseUrl) return '';
+  return `${baseUrl.replace(/\/$/, '')}/issue/${issueCode}`;
+};
+
+const getIssueTitle = (issueTitleByCode: IssueTitleMap | undefined, issueCode: string) =>
+  issueTitleByCode?.[issueCode] || issueTitleByCode?.[issueCode.toUpperCase()];
+
+const buildIssueTitleAttribute = (issueTitleByCode: IssueTitleMap | undefined, issueCode: string) => {
+  const title = getIssueTitle(issueTitleByCode, issueCode);
+  return title ? ` title="${escapeHtml(title)}"` : '';
+};
+
+const linkifyEscapedIssueCodes = (value: string, youtrackBaseUrl?: string, issueTitleByCode?: IssueTitleMap) => {
+  if (!youtrackBaseUrl?.trim()) return value;
+
+  return value.replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, (issueCode) => {
+    const issueUrl = buildYouTrackIssueUrl(youtrackBaseUrl, issueCode);
+    if (!issueUrl) return issueCode;
+    return `<a href="${escapeHtml(issueUrl)}" target="_blank" rel="noopener noreferrer"${buildIssueTitleAttribute(issueTitleByCode, issueCode)}>${issueCode}</a>`;
+  });
+};
+
+const linkifyIssueCodesInHtml = (html: string, youtrackBaseUrl?: string, issueTitleByCode?: IssueTitleMap) => {
+  if (typeof document === 'undefined') return html;
+
+  const container = document.createElement('div');
+  container.innerHTML = html;
+
+  container.querySelectorAll('a').forEach((link) => {
+    const issueCode = link.textContent?.trim() || '';
+    const title = /^[A-Z][A-Z0-9]+-\d+$/.test(issueCode) ? getIssueTitle(issueTitleByCode, issueCode) : null;
+    if (title) {
+      link.setAttribute('title', title);
+    }
+  });
+
+  if (!youtrackBaseUrl?.trim()) return container.innerHTML;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const parentElement = currentNode.parentElement;
+    if (parentElement && !['A', 'CODE', 'PRE'].includes(parentElement.tagName)) {
+      textNodes.push(currentNode as Text);
+    }
+    currentNode = walker.nextNode();
+  }
+
+  textNodes.forEach((textNode) => {
+    const value = textNode.nodeValue || '';
+    if (!/\b[A-Z][A-Z0-9]+-\d+\b/.test(value)) return;
+
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    value.replace(/\b[A-Z][A-Z0-9]+-\d+\b/g, (issueCode, offset) => {
+      if (offset > lastIndex) {
+        fragment.appendChild(document.createTextNode(value.slice(lastIndex, offset)));
+      }
+
+      const link = document.createElement('a');
+      link.href = buildYouTrackIssueUrl(youtrackBaseUrl, issueCode);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = issueCode;
+      const title = getIssueTitle(issueTitleByCode, issueCode);
+      if (title) {
+        link.title = title;
+      }
+      fragment.appendChild(link);
+      lastIndex = offset + issueCode.length;
+      return issueCode;
+    });
+
+    if (lastIndex < value.length) {
+      fragment.appendChild(document.createTextNode(value.slice(lastIndex)));
+    }
+
+    textNode.replaceWith(fragment);
+  });
+
+  return container.innerHTML;
+};
+
+const formatInlineMarkdown = (value: string, youtrackBaseUrl?: string, issueTitleByCode?: IssueTitleMap) => {
   let formatted = escapeHtml(value);
 
+  formatted = linkifyEscapedIssueCodes(formatted, youtrackBaseUrl, issueTitleByCode);
   formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/(^|[^\*])\*(?!\s)(.+?)(?<!\s)\*/g, '$1<em>$2</em>');
   formatted = formatted.replace(/__(.+?)__/g, '<strong>$1</strong>');
@@ -131,22 +221,34 @@ const formatInlineMarkdown = (value: string) => {
   return formatted;
 };
 
-const markdownToHtml = (value: string) => {
+const markdownToHtml = (value: string, youtrackBaseUrl?: string, issueTitleByCode?: IssueTitleMap) => {
   const lines = value.replace(/\r\n/g, '\n').split('\n');
   const blocks: string[] = [];
   let paragraphLines: string[] = [];
   let listItems: string[] = [];
   let listType: 'ul' | 'ol' | null = null;
+  let currentListItemEvents: string[] = [];
 
   const flushParagraph = () => {
     if (!paragraphLines.length) return;
-    blocks.push(`<p>${paragraphLines.map((line) => formatInlineMarkdown(line)).join('<br>')}</p>`);
+    blocks.push(`<p>${paragraphLines.map((line) => formatInlineMarkdown(line, youtrackBaseUrl, issueTitleByCode)).join('<br>')}</p>`);
     paragraphLines = [];
+  };
+
+  const flushCurrentListItemEvents = () => {
+    if (!listItems.length || !currentListItemEvents.length) return;
+    const eventBlock = currentListItemEvents
+      .map((line) => formatInlineMarkdown(line, youtrackBaseUrl, issueTitleByCode))
+      .join('<br>');
+    listItems[listItems.length - 1] = listItems[listItems.length - 1].replace('</li>', `<p>${eventBlock}</p></li>`);
+    currentListItemEvents = [];
   };
 
   const flushList = () => {
     if (!listType || !listItems.length) return;
+    flushCurrentListItemEvents();
     blocks.push(`<${listType}>${listItems.join('')}</${listType}>`);
+    blocks.push('<p></p>');
     listItems = [];
     listType = null;
   };
@@ -172,25 +274,42 @@ const markdownToHtml = (value: string) => {
       flushParagraph();
       flushList();
       const level = headingMatch[1].length;
-      blocks.push(`<h${level}>${formatInlineMarkdown(headingMatch[2])}</h${level}>`);
+      blocks.push(`<h${level}>${formatInlineMarkdown(headingMatch[2], youtrackBaseUrl, issueTitleByCode)}</h${level}>`);
       return;
     }
 
     const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
     if (orderedMatch) {
       flushParagraph();
+      const isNestedListItem = /^\s+\d+\.\s+/.test(rawLine);
+      if (isNestedListItem && listItems.length) {
+        currentListItemEvents.push(orderedMatch[2]);
+        return;
+      }
+      flushCurrentListItemEvents();
       if (listType && listType !== 'ol') flushList();
       listType = 'ol';
-      listItems.push(`<li>${formatInlineMarkdown(orderedMatch[2])}</li>`);
+      listItems.push(`<li>${formatInlineMarkdown(orderedMatch[2], youtrackBaseUrl, issueTitleByCode)}</li>`);
       return;
     }
 
     const unorderedMatch = line.match(/^[-*]\s+(.*)$/);
     if (unorderedMatch) {
       flushParagraph();
+      const isNestedListItem = /^\s+[-*]\s+/.test(rawLine);
+      if (isNestedListItem && listItems.length) {
+        currentListItemEvents.push(unorderedMatch[1]);
+        return;
+      }
+      flushCurrentListItemEvents();
       if (listType && listType !== 'ul') flushList();
       listType = 'ul';
-      listItems.push(`<li>${formatInlineMarkdown(unorderedMatch[1])}</li>`);
+      listItems.push(`<li>${formatInlineMarkdown(unorderedMatch[1], youtrackBaseUrl, issueTitleByCode)}</li>`);
+      return;
+    }
+
+    if (listItems.length) {
+      currentListItemEvents.push(line);
       return;
     }
 
@@ -204,22 +323,49 @@ const markdownToHtml = (value: string) => {
   return blocks.join('');
 };
 
-const normalizeAnalysisContentToHtml = (value: string) => {
+const htmlToPlainText = (html: string) => {
+  if (typeof document === 'undefined') return '';
+
+  const container = document.createElement('div');
+  container.innerHTML = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+    .replace(/<hr\s*\/?>/gi, '\n---\n');
+
+  return container.textContent?.replace(/\n{3,}/g, '\n\n').trim() || '';
+};
+
+const containsMarkdownSyntax = (value: string) =>
+  /^(#{1,6}\s|[-*]\s|\d+\.\s|---+$|\*\*\*+|.*\*\*.+\*\*.*)/m.test(value);
+
+const normalizeAnalysisContentToHtml = (value: string, youtrackBaseUrl?: string, issueTitleByCode?: IssueTitleMap) => {
   const trimmed = value.trim();
   if (!trimmed) return '';
   if (/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
-    return trimmed;
+    const plainText = htmlToPlainText(trimmed);
+    const hasRichHtml = /<(h[1-6]|ul|ol|li|strong|em|blockquote|hr|a)\b/i.test(trimmed);
+    if (!hasRichHtml && plainText && containsMarkdownSyntax(plainText)) {
+      return markdownToHtml(plainText, youtrackBaseUrl, issueTitleByCode);
+    }
+
+    return linkifyIssueCodesInHtml(trimmed, youtrackBaseUrl, issueTitleByCode);
   }
 
-  if (/^(#{1,6}\s|[-*]\s|\d+\.\s|---+$|\*\*\*+|.*\*\*.+\*\*.*)/m.test(trimmed)) {
-    return markdownToHtml(trimmed);
+  if (containsMarkdownSyntax(trimmed)) {
+    return markdownToHtml(trimmed, youtrackBaseUrl, issueTitleByCode);
   }
 
   return trimmed
     .split(/\n{2,}/)
-    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .map((block) => `<p>${linkifyEscapedIssueCodes(escapeHtml(block), youtrackBaseUrl, issueTitleByCode).replace(/\n/g, '<br>')}</p>`)
     .join('');
 };
+
+const hasIssueTitleMap = (value?: IssueTitleMap | null) =>
+  Boolean(value && Object.keys(value).length > 0);
+
+const resolveIssueTitleMap = (analysis?: DailyAiAnalysis | null, fallback?: IssueTitleMap) =>
+  hasIssueTitleMap(analysis?.issueTitles) ? analysis?.issueTitles : fallback;
 
 interface DailyBoardProps {
   hubId: string;
@@ -375,13 +521,13 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       setSelectedAiAnalysisId((prev) => {
         const nextId = prev && loaded.some((analysis) => analysis.id === prev) ? prev : loaded[0].id;
         const selected = loaded.find((analysis) => analysis.id === nextId) || loaded[0];
-        setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.currentContent));
+        setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.currentContent, settings?.youtrackBaseUrl, selected.issueTitles));
         return nextId;
       });
     };
 
     void loadAnalyses();
-  }, [hubId]);
+  }, [hubId, settings?.youtrackBaseUrl]);
 
   const sections = useMemo<DailySection[]>(() => {
     const fixed: DailySection = {
@@ -538,7 +684,8 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   }, [sections, filteredActivityIssues, filteredBoardIssues, activityIssueIds]);
 
   const aiExportSummary = useMemo(() => {
-    const boardSections = sections.filter((section) => section.id !== 'fixed_aktywnosci');
+    const visibleSections = sections.filter((section) => !collapsedSections[section.id]);
+    const boardSections = visibleSections.filter((section) => section.id !== 'fixed_aktywnosci');
     const currentSectionByIssue = new Map<string, DailySection>();
 
     boardSections.forEach((section) => {
@@ -550,7 +697,8 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     });
 
     const allVisibleIssuesById = new Map<string, IssueWithHistory>();
-    Array.from(sectionIssuesMap.values()).forEach((issues) => {
+    visibleSections.forEach((section) => {
+      const issues = sectionIssuesMap.get(section.id) || [];
       issues.forEach((issue) => {
         if (skippedInAiIssues[issue.idReadable]) return;
         if (!allVisibleIssuesById.has(issue.idReadable)) {
@@ -639,7 +787,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       serializedIssues.map((issue) => [issue.id, issue])
     );
 
-    const sectionSummaries = sections.map((section) => {
+    const sectionSummaries = visibleSections.map((section) => {
       const issues = (sectionIssuesMap.get(section.id) || []).filter((issue) => !skippedInAiIssues[issue.idReadable]);
       return {
         id: section.id,
@@ -721,7 +869,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       sections: Array<Record<string, unknown>>;
       issues: Array<Record<string, unknown>>;
     };
-  }, [sections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
+  }, [sections, collapsedSections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
 
   const visibleAnalysisProjectCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -733,6 +881,19 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       }
     });
     return Array.from(codes).sort((a, b) => a.localeCompare(b));
+  }, [aiExportSummary]);
+
+  const aiIssueTitleMap = useMemo<IssueTitleMap>(() => {
+    const titles: IssueTitleMap = {};
+    const issues = Array.isArray(aiExportSummary?.issues) ? aiExportSummary.issues : [];
+    issues.forEach((issue) => {
+      const issueId = typeof issue.id === 'string' ? issue.id.trim().toUpperCase() : '';
+      const summary = typeof issue.summary === 'string' ? issue.summary.trim() : '';
+      if (issueId && summary) {
+        titles[issueId] = summary;
+      }
+    });
+    return titles;
   }, [aiExportSummary]);
 
   const fetchActivitiesFirst = async () => {
@@ -866,7 +1027,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     setSavedAiAnalyses(refreshed);
     const selected = refreshed.find((item) => item.id === analysis.id) || refreshed[0] || null;
     setSelectedAiAnalysisId(selected?.id || null);
-    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent) : '');
+    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent, settings?.youtrackBaseUrl, resolveIssueTitleMap(selected, aiIssueTitleMap)) : '');
   };
 
   const handleSaveAiAnalysisFromModal = async (content: string) => {
@@ -881,8 +1042,9 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
         projectCodes: visibleAnalysisProjectCodes,
         dateFrom,
         dateTo,
-        originalContent: normalizeAnalysisContentToHtml(content),
-        currentContent: normalizeAnalysisContentToHtml(content),
+        originalContent: normalizeAnalysisContentToHtml(content, settings?.youtrackBaseUrl, aiIssueTitleMap),
+        currentContent: normalizeAnalysisContentToHtml(content, settings?.youtrackBaseUrl, aiIssueTitleMap),
+        issueTitles: aiIssueTitleMap,
         createdAt: now,
         updatedAt: now,
       };
@@ -895,7 +1057,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const handleSelectAiAnalysis = (analysisId: string) => {
     setSelectedAiAnalysisId(analysisId);
     const selected = savedAiAnalyses.find((analysis) => analysis.id === analysisId);
-    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent) : '');
+    setAiAnalysisDraft(selected ? normalizeAnalysisContentToHtml(selected.currentContent, settings?.youtrackBaseUrl, resolveIssueTitleMap(selected, aiIssueTitleMap)) : '');
     setIsAiEditorOpen(Boolean(selected));
   };
 
@@ -918,7 +1080,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   const handleRestoreOriginalAiAnalysis = () => {
     const selected = savedAiAnalyses.find((analysis) => analysis.id === selectedAiAnalysisId);
     if (!selected) return;
-    setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.originalContent));
+    setAiAnalysisDraft(normalizeAnalysisContentToHtml(selected.originalContent, settings?.youtrackBaseUrl, resolveIssueTitleMap(selected, aiIssueTitleMap)));
   };
 
   if (isActivityLoading && activityIssues.length === 0) {

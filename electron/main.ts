@@ -352,6 +352,7 @@ db.exec(`
         dateTo TEXT NOT NULL,
         originalContent TEXT NOT NULL,
         currentContent TEXT NOT NULL,
+        issueTitles TEXT NOT NULL DEFAULT '{}',
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
     );
@@ -373,6 +374,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent R
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch (e) { }
+try { db.exec(`ALTER TABLE daily_ai_analyses ADD COLUMN issueTitles TEXT NOT NULL DEFAULT '{}'`); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
     const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -616,6 +618,7 @@ const initializeDatabase = () => {
             dateTo TEXT NOT NULL,
             originalContent TEXT NOT NULL,
             currentContent TEXT NOT NULL,
+            issueTitles TEXT NOT NULL DEFAULT '{}',
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         );
@@ -646,6 +649,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent R
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch { }
+try { db.exec(`ALTER TABLE daily_ai_analyses ADD COLUMN issueTitles TEXT NOT NULL DEFAULT '{}'`); } catch { }
 try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
         const hasRespectDates = columns.some(col => col.name === 'respectDates');
@@ -4622,7 +4626,7 @@ ipcMain.handle('get-daily-ai-analyses', async (_, hubId: string) => {
             FROM daily_ai_analyses
             WHERE hubId = ?
             ORDER BY datetime(createdAt) DESC
-        `).all(hubId) as Array<Omit<DailyAiAnalysis, 'projectCodes'> & { projectCodes: string }>;
+        `).all(hubId) as Array<Omit<DailyAiAnalysis, 'projectCodes' | 'issueTitles'> & { projectCodes: string; issueTitles?: string }>;
 
         return rows.map((row) => ({
             ...row,
@@ -4631,6 +4635,13 @@ ipcMain.handle('get-daily-ai-analyses', async (_, hubId: string) => {
                     return JSON.parse(row.projectCodes || '[]');
                 } catch {
                     return [];
+                }
+            })(),
+            issueTitles: (() => {
+                try {
+                    return JSON.parse(row.issueTitles || '{}');
+                } catch {
+                    return {};
                 }
             })(),
         }));
@@ -4651,10 +4662,11 @@ ipcMain.handle('save-daily-ai-analysis', async (_, analysis: DailyAiAnalysis) =>
                 dateTo,
                 originalContent,
                 currentContent,
+                issueTitles,
                 createdAt,
                 updatedAt
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 hubId = excluded.hubId,
                 projectCodes = excluded.projectCodes,
@@ -4662,6 +4674,7 @@ ipcMain.handle('save-daily-ai-analysis', async (_, analysis: DailyAiAnalysis) =>
                 dateTo = excluded.dateTo,
                 originalContent = excluded.originalContent,
                 currentContent = excluded.currentContent,
+                issueTitles = excluded.issueTitles,
                 createdAt = excluded.createdAt,
                 updatedAt = excluded.updatedAt
         `).run(
@@ -4672,6 +4685,7 @@ ipcMain.handle('save-daily-ai-analysis', async (_, analysis: DailyAiAnalysis) =>
             analysis.dateTo,
             analysis.originalContent,
             analysis.currentContent,
+            JSON.stringify(analysis.issueTitles || {}),
             analysis.createdAt,
             analysis.updatedAt,
         );

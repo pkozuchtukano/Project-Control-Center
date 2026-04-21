@@ -1,4 +1,20 @@
 ﻿## Daily Command Center
+- 2026-04-21 – Tooltipy z tytułami zadań YouTrack w edytorze analiz AI
+  -- Analizy AI Daily zapisują teraz mapę kodów YouTrack do tytułów zadań razem z wpisem historii, przez bezstratną migrację nowej kolumny `issueTitles` w SQLite.
+  -- Podczas otwierania wpisu w edytorze kody zadań linkowane do YouTrack dostają atrybut `title`, więc po najechaniu kursorem pokazują tytuł zadania.
+- 2026-04-21 – Czytelniejszy format zapisanych analiz AI Daily
+  -- Instrukcja wysyłana do Gemini wymusza teraz układ, w którym zadania są główną listą punktowaną, a wydarzenia, komentarze, zmiany statusu i logi czasu są opisem w obrębie danego zadania.
+  -- Konwersja odpowiedzi AI do edytora traktuje zagnieżdżone wypunktowania jako blok opisu zadania zamiast osobnych elementów listy, a edytor zwiększa odstępy między zadaniami na listach.
+- 2026-04-21 – Eksport JSON AI tylko z widocznych kolumn Daily
+  -- Generowany JSON dla `Export do AI` i modala `Analizuj z AI` uwzględnia teraz wyłącznie kolumny Daily, które nie są zwinięte w aktualnym widoku.
+  -- Zadania z ukrytych kolumn nie trafiają do sekcji `sections` ani do globalnej listy `issues`, dzięki czemu nie są przekazywane do analizy AI.
+- 2026-04-21 – Klikalne kody zadań YouTrack w analizach AI
+  -- Treść zapisywana z odpowiedzi AI jest teraz normalizowana tak, aby kody zadań w formacie YouTrack, np. `PMS-593`, automatycznie stawały się linkami do zgłoszeń w YouTrack.
+  -- Linki są budowane na podstawie globalnego `youtrackBaseUrl` z ustawień i działają także przy otwieraniu starszych zapisanych analiz, jeśli w treści występują rozpoznane kody zadań.
+- 2026-04-21 – Formatowanie odpowiedzi AI w edytorze historii Daily
+  -- Zapisana odpowiedź AI jest teraz normalizowana z typowego markdownu do HTML edytora, dzięki czemu nagłówki, pogrubienia, listy numerowane, listy punktowane i separatory są od razu prezentowane w czytelnej formie.
+  -- Edytor pełnoekranowy historii Daily nie pokazuje już surowych znaczników typu `##`, `**` czy `---`, tylko rzeczywiste formatowanie gotowe do dalszej redakcji dla zespołu.
+  -- Konwersja obejmuje także starsze zapisane wpisy, które mogły już zawierać markdown zapisany wewnątrz prostych paragrafów HTML.
 - 2026-04-20 – Pełnoekranowy edytor analiz AI z historii Daily
   -- Panel `Historia` po prawej stronie Daily pokazuje teraz wyłącznie listę wpisów z tytułem, zakresem dat i datą dodania, a kliknięcie pozycji otwiera pełnoekranowe okno edycji treści.
   -- Treść analizy jest edytowana w bogatym edytorze opartym o istniejący komponent TipTap z toolbarami formatowania, a w oknie pozostaje dostępny przycisk `Przywróć oryginał` dla powrotu do pierwotnej odpowiedzi AI.
