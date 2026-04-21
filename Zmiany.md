@@ -158,6 +158,13 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-21 – Dzisiejsza data startowa w protokołach PP i PO
+  -- Pole `Data dla zmiennej {{data}}` w modalach protokołów `PP` i `PO` startuje teraz zawsze z dzisiejszą datą.
+  -- Data pozostaje edytowalna, więc użytkownik może ręcznie ustawić inną wartość przed kopiowaniem treści lub zapisaniem daty do zlecenia.
+- 2026-04-21 – Projektowe flow protokołów PP i PO
+  -- Flow kroków protokołów `PP` i `PO` jest teraz zapisywany we wspólnym polu projektu `orderProtocolFlow`, a nie tylko w konkretnym zleceniu.
+  -- Modal protokołu najpierw korzysta z flow projektu, a dopiero przy braku takiego zapisu odczytuje historyczne flow zapisane w danym zleceniu, dzięki czemu starsze dane pozostają dostępne.
+  -- Każda modyfikacja flow wykonana z poziomu dowolnego protokołu aktualizuje wspólne flow projektu, więc kolejne protokoły w tym samym projekcie startują z ostatnio zapisanym układem kroków.
 - 2026-04-13 – Zakładka `Do rozliczenia` dla zleceń uruchomionych przed dokumentami
 -- Dodano nową zakładkę projektową `Do rozliczenia` z własną tabelą, formularzem i trwałym zapisem w SQLite dla zgłoszeń, które zostały zlecone do wykonania zanim pojawiły się formalne dokumenty.
 -- Formularz obsługuje pola operacyjne i rozliczeniowe, m.in. `ID`, zgłaszającego, daty, kanały, moduł, tytuł, szczegóły, priorytet, wycenę, akceptację, prace wykonane przed akceptacją, statusy realizacji i rozliczenia oraz uwagi; podpowiedzi korzystają z interesariuszy projektu i wcześniej wpisanych wartości w tym samym projekcie.

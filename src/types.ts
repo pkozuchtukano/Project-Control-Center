@@ -35,6 +35,7 @@ export type Project = {
   taskTypes?: TaskType[];
   googleDocLink?: string;
   pendingSettlementYoutrackUrl?: string;
+  orderProtocolFlow?: OrderProtocolFlow;
   stakeholders?: Stakeholder[];
 };
 

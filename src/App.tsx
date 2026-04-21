@@ -3116,7 +3116,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 };
 
 const OrdersRegistryView = () => {
-  const { selectedProject } = useProjectContext();
+  const { selectedProject, updateProject } = useProjectContext();
   const { orders, isLoading, addOrder, updateOrder, deleteOrder, importOrders } = useOrders(selectedProject?.id);
   const [listSort, setListSort] = useState<{ column: 'orderNumber' | 'scheduleTo'; direction: 'asc' | 'desc' }>({
     column: 'scheduleTo',
@@ -3195,16 +3195,16 @@ const OrdersRegistryView = () => {
     }
   };
 
-  const handleSavePpFlow = async (orderId: string, flow: NonNullable<Order['ppFlow']>) => {
-    await updateOrder(orderId, { ppFlow: flow });
+  const handleSavePpFlow = async (_orderId: string, flow: NonNullable<Order['ppFlow']>) => {
+    await updateProject(selectedProject.id, { orderProtocolFlow: flow });
   };
 
   const handleApplyPpHandoverDate = async (orderId: string, handoverDate: string) => {
     await updateOrder(orderId, { handoverDate });
   };
 
-  const handleSavePoFlow = async (orderId: string, flow: NonNullable<Order['poFlow']>) => {
-    await updateOrder(orderId, { poFlow: flow });
+  const handleSavePoFlow = async (_orderId: string, flow: NonNullable<Order['poFlow']>) => {
+    await updateProject(selectedProject.id, { orderProtocolFlow: flow });
   };
 
   const handleApplyPoAcceptanceDate = async (orderId: string, acceptanceDate: string) => {
@@ -3494,6 +3494,7 @@ const OrdersRegistryView = () => {
       <OrderProtocolFlowModal
         isOpen={Boolean(ppOrder)}
         order={ppOrder}
+        projectFlow={selectedProject.orderProtocolFlow}
         onClose={() => setPpOrderId(null)}
         onSave={handleSavePpFlow}
         onApplyProtocolDate={handleApplyPpHandoverDate}
@@ -3502,6 +3503,7 @@ const OrdersRegistryView = () => {
       <OrderProtocolFlowModal
         isOpen={Boolean(poOrder)}
         order={poOrder}
+        projectFlow={selectedProject.orderProtocolFlow}
         onClose={() => setPoOrderId(null)}
         onSave={handleSavePoFlow}
         onApplyProtocolDate={handleApplyPoAcceptanceDate}
@@ -3514,6 +3516,7 @@ const OrdersRegistryView = () => {
 const OrderProtocolFlowModal = ({
   isOpen,
   order,
+  projectFlow,
   onClose,
   onSave,
   onApplyProtocolDate,
@@ -3521,6 +3524,7 @@ const OrderProtocolFlowModal = ({
 }: {
   isOpen: boolean;
   order: Order | null;
+  projectFlow?: OrderProtocolFlow;
   onClose: () => void;
   onSave: (orderId: string, flow: OrderProtocolFlow) => Promise<void>;
   onApplyProtocolDate: (orderId: string, protocolDate: string) => Promise<void>;
@@ -3528,7 +3532,7 @@ const OrderProtocolFlowModal = ({
 }) => {
   const { projects } = useProjectContext();
   const [isEditMode, setIsEditMode] = useState(false);
-  const [draftSteps, setDraftSteps] = useState(() => normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType)).steps);
+  const [draftSteps, setDraftSteps] = useState(() => normalizeOrderProtocolFlow(getOrderProtocolFlowSource(order, protocolType, projectFlow)).steps);
   const [isSaving, setIsSaving] = useState(false);
   const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
   const [protocolDate, setProtocolDate] = useState('');
@@ -3554,12 +3558,12 @@ const OrderProtocolFlowModal = ({
     }
 
     setIsEditMode(false);
-    setDraftSteps(normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType)).steps);
+    setDraftSteps(normalizeOrderProtocolFlow(getOrderProtocolFlowSource(order, protocolType, projectFlow)).steps);
     setIsSaving(false);
     setIsVariablesSectionExpanded(false);
     setProtocolDate(suggestOrderProtocolDate(order, protocolType));
     setIsApplyingProtocolDate(false);
-  }, [isOpen, order, protocolType]);
+  }, [isOpen, order, projectFlow, protocolType]);
 
   useEffect(() => {
     if (!isOpen || !order) return;
@@ -3648,7 +3652,7 @@ const OrderProtocolFlowModal = ({
   const availableVariables = getOrderProtocolVariableDefinitions(order, project, protocolType, variableOverrides)
     .slice()
     .sort((left, right) => left.token.localeCompare(right.token, 'pl', { sensitivity: 'base' }));
-  const normalizedFlow = normalizeOrderProtocolFlow(getOrderFlowByType(order, protocolType));
+  const normalizedFlow = normalizeOrderProtocolFlow(getOrderProtocolFlowSource(order, protocolType, projectFlow));
   const persistedSteps = normalizedFlow.steps;
   const completedStepIds = normalizedFlow.completedStepIds;
   const stepsToRender = isEditMode ? draftSteps : persistedSteps;
@@ -4386,6 +4390,23 @@ const createOrderProtocolStep = (overrides?: {
 const getOrderFlowByType = (order: Order | null | undefined, protocolType: 'PP' | 'PO') =>
   protocolType === 'PP' ? order?.ppFlow : order?.poFlow;
 
+const hasOrderProtocolFlowState = (flow?: OrderProtocolFlow | null) =>
+  Boolean(flow?.updatedAt)
+  || Boolean(flow?.steps?.length)
+  || Boolean(flow?.completedStepIds?.length);
+
+const getOrderProtocolFlowSource = (
+  order: Order | null | undefined,
+  protocolType: 'PP' | 'PO',
+  projectFlow?: OrderProtocolFlow,
+) => {
+  if (hasOrderProtocolFlowState(projectFlow)) {
+    return projectFlow;
+  }
+
+  return getOrderFlowByType(order, protocolType);
+};
+
 const getOrderProtocolDateValue = (order: Order, protocolType: 'PP' | 'PO') =>
   protocolType === 'PP' ? order.handoverDate || '' : order.acceptanceDate || '';
 
@@ -4517,11 +4538,8 @@ const formatProtocolTemplateDateValue = (value?: string) => {
   return parseDateVariable('data', value) || value;
 };
 
-const suggestOrderProtocolDate = (order: Order, protocolType: 'PP' | 'PO' = 'PP') =>
-  getOrderProtocolDateValue(order, protocolType)
-  || order.scheduleTo
-  || order.scheduleFrom
-  || format(new Date(), 'yyyy-MM-dd');
+const suggestOrderProtocolDate = (_order: Order, _protocolType: 'PP' | 'PO' = 'PP') =>
+  format(new Date(), 'yyyy-MM-dd');
 
 const getOrderProtocolVariableDefinitions = (
   order: Order,
