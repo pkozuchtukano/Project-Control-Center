@@ -200,6 +200,16 @@ export type ScheduledTaskSchedule = {
   dateTime?: string;
 };
 
+export type ScheduledTaskAiSettings = {
+  model?: string;
+  temperature?: number | null;
+  topP?: number | null;
+  topK?: number | null;
+  maxOutputTokens?: number | null;
+  generationConfigText?: string;
+  additionalRequestFieldsText?: string;
+};
+
 export type ScheduledTask = {
   id: string;
   name: string;
@@ -208,6 +218,7 @@ export type ScheduledTask = {
   schedule: ScheduledTaskSchedule;
   emailTemplate: EmailTemplate;
   aiSystemInstruction?: string;
+  aiSettings?: ScheduledTaskAiSettings;
   contentSources?: ScheduledTaskContentSource[];
   createdAt: string;
   updatedAt: string;

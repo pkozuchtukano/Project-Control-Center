@@ -1,4 +1,22 @@
 ## Daily Command Center
+- 2026-04-22 – Usunięcie tła z maila analizy AI
+  -- HTML wiadomości generowanej przez harmonogram `Daily z AI` nie ustawia już kolorowego tła na całym body maila.
+  -- Sekcja `Analiza AI` nie dostaje już osobnego tła, obramowania ani cienia, dzięki czemu klient poczty nie przyciemnia bloku i tekst pozostaje czytelniejszy.
+- 2026-04-22 – Zwinięcie zadania harmonogramu po zapisie
+  -- Karty zadań w globalnym harmonogramie mają teraz stan rozwinięcia i można je zwijać oraz ponownie rozwijać z poziomu nagłówka pozycji.
+  -- Nowo dodane zadanie otwiera się od razu do edycji, a po poprawnym zapisie zostaje automatycznie zwinięte, dzięki czemu można wygodnie dodać kolejną pozycję.
+  -- Zwinięta karta pokazuje nazwę, typ akcji, skrót harmonogramu, aktywność oraz ostatni status wykonania bez ładowania pełnego formularza.
+- 2026-04-22 – Parametry AI w każdej pozycji harmonogramu
+  -- Zadanie harmonogramu typu `Daily z AI` ma teraz własne ustawienia modelu, temperatury, topP, topK, limitu tokenów oraz dodatkowych pól `generationConfig` i requestu w formacie JSON.
+  -- Runner harmonogramu używa parametrów zapisanych przy konkretnej pozycji zamiast stałych wartości zaszytych w kodzie, dzięki czemu każde zadanie może mieć osobną konfigurację analizy.
+  -- Dodatkowe pola JSON są walidowane przy wykonaniu zadania i pozwalają przekazać pozostałe obsługiwane parametry Gemini bez migracji danych ani wpływu na inne harmonogramy.
+- 2026-04-22 – Stabilna edycja pól globalnego harmonogramu
+  -- Pola formularza globalnego harmonogramu aktualizują teraz stan przez dedykowane helpery dla pól zadania, harmonogramu i szablonu e-mail.
+  -- Wartości z pól są odczytywane bezpośrednio w handlerze zdarzenia przed aktualizacją stanu, co stabilizuje wpisywanie w kontrolowanych polach formularza.
+- 2026-04-22 – Projektowe Daily w globalnym harmonogramie
+  -- Harmonogram `Daily z AI` pokazuje teraz jako źródła także projektowe Daily dla każdego projektu, a nie tylko globalne huby Daily z sidebara.
+  -- Projektowe źródła są oznaczone jako `Projekt: KOD — nazwa` i używają technicznego identyfikatora `project_daily_<project.id>`, zgodnego z zakładką `Daily` w projekcie.
+  -- Runner harmonogramu rozpoznaje projektowe Daily bez dopisywania rekordów do `daily_hubs`, więc zmiana jest bezstratna dla istniejącej konfiguracji i pozwala analizować Daily AI z dowolnego projektu.
 - 2026-04-22 – Własna konfiguracja sekcji Daily w projekcie
   -- Zakładka `Daily` wewnątrz projektu ma teraz przycisk `Konfiguracja sekcji`, który zapisuje sekcje wyłącznie dla tego projektu.
   -- Projektowe Daily używa osobnego technicznego identyfikatora konfiguracji opartego o `project.id`, więc zmiany sekcji nie wpływają na huby Daily z sidebara ani na inne projekty.
@@ -215,6 +233,9 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-22 – Odblokowanie pól formularza zlecenia
+  -- Formularz dodawania i edycji zlecenia nie resetuje już danych po każdej zmianie referencji obiektu projektu w kontekście aplikacji.
+  -- Inicjalizacja formularza zależy teraz od stabilnych identyfikatorów zlecenia i projektu, a spóźnione wczytanie szablonu pozycji nie nadpisuje już formularza po zamknięciu lub zmianie kontekstu.
 - 2026-04-22 – Panel dostępnych zmiennych w PP/PO
   -- Modal flow `Protokół Przekazania` i `Protokół odbioru` pokazuje teraz zwijany panel `Dostępne zmienne i funkcje`.
   -- Każda zmienna jest prezentowana jako osobna karta z tokenem do skopiowania, aliasami oraz aktualną wartością wynikającą z bieżącego projektu i zlecenia.

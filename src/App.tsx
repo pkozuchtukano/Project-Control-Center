@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 
 import type { 
   Project, Order, Settings, Stakeholder, TaskType, 
@@ -8225,10 +8225,13 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
   });
 
   useEffect(() => {
+    let isCancelled = false;
+
     const loadFormData = async () => {
       if (!isOpen) return;
 
       if (orderToEdit) {
+        if (isCancelled) return;
         setFormData(orderToEdit);
         return;
       }
@@ -8240,6 +8243,8 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
       const template = window.electron?.getOrderItemTemplate
         ? await window.electron.getOrderItemTemplate(project.id)
         : null;
+
+      if (isCancelled) return;
 
       setFormData({
         projectId: project.id,
@@ -8263,7 +8268,11 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
     };
 
     void loadFormData();
-  }, [orderToEdit, isOpen, project]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [orderToEdit?.id, isOpen, project?.id, project?.code]);
 
   const handleChange = (e: any) => {
     const { name, value, type, checked } = e.target;
@@ -8972,6 +8981,8 @@ const scheduledTaskDayOptions = [
   { value: 0, label: 'Niedziela' },
 ];
 
+const getProjectDailyHubId = (projectId: string) => `project_daily_${projectId}`;
+
 const createScheduledTaskDraft = (): ScheduledTask => {
   const now = new Date().toISOString();
 
@@ -8989,6 +9000,15 @@ const createScheduledTaskDraft = (): ScheduledTask => {
     },
     emailTemplate: createEmptyEmailTemplate(),
     aiSystemInstruction: '',
+    aiSettings: {
+      model: '',
+      temperature: 0.2,
+      topP: null,
+      topK: null,
+      maxOutputTokens: 12000,
+      generationConfigText: '',
+      additionalRequestFieldsText: '',
+    },
     contentSources: [],
     createdAt: now,
     updatedAt: now,
@@ -9074,9 +9094,11 @@ const createPendingSettlementDraft = (project: Project, entries: PendingSettleme
 };
 
 const GlobalSchedulerSection = () => {
+  const { projects } = useProjectContext();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [dailyHubs, setDailyHubs] = useState<DailyHub[]>([]);
   const [dailySectionsByHub, setDailySectionsByHub] = useState<Record<string, DailySection[]>>({});
+  const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(() => new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isDailyConfigLoading, setIsDailyConfigLoading] = useState(false);
   const [error, setError] = useState('');
@@ -9100,6 +9122,23 @@ const GlobalSchedulerSection = () => {
   const sortDailySections = (sections: DailySection[]) => (
     [...sections].sort((left, right) => left.orderIndex - right.orderIndex || left.name.localeCompare(right.name, 'pl'))
   );
+
+  const availableDailyHubs = useMemo(() => {
+    const projectDailyHubs: DailyHub[] = projects
+      .filter((project) => project.code?.trim())
+      .map((project) => ({
+        id: getProjectDailyHubId(project.id),
+        name: `Projekt: ${project.code} — ${project.name}`,
+        description: 'Projektowe Daily dostępne z zakładki projektu.',
+        projectCodes: project.code.trim().toUpperCase(),
+      }));
+    const existingIds = new Set(projectDailyHubs.map((hub) => hub.id));
+
+    return [
+      ...projectDailyHubs,
+      ...dailyHubs.filter((hub) => !existingIds.has(hub.id)),
+    ].sort((left, right) => left.name.localeCompare(right.name, 'pl', { sensitivity: 'base' }));
+  }, [dailyHubs, projects]);
 
   const ensureDailySectionsLoaded = async (hubId: string) => {
     if (!hubId) return [];
@@ -9162,14 +9201,90 @@ const GlobalSchedulerSection = () => {
   }, []);
 
   const updateTask = (taskId: string, updater: (current: ScheduledTask) => ScheduledTask) => {
-    setTasks((currentTasks) => currentTasks.map((task) => (
-      task.id === taskId
-        ? {
-            ...updater(task),
-            updatedAt: new Date().toISOString(),
-          }
-        : task
-    )));
+    setTasks((currentTasks) => {
+      const updatedAt = new Date().toISOString();
+      return currentTasks.map((task) => {
+        if (task.id !== taskId) return task;
+
+        return {
+          ...updater(task),
+          updatedAt,
+        };
+      });
+    });
+  };
+
+  const updateTaskField = <K extends keyof ScheduledTask>(taskId: string, field: K, value: ScheduledTask[K]) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const updateTaskSchedule = (taskId: string, updates: Partial<ScheduledTask['schedule']>) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      schedule: {
+        ...current.schedule,
+        ...updates,
+      },
+    }));
+  };
+
+  const updateTaskEmailTemplate = (taskId: string, updates: Partial<EmailTemplate>) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      emailTemplate: {
+        ...current.emailTemplate,
+        ...updates,
+      },
+    }));
+  };
+
+  const updateTaskAiSettings = (taskId: string, updates: NonNullable<ScheduledTask['aiSettings']>) => {
+    updateTask(taskId, (current) => ({
+      ...current,
+      aiSettings: {
+        ...(current.aiSettings || {}),
+        ...updates,
+      },
+    }));
+  };
+
+  const parseOptionalTaskNumber = (value: string) => {
+    if (value.trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const handleAddScheduledTask = () => {
+    const draft = createScheduledTaskDraft();
+    setTasks((current) => [draft, ...current]);
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      next.add(draft.id);
+      return next;
+    });
+  };
+
+  const toggleTaskExpansion = (taskId: string) => {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
+
+  const collapseTask = (taskId: string) => {
+    setExpandedTaskIds((current) => {
+      const next = new Set(current);
+      next.delete(taskId);
+      return next;
+    });
   };
 
   const handleSaveTask = async (task: ScheduledTask) => {
@@ -9186,6 +9301,7 @@ const GlobalSchedulerSection = () => {
         updatedAt: new Date().toISOString(),
       });
       await loadTasks();
+      collapseTask(task.id);
     } catch (saveError: any) {
       setError(saveError?.message || 'Nie udało się zapisać zadania harmonogramu.');
     } finally {
@@ -9204,6 +9320,7 @@ const GlobalSchedulerSection = () => {
     try {
       await window.electron.deleteScheduledTask(taskId);
       await loadTasks();
+      collapseTask(taskId);
     } catch (deleteError: any) {
       setError(deleteError?.message || 'Nie udało się usunąć zadania harmonogramu.');
     } finally {
@@ -9310,7 +9427,7 @@ const GlobalSchedulerSection = () => {
         </div>
         <button
           type="button"
-          onClick={() => setTasks((current) => [createScheduledTaskDraft(), ...current])}
+          onClick={handleAddScheduledTask}
           className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition"
         >
           <Plus size={16} />
@@ -9335,8 +9452,43 @@ const GlobalSchedulerSection = () => {
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 px-5 py-6 text-sm leading-6 text-gray-500 dark:text-gray-400">
               Brak zdefiniowanych zadań. Dodaj pierwszy harmonogram, odbiorców, tytuł oraz źródła treści wiadomości.
             </div>
-          ) : tasks.map((task) => (
+          ) : tasks.map((task) => {
+            const isTaskExpanded = expandedTaskIds.has(task.id);
+            const scheduleSummary = task.schedule.type === 'custom'
+              ? (task.schedule.dateTime ? new Date(task.schedule.dateTime).toLocaleString('pl-PL') : 'termin jednorazowy nieustawiony')
+              : `${scheduledTaskTypeOptions.find((option) => option.value === task.schedule.type)?.label || 'Harmonogram'} o ${task.schedule.time || '22:00'}`;
+
+            return (
             <div key={task.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-5 space-y-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <button
+                  type="button"
+                  onClick={() => toggleTaskExpansion(task.id)}
+                  className="flex min-w-0 flex-1 items-start gap-3 rounded-xl px-2 py-1 text-left transition hover:bg-white/70 dark:hover:bg-gray-800/70"
+                  aria-expanded={isTaskExpanded}
+                >
+                  <ChevronDown size={18} className={`mt-0.5 shrink-0 text-gray-400 transition-transform ${isTaskExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">{task.name || 'Zadanie bez nazwy'}</span>
+                    <span className="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      {task.actionType === 'daily_ai' ? 'Daily z AI' : 'Wysyłka e-mail'} · {scheduleSummary}
+                    </span>
+                  </span>
+                </button>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className={`rounded-full px-2.5 py-1 font-semibold ${task.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}>
+                    {task.isActive ? 'Aktywne' : 'Nieaktywne'}
+                  </span>
+                  {task.lastRunStatus ? (
+                    <span className={`rounded-full px-2.5 py-1 font-semibold ${task.lastRunStatus === 'success' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'}`}>
+                      {task.lastRunStatus === 'success' ? 'Ostatnio: sukces' : 'Ostatnio: błąd'}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              {isTaskExpanded && (
+              <>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="block">
@@ -9344,7 +9496,7 @@ const GlobalSchedulerSection = () => {
                     <input
                       type="text"
                       value={task.name}
-                      onChange={(event) => updateTask(task.id, (current) => ({ ...current, name: event.target.value }))}
+                      onChange={(event) => updateTaskField(task.id, 'name', event.target.value)}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </label>
@@ -9353,10 +9505,7 @@ const GlobalSchedulerSection = () => {
                     <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Typ akcji</span>
                     <select
                       value={task.actionType}
-                      onChange={(event) => updateTask(task.id, (current) => ({
-                        ...current,
-                        actionType: event.target.value as ScheduledTask['actionType'],
-                      }))}
+                      onChange={(event) => updateTaskField(task.id, 'actionType', event.target.value as ScheduledTask['actionType'])}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                     >
                       <option value="email">Wysyłka wiadomości e-mail</option>
@@ -9369,7 +9518,7 @@ const GlobalSchedulerSection = () => {
                   <input
                     type="checkbox"
                     checked={task.isActive}
-                    onChange={(event) => updateTask(task.id, (current) => ({ ...current, isActive: event.target.checked }))}
+                    onChange={(event) => updateTaskField(task.id, 'isActive', event.target.checked)}
                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   Aktywne
@@ -9381,13 +9530,7 @@ const GlobalSchedulerSection = () => {
                   <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tryb harmonogramu</span>
                   <select
                     value={task.schedule.type}
-                    onChange={(event) => updateTask(task.id, (current) => ({
-                      ...current,
-                      schedule: {
-                        ...current.schedule,
-                        type: event.target.value as GlobalScheduleType,
-                      },
-                    }))}
+                    onChange={(event) => updateTaskSchedule(task.id, { type: event.target.value as GlobalScheduleType })}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   >
                     {scheduledTaskTypeOptions.map((option) => (
@@ -9402,13 +9545,7 @@ const GlobalSchedulerSection = () => {
                     <input
                       type="datetime-local"
                       value={task.schedule.dateTime || ''}
-                      onChange={(event) => updateTask(task.id, (current) => ({
-                        ...current,
-                        schedule: {
-                          ...current.schedule,
-                          dateTime: event.target.value,
-                        },
-                      }))}
+                      onChange={(event) => updateTaskSchedule(task.id, { dateTime: event.target.value })}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                   </label>
@@ -9419,13 +9556,7 @@ const GlobalSchedulerSection = () => {
                       <input
                         type="time"
                         value={task.schedule.time || '22:00'}
-                        onChange={(event) => updateTask(task.id, (current) => ({
-                          ...current,
-                          schedule: {
-                            ...current.schedule,
-                            time: event.target.value,
-                          },
-                        }))}
+                        onChange={(event) => updateTaskSchedule(task.id, { time: event.target.value })}
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark] focus:ring-2 focus:ring-indigo-500 outline-none"
                       />
                     </label>
@@ -9435,13 +9566,7 @@ const GlobalSchedulerSection = () => {
                         <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dzień tygodnia</span>
                         <select
                           value={task.schedule.dayOfWeek ?? 1}
-                          onChange={(event) => updateTask(task.id, (current) => ({
-                            ...current,
-                            schedule: {
-                              ...current.schedule,
-                              dayOfWeek: Number(event.target.value),
-                            },
-                          }))}
+                          onChange={(event) => updateTaskSchedule(task.id, { dayOfWeek: Number(event.target.value) })}
                           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         >
                           {scheduledTaskDayOptions.map((option) => (
@@ -9459,13 +9584,7 @@ const GlobalSchedulerSection = () => {
                           min={1}
                           max={31}
                           value={task.schedule.dayOfMonth ?? 1}
-                          onChange={(event) => updateTask(task.id, (current) => ({
-                            ...current,
-                            schedule: {
-                              ...current.schedule,
-                              dayOfMonth: Math.min(31, Math.max(1, Number(event.target.value) || 1)),
-                            },
-                          }))}
+                          onChange={(event) => updateTaskSchedule(task.id, { dayOfMonth: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })}
                           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
                       </label>
@@ -9525,7 +9644,7 @@ const GlobalSchedulerSection = () => {
                                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                 >
                                   <option value="">Wybierz zdefiniowane Daily</option>
-                                  {dailyHubs.map((hub) => (
+                                  {availableDailyHubs.map((hub) => (
                                     <option key={hub.id} value={hub.id}>{hub.name}</option>
                                   ))}
                                 </select>
@@ -9588,10 +9707,7 @@ const GlobalSchedulerSection = () => {
                   <input
                     type="text"
                     value={task.emailTemplate.to}
-                    onChange={(event) => updateTask(task.id, (current) => ({
-                      ...current,
-                      emailTemplate: { ...current.emailTemplate, to: event.target.value },
-                    }))}
+                    onChange={(event) => updateTaskEmailTemplate(task.id, { to: event.target.value })}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                 </label>
@@ -9601,10 +9717,7 @@ const GlobalSchedulerSection = () => {
                   <input
                     type="text"
                     value={task.emailTemplate.cc}
-                    onChange={(event) => updateTask(task.id, (current) => ({
-                      ...current,
-                      emailTemplate: { ...current.emailTemplate, cc: event.target.value },
-                    }))}
+                    onChange={(event) => updateTaskEmailTemplate(task.id, { cc: event.target.value })}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                 </label>
@@ -9615,10 +9728,7 @@ const GlobalSchedulerSection = () => {
                 <input
                   type="text"
                   value={task.emailTemplate.subject}
-                  onChange={(event) => updateTask(task.id, (current) => ({
-                    ...current,
-                    emailTemplate: { ...current.emailTemplate, subject: event.target.value },
-                  }))}
+                  onChange={(event) => updateTaskEmailTemplate(task.id, { subject: event.target.value })}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </label>
@@ -9628,34 +9738,124 @@ const GlobalSchedulerSection = () => {
                 <textarea
                   rows={7}
                   value={task.emailTemplate.body}
-                  onChange={(event) => updateTask(task.id, (current) => ({
-                    ...current,
-                    emailTemplate: { ...current.emailTemplate, body: event.target.value },
-                  }))}
+                  onChange={(event) => updateTaskEmailTemplate(task.id, { body: event.target.value })}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
               </label>
 
               {task.actionType === 'daily_ai' && (
-                <label className="block rounded-2xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 p-4">
-                  <span className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                    <Bot size={14} />
-                    Prompt systemowy AI
+                <div className="rounded-2xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 p-4 space-y-4">
+                  <label className="block">
+                    <span className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                      <Bot size={14} />
+                      Prompt systemowy AI
+                    </span>
+                    <textarea
+                      rows={6}
+                      value={task.aiSystemInstruction || ''}
+                      onChange={(event) => updateTaskField(task.id, 'aiSystemInstruction', event.target.value)}
+                      placeholder="Opisz, jak AI ma przeanalizować JSON Daily i w jakiej formie przygotować wynik do wysłania e-mailem."
+                      className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                    />
+                  </label>
+
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                      <SettingsIcon size={14} />
+                      Parametry AI tej pozycji harmonogramu
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                      <label className="block md:col-span-2">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Model</span>
+                        <input
+                          type="text"
+                          value={task.aiSettings?.model || ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { model: event.target.value })}
+                          placeholder="Domyślny model z ustawień"
+                          className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Temperature</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="2"
+                          value={task.aiSettings?.temperature ?? ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { temperature: parseOptionalTaskNumber(event.target.value) })}
+                          className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Top P</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          value={task.aiSettings?.topP ?? ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { topP: parseOptionalTaskNumber(event.target.value) })}
+                          className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Top K</span>
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={task.aiSettings?.topK ?? ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { topK: parseOptionalTaskNumber(event.target.value) })}
+                          className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Max tokens</span>
+                        <input
+                          type="number"
+                          step="100"
+                          min="1"
+                          value={task.aiSettings?.maxOutputTokens ?? ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { maxOutputTokens: parseOptionalTaskNumber(event.target.value) })}
+                          className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dodatkowe generationConfig JSON</span>
+                        <textarea
+                          rows={5}
+                          value={task.aiSettings?.generationConfigText || ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { generationConfigText: event.target.value })}
+                          placeholder={'{\n  "candidateCount": 1,\n  "responseMimeType": "text/plain"\n}'}
+                          className="font-mono w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-3 text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dodatkowe pola request JSON</span>
+                        <textarea
+                          rows={5}
+                          value={task.aiSettings?.additionalRequestFieldsText || ''}
+                          onChange={(event) => updateTaskAiSettings(task.id, { additionalRequestFieldsText: event.target.value })}
+                          placeholder={'{\n  "safetySettings": []\n}'}
+                          className="font-mono w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-3 text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <span className="block text-xs leading-5 text-violet-700/80 dark:text-violet-300/80">
+                    Parametry zapisują się w tej konkretnej pozycji harmonogramu. Pola JSON pozwalają przekazać pozostałe obsługiwane ustawienia Gemini bez zmiany innych zadań.
                   </span>
-                  <textarea
-                    rows={6}
-                    value={task.aiSystemInstruction || ''}
-                    onChange={(event) => updateTask(task.id, (current) => ({
-                      ...current,
-                      aiSystemInstruction: event.target.value,
-                    }))}
-                    placeholder="Opisz, jak AI ma przeanalizować JSON Daily i w jakiej formie przygotować wynik do wysłania e-mailem."
-                    className="w-full rounded-lg border border-violet-200 dark:border-violet-900 bg-white dark:bg-gray-700 px-3 py-3 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 outline-none"
-                  />
-                  <span className="mt-2 block text-xs leading-5 text-violet-700/80 dark:text-violet-300/80">
-                    Przed wysyłką harmonogram pobierze zadania i aktywności Daily, utworzy JSON z zaznaczonymi sekcjami oraz statusami, przekaże go do AI, a do e-maila trafi wynik analizy.
-                  </span>
-                </label>
+                </div>
               )}
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -9695,8 +9895,11 @@ const GlobalSchedulerSection = () => {
                   </button>
                 </div>
               </div>
+              </>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

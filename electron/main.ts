@@ -1562,6 +1562,11 @@ const getDateKey = (date: Date) =>
 const getTimeKey = (date: Date) =>
     `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
 
+const normalizeOptionalScheduledTaskNumber = (value: unknown, fallback: number | null = null) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+    return value;
+};
+
 const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
     ...task,
     isActive: task.isActive ?? true,
@@ -1581,6 +1586,15 @@ const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
         variables: task.emailTemplate?.variables || {},
     },
     aiSystemInstruction: task.aiSystemInstruction || '',
+    aiSettings: {
+        model: task.aiSettings?.model || '',
+        temperature: normalizeOptionalScheduledTaskNumber(task.aiSettings?.temperature, 0.2),
+        topP: normalizeOptionalScheduledTaskNumber(task.aiSettings?.topP),
+        topK: normalizeOptionalScheduledTaskNumber(task.aiSettings?.topK),
+        maxOutputTokens: normalizeOptionalScheduledTaskNumber(task.aiSettings?.maxOutputTokens, 12000),
+        generationConfigText: task.aiSettings?.generationConfigText || '',
+        additionalRequestFieldsText: task.aiSettings?.additionalRequestFieldsText || '',
+    },
     contentSources: (task.contentSources || []).map((source) => ({
         ...source,
         type: 'daily',
@@ -1630,7 +1644,37 @@ const deleteScheduledTaskRecord = (id: string) => {
     db.prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(id);
 };
 
+const getProjectDailyHubId = (projectId: string) => `project_daily_${projectId}`;
+
+const getDailyProjectHubById = (hubId: string): DailyHub | null => {
+    const projectId = hubId.startsWith('project_daily_')
+        ? hubId.slice('project_daily_'.length)
+        : '';
+    if (!projectId) return null;
+
+    const row = db.prepare('SELECT data FROM projects WHERE id = ?').get(projectId) as { data: string } | undefined;
+    if (!row) return null;
+
+    try {
+        const project = JSON.parse(row.data) as { id?: string; code?: string; name?: string };
+        const projectCode = String(project.code || '').trim().toUpperCase();
+        if (!projectCode) return null;
+
+        return {
+            id: getProjectDailyHubId(projectId),
+            name: `Projekt: ${projectCode}${project.name ? ` — ${project.name}` : ''}`,
+            description: 'Projektowe Daily dostępne z zakładki projektu.',
+            projectCodes: projectCode,
+        };
+    } catch {
+        return null;
+    }
+};
+
 const getDailyHubById = (hubId: string): DailyHub | null => {
+    const projectDailyHub = getDailyProjectHubById(hubId);
+    if (projectDailyHub) return projectDailyHub;
+
     const row = db.prepare('SELECT * FROM daily_hubs WHERE id = ?').get(hubId) as DailyHub | undefined;
     return row || null;
 };
@@ -2919,6 +2963,26 @@ const appendScheduledDailyAiSystemRules = (systemInstruction: string) => [
     'Nie analizuj i nie wspominaj zadań, których nie ma w przekazanym JSON. Zadania oznaczone jako pominięte w AI są usunięte z JSON i mają być traktowane jako niewidoczne.',
 ].filter(Boolean).join('\n\n');
 
+const parseScheduledTaskJsonObject = (rawValue: string | undefined, fieldLabel: string) => {
+    const raw = rawValue?.trim();
+    if (!raw) return {};
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Wartość musi być obiektem JSON.');
+        }
+
+        return parsed as Record<string, unknown>;
+    } catch (error: any) {
+        throw new Error(`Nieprawidłowy JSON w polu "${fieldLabel}": ${error?.message || 'nieznany błąd'}`);
+    }
+};
+
+const getScheduledTaskAiNumber = (value: unknown, fallback?: number) => (
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback
+);
+
 const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: Date) => {
     const textBlocks: string[] = [];
     const htmlBlocks: string[] = [];
@@ -2932,6 +2996,14 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
     if (task.actionType === 'daily_ai' && !task.aiSystemInstruction?.trim()) {
         throw new Error('Brak promptu systemowego AI w zadaniu harmonogramu.');
     }
+
+    const aiSettings = task.aiSettings || {};
+    const aiGenerationConfig = task.actionType === 'daily_ai'
+        ? parseScheduledTaskJsonObject(aiSettings.generationConfigText, 'Dodatkowe generationConfig JSON')
+        : {};
+    const aiAdditionalRequestFields = task.actionType === 'daily_ai'
+        ? parseScheduledTaskJsonObject(aiSettings.additionalRequestFieldsText, 'Dodatkowe pola request JSON')
+        : {};
 
     for (const source of task.contentSources || []) {
         if (source.type === 'daily') {
@@ -2947,16 +3019,20 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
                 const response = await generateGeminiContent({
                     prompt: JSON.stringify(aiPayload, null, 2),
                     systemInstruction: appendScheduledDailyAiSystemRules(task.aiSystemInstruction || ''),
-                    model: envSettings.geminiModel || DEFAULT_GEMINI_MODEL,
-                    temperature: 0.2,
-                    maxOutputTokens: 12000,
+                    model: aiSettings.model?.trim() || envSettings.geminiModel || DEFAULT_GEMINI_MODEL,
+                    generationConfig: aiGenerationConfig,
+                    additionalRequestFields: aiAdditionalRequestFields,
+                    temperature: getScheduledTaskAiNumber(aiSettings.temperature, 0.2),
+                    topP: getScheduledTaskAiNumber(aiSettings.topP),
+                    topK: getScheduledTaskAiNumber(aiSettings.topK),
+                    maxOutputTokens: getScheduledTaskAiNumber(aiSettings.maxOutputTokens, 12000),
                 });
                 const analysisText = response.text.trim();
                 if (analysisText) {
                     const heading = `Analiza AI: ${payload.hub.name}`;
                     textBlocks.push(`# ${heading}\n\n${analysisText}`);
                     htmlBlocks.push(`
-                        <section style="margin:0 auto 20px auto; padding:22px; max-width:960px; border-radius:18px; background:#ffffff; border:1px solid rgba(148,163,184,0.22); box-shadow:0 16px 44px rgba(15,23,42,0.08);">
+                        <section style="margin:0 auto 20px auto; padding:22px; max-width:960px; color:#0f172a;">
                             <div style="margin-bottom:12px; padding-bottom:14px; border-bottom:1px solid #e2e8f0;">
                                 <div style="font-size:22px; font-weight:900; color:#0f172a; line-height:1.25;">${escapeHtml(heading)}</div>
                                 <div style="margin-top:8px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
@@ -2980,7 +3056,7 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
     }
 
     const htmlBody = htmlBlocks.length > 0
-        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:18px; background:#eef2ff; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:1020px; width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
+        ? `<!doctype html><html lang="pl"><body style="margin:0; padding:18px; font-family:Arial, Helvetica, sans-serif;"><div style="max-width:1020px; width:100%; margin:0 auto;">${htmlBlocks.join('')}</div></body></html>`
         : '';
 
     return {
