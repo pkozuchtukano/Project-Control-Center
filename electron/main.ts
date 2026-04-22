@@ -1184,12 +1184,11 @@ ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, param
         const response = await fetch(urlObj.toString(), fetchOptions);
 
         if (!response.ok) {
-            // Throw an object we can catch on the other side
-            throw {
-                status: response.status,
-                statusText: response.statusText,
-                message: await response.text()
-            };
+            const responseText = await response.text();
+            const error = new Error(`YouTrack API ${response.status} ${response.statusText}: ${responseText}`);
+            (error as Error & { status?: number; statusText?: string }).status = response.status;
+            (error as Error & { status?: number; statusText?: string }).statusText = response.statusText;
+            throw error;
         }
 
         if (responseType === 'arraybuffer') {
@@ -1199,8 +1198,9 @@ ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, param
 
         return await response.json();
     } catch (error: any) {
+        const message = error?.message || String(error);
         console.error(`BĹ‚Ä…d zapytania fetch-youtrack do ${url}:`, error);
-        throw error;
+        throw new Error(message);
     }
 });
 

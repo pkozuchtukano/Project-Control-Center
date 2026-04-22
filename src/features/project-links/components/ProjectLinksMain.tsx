@@ -618,19 +618,21 @@ export const ProjectLinksMain = ({ project, compact = false }: ProjectLinksMainP
         ) : (
           <div className="space-y-3">
             {sortedLinks.map((link) => (
-              <button
-                type="button"
+              <div
                 key={link.id}
-                onClick={() => void handleOpenExternal(link.url)}
                 className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50/40 dark:border-gray-700 dark:bg-gray-900/30 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/10"
                 title={link.url}
               >
-                <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => void handleOpenExternal(link.url)}
+                  className="min-w-0 flex-1 text-left"
+                >
                   <div className="flex max-w-full items-center gap-2 text-base font-semibold text-gray-900 transition group-hover:text-indigo-600 dark:text-white dark:group-hover:text-indigo-300">
                     <span className="truncate">{link.name}</span>
                     <ExternalLink size={14} className="shrink-0 opacity-60" />
                   </div>
-                </div>
+                </button>
 
                 <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
                   <button
@@ -646,7 +648,7 @@ export const ProjectLinksMain = ({ project, compact = false }: ProjectLinksMainP
                     <Edit2 size={15} />
                   </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

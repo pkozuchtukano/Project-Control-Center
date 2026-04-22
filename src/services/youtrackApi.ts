@@ -153,6 +153,12 @@ const formatTimestampFieldValue = (value: string) => {
     return parsedDate.toLocaleString('pl-PL');
 };
 
+const extractUnsupportedStateValue = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || '');
+    const match = message.match(/The value "([^"]+)" isn't used for the State field/i);
+    return match?.[1] || null;
+};
+
 export const fetchIssuesActivity = async (
     baseUrl: string,
     token: string,
@@ -171,9 +177,10 @@ export const fetchIssuesActivity = async (
     // 1. Fetch Issues
     let query: string;
     const isZakonczone = tabName?.toLowerCase() === 'zakończone';
+    let effectiveCustomStatuses = customStatuses ? [...customStatuses] : undefined;
 
-    if (customStatuses && customStatuses.length > 0) {
-        const stateFilter = customStatuses.map(s => `{${s}}`).join(', ');
+    if (effectiveCustomStatuses && effectiveCustomStatuses.length > 0) {
+        const stateFilter = effectiveCustomStatuses.map(s => `{${s}}`).join(', ');
         
         if (tab === 'Aktywności') {
             // Broad query for the whole board: date activity OR specific global states
@@ -199,16 +206,48 @@ export const fetchIssuesActivity = async (
     const issueFields = 'id,idReadable,summary,resolved,description,created,updated,reporter(name,login,fullName),assignee(name,login,fullName),project(id,shortName),customFields(name,value(presentation,name,login,email,id,minutes,color(id,background,foreground))),attachments(id,name,url,mimeType,size),tags(name,color(id)),links(direction,linkType(name,outwardName,inwardName),issues(id,idReadable,summary))';
 
     while (true) {
-        const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
-            query,
-            fields: issueFields,
-            $top: ISSUES_PAGE,
-            $skip: issueSkip
-        });
-        if (!Array.isArray(page) || page.length === 0) break;
-        issues.push(...page);
-        if (page.length < ISSUES_PAGE) break;
-        issueSkip += ISSUES_PAGE;
+        try {
+            const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
+                query,
+                fields: issueFields,
+                $top: ISSUES_PAGE,
+                $skip: issueSkip
+            });
+            if (!Array.isArray(page) || page.length === 0) break;
+            issues.push(...page);
+            if (page.length < ISSUES_PAGE) break;
+            issueSkip += ISSUES_PAGE;
+        } catch (error) {
+            const unsupportedState = extractUnsupportedStateValue(error);
+            if (!unsupportedState || !effectiveCustomStatuses?.length) {
+                throw error;
+            }
+
+            const nextStatuses = effectiveCustomStatuses.filter(
+                status => status.toLowerCase() !== unsupportedState.toLowerCase()
+            );
+            if (nextStatuses.length === effectiveCustomStatuses.length) {
+                throw error;
+            }
+
+            console.warn(`Status "${unsupportedState}" nie jest używany w projekcie ${projectName}; pomijam go w zapytaniu Daily.`);
+            effectiveCustomStatuses = nextStatuses.length > 0 ? nextStatuses : undefined;
+            const stateFilter = effectiveCustomStatuses?.map(s => `{${s}}`).join(', ');
+            if (stateFilter && tab === 'Aktywności') {
+                query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo} or project: ${projectName} State: ${stateFilter}`;
+            } else if (stateFilter) {
+                query = `project: ${projectName} State: ${stateFilter}`;
+                if (includeFilters === true || (isZakonczone && includeFilters !== false)) {
+                    query += ` updated: ${dateFrom} .. ${dateTo}`;
+                }
+            } else if (tab === 'Do zrobienia') {
+                query = `project: ${projectName} State: {To Do}`;
+            } else {
+                query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
+            }
+            issues.length = 0;
+            issueSkip = 0;
+        }
     }
 
     // 2. For each issue, fetch full activity (comments + field changes)

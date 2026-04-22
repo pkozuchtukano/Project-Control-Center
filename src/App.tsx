@@ -874,7 +874,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const calculations = useProjectCalculations(selectedProject);
   const { workItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
@@ -894,7 +894,7 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       return;
     }
 
-    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'service', 'status', 'youtrack', 'estimation', 'notes'];
+    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'service', 'status', 'daily', 'youtrack', 'estimation', 'notes'];
     if (allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab as typeof activeTab);
       return;
@@ -1827,6 +1827,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'status' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             Status
+          </button>
+          <button
+            onClick={() => setActiveTab('daily')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'daily' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Daily
           </button>
           <button
             onClick={() => setActiveTab('youtrack')}
@@ -3067,6 +3073,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'status' && (
           <StatusMain project={selectedProject} />
+        )}
+
+        {activeTab === 'daily' && (
+          <DailyMain project={selectedProject} />
         )}
 
         {activeTab === 'maintenance' && selectedProject.hasMaintenance && (

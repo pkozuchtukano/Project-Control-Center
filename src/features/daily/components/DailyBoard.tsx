@@ -370,11 +370,13 @@ const resolveIssueTitleMap = (analysis?: DailyAiAnalysis | null, fallback?: Issu
 interface DailyBoardProps {
   hubId: string;
   projectCodes: string;
+  lockedProjectCode?: string;
 }
 
-export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
+export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoardProps) => {
   const { settings } = useProjectContext();
   const boardRef = useRef<HTMLDivElement>(null);
+  const normalizedLockedProjectCode = lockedProjectCode?.trim().toUpperCase() || null;
 
   const { from: initialFrom, to: initialTo } = useMemo(() => getSmartDateRange(), []);
   const loadSavedDateFrom = (fallbackFrom: string, currentDateTo: string) => {
@@ -395,7 +397,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
 
   const [dateFrom, setDateFrom] = useState(() => loadSavedDateFrom(initialFrom, initialTo));
   const [dateTo, setDateTo] = useState(initialTo);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(normalizedLockedProjectCode);
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [showOnlyCommented, setShowOnlyCommented] = useState(false);
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
@@ -427,6 +429,10 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
   });
   const [dynamicSections, setDynamicSections] = useState<DailySection[]>([]);
 
+  useEffect(() => {
+    setSelectedProject(normalizedLockedProjectCode);
+  }, [normalizedLockedProjectCode]);
+
   const {
     data: activityIssues,
     isLoading: isActivityLoading,
@@ -442,7 +448,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
     clearData: clearBoardData
   } = useYouTrack();
 
-  const normalizeStatuses = (raw: string) => {
+  const parseStatusValues = (raw: string) => {
     if (!raw) return [];
     return raw
       .split(/[\n,;]/)
@@ -451,15 +457,17 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       .map(entry => {
         const parenMatch = entry.match(/\(([^)]+)\)$/);
         const value = parenMatch ? parenMatch[1] : entry;
-        return value.trim().toLowerCase();
+        return value.trim();
       });
   };
+
+  const normalizeStatusForCompare = (value: string) => value.trim().toLowerCase();
 
   const boardStateFilters = useMemo(() => {
     const stateSet = new Set<string>();
     dynamicSections.forEach(section => {
       if (section.respectDates) return;
-      normalizeStatuses(section.youtrackStatuses).forEach(state => stateSet.add(state));
+      parseStatusValues(section.youtrackStatuses).forEach(state => stateSet.add(state));
     });
     return Array.from(stateSet);
   }, [dynamicSections]);
@@ -681,9 +689,9 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
           return hasTimelineInRange;
         }
 
-        const statuses = normalizeStatuses(section.youtrackStatuses);
+        const statuses = parseStatusValues(section.youtrackStatuses).map(normalizeStatusForCompare);
         const currentState = typeof issue.state === 'string' ? issue.state : issue.state?.name;
-        if (!statuses.includes((currentState || '').toLowerCase())) return false;
+        if (!statuses.includes(normalizeStatusForCompare(currentState || ''))) return false;
         if (section.respectDates) {
           return hasTimelineInRange;
         }
@@ -765,7 +773,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
               id: currentSection.id,
               name: currentSection.name,
               respectDates: !!currentSection.respectDates,
-              configuredStatuses: normalizeStatuses(currentSection.youtrackStatuses),
+              configuredStatuses: parseStatusValues(currentSection.youtrackStatuses),
             }
           : null,
         state: stateName,
@@ -807,7 +815,7 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
         name: section.name,
         type: section.id === 'fixed_aktywnosci' ? 'activity' : 'board',
         respectDates: !!section.respectDates,
-        configuredStatuses: normalizeStatuses(section.youtrackStatuses),
+        configuredStatuses: parseStatusValues(section.youtrackStatuses),
         issueCount: issues.length,
         issueIds: issues.map((issue) => issue.idReadable),
         issues: issues
@@ -1148,29 +1156,37 @@ export const DailyBoard = ({ hubId, projectCodes }: DailyBoardProps) => {
       <div className="flex flex-col gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-            <button
-              onClick={() => setSelectedProject(null)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
-                !selectedProject
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
-              }`}
-            >
-              Wszystkie
-            </button>
-            {projects.map(code => (
-              <button
-                key={code}
-                onClick={() => setSelectedProject(selectedProject === code ? null : code)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
-                  selectedProject === code
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
-                }`}
-              >
-                {code}
-              </button>
-            ))}
+            {normalizedLockedProjectCode ? (
+              <span className="px-3 py-1.5 rounded-lg text-xs font-black whitespace-nowrap border shadow-sm bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none">
+                {normalizedLockedProjectCode}
+              </span>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSelectedProject(null)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
+                    !selectedProject
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+                  }`}
+                >
+                  Wszystkie
+                </button>
+                {projects.map(code => (
+                  <button
+                    key={code}
+                    onClick={() => setSelectedProject(selectedProject === code ? null : code)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all whitespace-nowrap border shadow-sm ${
+                      selectedProject === code
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-200 dark:shadow-none translate-y-[-1px]'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 dark:hover:border-indigo-700'
+                    }`}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">

@@ -1,4 +1,20 @@
 ## Daily Command Center
+- 2026-04-22 – Własna konfiguracja sekcji Daily w projekcie
+  -- Zakładka `Daily` wewnątrz projektu ma teraz przycisk `Konfiguracja sekcji`, który zapisuje sekcje wyłącznie dla tego projektu.
+  -- Projektowe Daily używa osobnego technicznego identyfikatora konfiguracji opartego o `project.id`, więc zmiany sekcji nie wpływają na huby Daily z sidebara ani na inne projekty.
+- 2026-04-22 – Pomijanie statusów nieużywanych w projekcie
+  -- Pobieranie sekcji Daily obsługuje teraz błąd YouTrack informujący, że dana wartość `State`, np. `Accepted`, nie jest używana w bieżącym projekcie.
+  -- Taki status jest pomijany tylko w aktualnym zapytaniu, dzięki czemu pozostałe statusy i sekcje Daily nadal mogą zostać odświeżone.
+- 2026-04-22 – Czytelny błąd pobierania danych z YouTrack
+  -- Proxy `fetch-youtrack` w Electronie zwraca teraz błąd jako standardowy `Error` z kodem HTTP i treścią odpowiedzi YouTrack.
+  -- Dzięki temu błąd pobierania sekcji Daily nie ukrywa już realnej przyczyny pod komunikatem `[object Object]`.
+- 2026-04-22 – Poprawa pobierania sekcji Daily po statusach
+  -- Pobieranie pozostałych sekcji Daily przekazuje teraz do YouTrack oryginalne nazwy statusów z konfiguracji, bez zamiany na małe litery.
+  -- Porównywanie statusów w UI nadal działa niewrażliwie na wielkość liter, dzięki czemu filtr sekcji pozostaje odporny na różnice zapisu po stronie danych.
+- 2026-04-22 – Zakładka `Daily` w widoku projektu
+  -- Do zestawu zakładek każdego projektu dodano `Daily`, która uruchamia tablicę Daily w kontekście bieżącego projektu.
+  -- Widok wykorzystuje sekcje z istniejącego huba Daily obejmującego kod projektu, ale pobiera i filtruje dane YouTrack wyłącznie dla tego projektu.
+  -- Jeśli projekt nie jest przypisany do żadnego huba Daily, zakładka pokazuje informację o braku konfiguracji zamiast automatycznie zmieniać dane w bazie.
 - 2026-04-21 – Czytelniejsze karty zadań w mailu `Daily z AI`
   -- Lista zadań w mailu `Daily z AI` jest teraz renderowana jako osobne karty z wyróżnionym kodem YouTrack, tytułem zadania i opisem poniżej.
   -- Kontener maila dostał ograniczoną szerokość, większe odstępy i nagłówek z separatorem, aby raport był łatwiejszy do czytania w Gmailu.
@@ -435,6 +451,9 @@
     -- Rozliczenia mogą dzięki temu liczyć `Bug-to-Task Ratio` na podstawie rzeczywistych typów zadań z YouTrack, bez ręcznego mapowania i bez utraty dotychczasowych danych w bazie.
 
 ## Linki projektu
+- 2026-04-22 – Usunięcie zagnieżdżonych przycisków z kart linków
+  -- Karta linku projektowego nie renderuje już przycisku edycji wewnątrz drugiego przycisku otwierającego link.
+  -- Dzięki temu React nie zgłasza ostrzeżenia o niepoprawnym HTML, a akcje otwierania linku i edycji pozostają rozdzielone.
 - 2026-03-24 – Indywidualna karta linków dla projektu
   -- Dodano nową kartę `Linki` bezpośrednio w `Dashboardzie` projektu z listą zapisanych odnośników powiązanych z konkretnym `projectId`.
   -- Każdy wpis pokazuje nazwę i adres URL, kliknięcie nazwy otwiera link w zewnętrznej przeglądarce, a po najechaniu pojawia się minimalistyczna ikona edycji.
