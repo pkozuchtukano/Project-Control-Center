@@ -253,6 +253,7 @@ export type Estimation = {
     milestones: { id: string; name: string; date: string }[];
   };
   emailTemplate?: EmailTemplate;
+  flow?: OrderProtocolFlow;
   lastModified: string;
 };
 

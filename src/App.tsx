@@ -3943,22 +3943,38 @@ const OrderProtocolFlowModal = ({
             </button>
             {isVariablesSectionExpanded && (
               <>
-                <div className="flex flex-wrap gap-2 mt-4">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {availableVariables.map(variable => (
-                    <button
-                      type="button"
+                    <div
                       key={variable.token}
-                      onClick={() => void handleCopyTemplateSnippet(`{{${variable.token}}}`, `token:${variable.token}`)}
-                      className="group inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/30"
-                      title={variable.value ? `Aktualna wartość: ${variable.value}. Kliknij, aby skopiować {{${variable.token}}}.` : `Kliknij, aby skopiować {{${variable.token}}}.`}
+                      className="rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-900/50 dark:bg-gray-900/70"
                     >
-                      {`{{${variable.token}}}`}
-                      {copiedField === `token:${variable.token}` ? (
-                        <span className="text-[10px] font-bold text-emerald-500">Skopiowano</span>
-                      ) : (
-                        <Copy size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyTemplateSnippet(`{{${variable.token}}}`, `token:${variable.token}`)}
+                          className="group inline-flex min-w-0 items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-left text-xs font-semibold text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/40"
+                          title={`Kliknij, aby skopiować {{${variable.token}}}.`}
+                        >
+                          <code className="truncate">{`{{${variable.token}}}`}</code>
+                          {copiedField === `token:${variable.token}` ? (
+                            <span className="shrink-0 text-[10px] font-bold text-emerald-500">Skopiowano</span>
+                          ) : (
+                            <Copy size={12} className="shrink-0 opacity-60 transition-opacity group-hover:opacity-100" />
+                          )}
+                        </button>
+                      </div>
+                      {variable.aliases && variable.aliases.length > 0 && (
+                        <div className="mt-2 text-[11px] leading-5 text-indigo-700/70 dark:text-indigo-300/70">
+                          <span className="font-semibold">Aliasy: </span>
+                          {variable.aliases.map(alias => `{{${alias}}}`).join(', ')}
+                        </div>
                       )}
-                    </button>
+                      <div className="mt-2 min-h-8 rounded-xl bg-gray-50 px-2.5 py-2 text-[11px] leading-5 text-gray-600 dark:bg-gray-950/50 dark:text-gray-300">
+                        <span className="font-semibold text-gray-500 dark:text-gray-400">Aktualna wartość: </span>
+                        <span className="break-words">{variable.value || 'brak wartości w bieżącym kontekście'}</span>
+                      </div>
+                    </div>
                   ))}
                 </div>
                 <div className="mt-4 rounded-2xl border border-indigo-200/80 bg-white/80 p-4 dark:border-indigo-900/60 dark:bg-gray-900/40">

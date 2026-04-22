@@ -215,6 +215,10 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-04-22 – Panel dostępnych zmiennych w PP/PO
+  -- Modal flow `Protokół Przekazania` i `Protokół odbioru` pokazuje teraz zwijany panel `Dostępne zmienne i funkcje`.
+  -- Każda zmienna jest prezentowana jako osobna karta z tokenem do skopiowania, aliasami oraz aktualną wartością wynikającą z bieżącego projektu i zlecenia.
+  -- Panel ułatwia wybór zmiennych możliwych do użycia w krokach flow, linkach oraz szablonie e-mail PP/PO.
 - 2026-04-21 – Dzisiejsza data startowa w protokołach PP i PO
   -- Pole `Data dla zmiennej {{data}}` w modalach protokołów `PP` i `PO` startuje teraz zawsze z dzisiejszą datą.
   -- Data pozostaje edytowalna, więc użytkownik może ręcznie ustawić inną wartość przed kopiowaniem treści lub zapisaniem daty do zlecenia.
@@ -326,6 +330,23 @@
   -- Checkboxy zakresu widoczności w dashboardzie i pozostałych zakładkach zachowują teraz zaznaczenie podczas kliknięcia i mogą zostać poprawnie zapisane.
 
 ## Wycena
+- 2026-04-22 – Panel dostępnych zmiennych w wycenie
+  -- W sekcji szablonu e-mail wyceny dodano domyślnie zwinięty panel `Dostępne zmienne i funkcje` analogiczny do panelu w `PP/PO`.
+  -- Panel pokazuje zmienne wyceny jako karty z tokenem do skopiowania, aliasami oraz aktualną wartością wynikającą z bieżącego projektu i wyceny.
+  -- Dodano szybkie kopiowanie funkcji `{{slownie(wartosc_brutto)}}` i `{{slownie(wartosc_netto)}}` bez podstawiania wartości, aby można było wkleić je do flow lub szablonu.
+- 2026-04-22 – Obsługa zmiennych w flow i szablonie e-mail wyceny
+  -- Wycena obsługuje teraz zmienne szablonowe analogicznie do `PP/PO`, w tym aliasy pól projektu, pola wyceny, wartości harmonogramu, daty relatywne typu `{{data+3d}}` oraz funkcję `{{slownie(wartosc_brutto)}}`.
+  -- Zmienne są podstawiane w podglądzie kroków `Flow wyceny`, w linkach flow oraz podczas kopiowania pól szablonu e-mail.
+  -- Panel zmiennych w szablonie e-mail pokazuje tylko zmienne własne, których nie da się rozpoznać jako znanych pól wyceny lub projektu.
+- 2026-04-22 – Zmiana układu zakładki Wycena
+  -- Panel `Flow wyceny` został ustawiony w lewej kolumnie widoku.
+  -- Prawa kolumna pokazuje teraz kolejno `Kalkulator Roboczogodzin`, `Harmonogram` i `Szablon wiadomości E-mail`.
+  -- Zmiana dotyczy wyłącznie rozmieszczenia sekcji i nie zmienia sposobu zapisu danych wyceny.
+- 2026-04-22 – Flow wyceny z edycją kroków
+  -- Do zakładki `Wycena` dodano panel `Flow wyceny` działający analogicznie do flow w `Protokole Przekazania` i `Protokole odbioru`.
+  -- Panel pozwala dodawać, usuwać, przesuwać i zapisywać kroki procesu, każdy z opisem oraz opcjonalnym linkiem z etykietą.
+  -- Stan wykonania kroków jest zapisywany w obiekcie wyceny jako opcjonalne `flow`, bez zmiany struktury istniejących rekordów i bez utraty zapisanych danych.
+  -- Poprawiono wywołanie kopiowania HTML wyceny i harmonogramu do schowka, aby używało aktualnego kontraktu API `writeClipboardHtml({ html })`.
 - 2026-03-20 – Ręczna korekta pól Finał i cel godzinowy
   -- Rozszerzono tabelę wyceny o pole `Oczekiwane` pod sumą `Finał`, w którym można wpisać docelową łączną liczbę godzin dla całej estymacji.
   -- Podczas edycji aktywnego pola `Est. Zespół` lub `Finał` tabela pokazuje po prawej dynamiczną podpowiedź, jaką wartość wpisać w bieżącej pozycji, aby suma `Finał` osiągnęła wartość oczekiwaną.
