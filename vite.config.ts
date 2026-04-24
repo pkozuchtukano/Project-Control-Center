@@ -12,7 +12,13 @@ const __dirname = path.dirname(__filename)
 // config
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      babel: {
+        generatorOpts: {
+          compact: false,
+        },
+      },
+    }),
     tailwindcss(),
     electron([
       {

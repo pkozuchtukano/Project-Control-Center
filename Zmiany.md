@@ -1,3 +1,9 @@
+## Build i konfiguracja
+- 2026-04-24 – Wyciszenie ostrzeżenia Babel dla dużego App.tsx
+  -- Konfiguracja `@vitejs/plugin-react` w `vite.config.ts` ustawia teraz `babel.generatorOpts.compact` na `false`.
+  -- Build nie powinien już pokazywać komunikatu `[BABEL] Note: The code generator has deoptimised the styling of src/App.tsx as it exceeds the max of 500KB`, a zachowanie aplikacji pozostaje bez zmian.
+  -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
+
 ## Daily Command Center
 - 2026-04-22 – Usunięcie tła z maila analizy AI
   -- HTML wiadomości generowanej przez harmonogram `Daily z AI` nie ustawia już kolorowego tła na całym body maila.
