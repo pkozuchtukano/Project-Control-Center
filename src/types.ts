@@ -289,6 +289,7 @@ export type Settings = {
   geminiApiKey?: string;
   geminiModel?: string;
   geminiApiBaseUrl?: string;
+  clickupApiToken?: string;
 };
 
 export type GeminiGenerateRequest = {

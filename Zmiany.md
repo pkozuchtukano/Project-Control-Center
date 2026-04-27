@@ -5,6 +5,9 @@
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
 ## Dashboard projektu
+- 2026-04-27 – Przygotowanie konfiguracji ClickUp
+  -- Do lokalnego pliku `.env` dodano placeholder `CLICKUP_API_TOKEN`, przeznaczony na token API ClickUp bez zapisywania prawdziwego sekretu w repozytorium.
+  -- Konfiguracja Electrona odczytuje teraz `CLICKUP_API_TOKEN` jako `clickupApiToken`, aby przyszła implementacja integracji ClickUp mogła korzystać z istniejącego mechanizmu ładowania ustawień środowiskowych.
 - 2026-04-27 – Synchronizacja YouTrack z dashboardu projektu
   -- W nagłówku dashboardu każdego projektu dodano przycisk `Synchronizacja`, który pobiera logi pracy z YouTrack dla zakresu dat ustawionego w projekcie.
   -- Synchronizacja używa istniejącego mechanizmu rejestru pracy `syncWorkItems`, zapisuje dane przez dotychczasowy upsert i po zakończeniu odświeża metryki dashboardu bez zmiany schematu bazy.

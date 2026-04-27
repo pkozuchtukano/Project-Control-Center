@@ -38,6 +38,7 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
         geminiApiKey: parsed.GEMINI_API_KEY || parsed.VITE_GEMINI_API_KEY || '',
         geminiModel: parsed.GEMINI_MODEL || parsed.VITE_GEMINI_MODEL || '',
         geminiApiBaseUrl: parsed.GEMINI_API_BASE_URL || parsed.VITE_GEMINI_API_BASE_URL || '',
+        clickupApiToken: parsed.CLICKUP_API_TOKEN || '',
       };
     } catch {
       continue;
@@ -53,6 +54,7 @@ const readEnvSettings = (appDir: string, executableDir: string): Settings => {
     geminiApiKey: '',
     geminiModel: '',
     geminiApiBaseUrl: '',
+    clickupApiToken: '',
   };
 };
 
