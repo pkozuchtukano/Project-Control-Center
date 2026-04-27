@@ -718,6 +718,12 @@
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
 
 ## Do rozliczenia
+- 2026-04-27 – Zmiana statusu bezpośrednio na liście `Do rozliczenia`
+  -- W kolumnie `Status` dodano listę wyboru pozwalającą zmienić status pozycji bez otwierania formularza edycji.
+  -- Zmiana korzysta z istniejących pól statusu i zapisuje wpis przez dotychczasowy mechanizm `savePendingSettlementEntry`, bez migracji bazy i bez utraty danych.
+  -- Poprawiono kolorystykę kontrolki zmiany statusu: lista wyboru ma neutralne, czytelne tło, a status jest wyróżniany kolorową kropką zamiast barwienia całego natywnego selecta.
+  -- Do kafelków filtrów dodano osobny filtr `Nowe`, liczony według właściwego statusu pozycji, a nie według samego stanu wyceny.
+  -- Uporządkowano typowanie pomocniczego liczenia kolejnego ID pozycji, bez zmiany formatu generowanych identyfikatorów.
 - 2026-04-16 – Zrzut ekranu w pozycjach `Do rozliczenia`
   -- Formularz pozycji `Do rozliczenia` został rozszerzony o pole obrazu z podglądem, dodawaniem pliku oraz wklejaniem zrzutu ekranu bezpośrednio ze schowka.
   -- Model danych i zapis SQLite dostały bezstratną migrację nowych kolumn obrazu, dzięki czemu załączony zrzut zapisuje się razem z pozycją i pozostaje w bazie przy eksporcie oraz imporcie danych.

@@ -5558,10 +5558,11 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedExport, setCopiedExport] = useState(false);
   const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
+  const [savingStatusEntryId, setSavingStatusEntryId] = useState<string | null>(null);
 
   const formatPendingSettlementRequester = (value: string) => {
     const parts = value.trim().split(/\s+/).filter(Boolean);
@@ -5627,26 +5628,20 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     return 'hover:bg-gray-50 dark:hover:bg-gray-800/50';
   };
 
-  const getPendingSettlementStatusBadgeClass = (entry: PendingSettlementEntry) => {
-    if (!entry.isEstimated) {
-      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/40 dark:bg-sky-900/25 dark:text-sky-200';
-    }
-    if (entry.isEstimated && !entry.isAccepted) {
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800/40 dark:bg-amber-900/25 dark:text-amber-200';
-    }
+  const getPendingSettlementStatusDotClass = (entry: PendingSettlementEntry) => {
     if (entry.isSettled) {
-      return 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-800/40 dark:bg-fuchsia-900/25 dark:text-fuchsia-200';
+      return 'bg-fuchsia-500 dark:bg-fuchsia-300';
     }
     if (entry.isSentToSettlement) {
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800/40 dark:bg-violet-900/25 dark:text-violet-200';
+      return 'bg-violet-500 dark:bg-violet-300';
     }
     if (entry.isCompleted) {
-      return 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800/40 dark:bg-indigo-900/25 dark:text-indigo-200';
+      return 'bg-indigo-500 dark:bg-indigo-300';
     }
     if (entry.isInProgress) {
-      return 'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800/40 dark:bg-cyan-900/25 dark:text-cyan-200';
+      return 'bg-cyan-500 dark:bg-cyan-300';
     }
-    return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-200';
+    return 'bg-slate-400 dark:bg-slate-300';
   };
 
   const formatPendingSettlementCompletedWorkLabel = (entry: PendingSettlementEntry) => {
@@ -5785,6 +5780,27 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     await loadEntries();
   };
 
+  const handlePendingSettlementStatusChange = async (
+    entry: PendingSettlementEntry,
+    statusValue: PendingSettlementStatusValue,
+  ) => {
+    if (!window.electron?.savePendingSettlementEntry) return;
+
+    const updatedAt = new Date().toISOString();
+    const nextEntry = applyPendingSettlementStatus(entry, statusValue, updatedAt);
+
+    setSavingStatusEntryId(entry.id);
+    setError(null);
+    try {
+      await window.electron.savePendingSettlementEntry(nextEntry);
+      setEntries((current) => current.map((item) => (item.id === entry.id ? nextEntry : item)));
+    } catch (statusError: any) {
+      setError(statusError?.message || 'Nie udało się zmienić statusu pozycji do rozliczenia.');
+    } finally {
+      setSavingStatusEntryId((current) => (current === entry.id ? null : current));
+    }
+  };
+
   const handleDelete = async (entryId: string) => {
     if (!window.electron?.deletePendingSettlementEntry) return;
     if (!window.confirm('Czy na pewno chcesz usunąć tę pozycję do rozliczenia?')) {
@@ -5803,12 +5819,15 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const notEstimatedCount = entries.filter((entry) => !entry.isEstimated).length;
   const acceptedCount = entries.filter((entry) => entry.isAccepted).length;
   const notAcceptedCount = entries.filter((entry) => !entry.isAccepted).length;
+  const newCount = entries.filter((entry) => getPendingSettlementStatusValue(entry) === 'new').length;
   const inProgressCount = entries.filter((entry) => entry.isInProgress).length;
   const completedCount = entries.filter((entry) => entry.isCompleted).length;
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('pl-PL');
   const filteredEntries = entries.filter((entry) => {
     const matchesFilter = (() => {
       switch (activeFilter) {
+        case 'new':
+          return getPendingSettlementStatusValue(entry) === 'new';
         case 'estimated':
           return entry.isEstimated;
         case 'notEstimated':
@@ -5845,6 +5864,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
 
   const summaryCards = [
     { id: 'all' as const, label: 'Pozycji', count: entries.length, dotClass: 'bg-slate-400 dark:bg-slate-500' },
+    { id: 'new' as const, label: 'Nowe', count: newCount, dotClass: 'bg-slate-400 dark:bg-slate-300' },
     { id: 'estimated' as const, label: 'Wycenione', count: estimatedCount, dotClass: 'bg-cyan-500 dark:bg-cyan-400' },
     { id: 'notEstimated' as const, label: 'Niewycenione', count: notEstimatedCount, dotClass: 'bg-sky-500 dark:bg-sky-400' },
     { id: 'accepted' as const, label: 'Zaakceptowane', count: acceptedCount, dotClass: 'bg-violet-500 dark:bg-violet-400' },
@@ -5933,7 +5953,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
         {summaryCards.map((card) => {
           const isActive = activeFilter === card.id;
           return (
@@ -6093,9 +6113,30 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${getPendingSettlementStatusBadgeClass(entry)}`}>
-                        {formatPendingSettlementStatusLabel(entry)}
-                      </span>
+                      <div className="relative inline-flex items-center">
+                        <span
+                          className={`pointer-events-none absolute left-3 h-2 w-2 rounded-full ${getPendingSettlementStatusDotClass(entry)}`}
+                          aria-hidden="true"
+                        />
+                        <select
+                          value={getPendingSettlementStatusValue(entry)}
+                          onChange={(event) => void handlePendingSettlementStatusChange(entry, event.target.value as PendingSettlementStatusValue)}
+                          disabled={savingStatusEntryId === entry.id}
+                          className="max-w-[230px] appearance-none rounded-full border border-gray-200 bg-white py-1 pl-8 pr-8 text-xs font-semibold text-gray-800 outline-none transition hover:border-indigo-200 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/30 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-indigo-500/50 dark:focus:border-indigo-500"
+                          title="Zmień status pozycji"
+                        >
+                          {pendingSettlementStatusOptions.map((option) => (
+                            <option key={option.value} value={option.value} className="bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {savingStatusEntryId === entry.id ? (
+                          <Loader2 size={13} className="pointer-events-none absolute right-2 animate-spin text-current" />
+                        ) : (
+                          <ChevronDown size={13} className="pointer-events-none absolute right-2 text-current" />
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -6203,13 +6244,6 @@ const PendingSettlementEntryModal = ({
   const acceptanceChannelSuggestions = Array.from(new Set(entries.map((entry) => (entry.acceptanceChannel || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const teamEstimateSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.teamEstimatedHours) || 0).filter((value) => value > 0))).sort((left, right) => left - right);
   const marginPercentSuggestions = Array.from(new Set(entries.map((entry) => Number(entry.marginPercent) || 0).filter((value) => value >= 0))).sort((left, right) => left - right);
-  const pendingSettlementStatusOptions = [
-    { value: 'new', label: 'Nowe' },
-    { value: 'inProgress', label: 'Realizujemy' },
-    { value: 'completed', label: 'Zrealizowano' },
-    { value: 'sentToSettlement', label: 'Przekazano do rozliczenia' },
-    { value: 'settled', label: 'Rozliczono' },
-  ] as const;
   const getPendingSettlementStatusLabel = (value: string) =>
     pendingSettlementStatusOptions.find((option) => option.value === value)?.label || 'Nowe';
 
@@ -6238,15 +6272,8 @@ const PendingSettlementEntryModal = ({
     });
   };
 
-  const handleStatusChange = (statusValue: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      isInProgress: statusValue === 'inProgress',
-      isCompleted: statusValue === 'completed',
-      isSentToSettlement: statusValue === 'sentToSettlement',
-      isSettled: statusValue === 'settled',
-      updatedAt: new Date().toISOString(),
-    }));
+  const handleStatusChange = (statusValue: PendingSettlementStatusValue) => {
+    setFormData((prev) => applyPendingSettlementStatus(prev, statusValue, new Date().toISOString()));
     setIsStatusComboboxOpen(false);
   };
 
@@ -9136,18 +9163,42 @@ const generatePendingSettlementExternalId = (
       const parsedSequence = Number.parseInt(sequencePart, 10);
       return Number.isFinite(parsedSequence) ? parsedSequence : null;
     })
-    .reduce((maxValue, value) => (value && value > maxValue ? value : maxValue), 0) + 1;
+    .filter((value): value is number => value !== null)
+    .reduce((maxValue, value) => (value > maxValue ? value : maxValue), 0) + 1;
 
   return `${prefix}${String(nextSequence).padStart(3, '0')}`;
 };
 
-const getPendingSettlementStatusValue = (entry: PendingSettlementEntry) => {
+const pendingSettlementStatusOptions = [
+  { value: 'new', label: 'Nowe' },
+  { value: 'inProgress', label: 'Realizujemy' },
+  { value: 'completed', label: 'Zrealizowano' },
+  { value: 'sentToSettlement', label: 'Przekazano do rozliczenia' },
+  { value: 'settled', label: 'Rozliczono' },
+] as const;
+
+type PendingSettlementStatusValue = typeof pendingSettlementStatusOptions[number]['value'];
+
+const getPendingSettlementStatusValue = (entry: PendingSettlementEntry): PendingSettlementStatusValue => {
   if (entry.isSettled) return 'settled';
   if (entry.isSentToSettlement) return 'sentToSettlement';
   if (entry.isCompleted) return 'completed';
   if (entry.isInProgress) return 'inProgress';
   return 'new';
 };
+
+const applyPendingSettlementStatus = (
+  entry: PendingSettlementEntry,
+  statusValue: PendingSettlementStatusValue,
+  updatedAt: string,
+): PendingSettlementEntry => ({
+  ...entry,
+  isInProgress: statusValue === 'inProgress',
+  isCompleted: statusValue === 'completed',
+  isSentToSettlement: statusValue === 'sentToSettlement',
+  isSettled: statusValue === 'settled',
+  updatedAt,
+});
 
 const calculatePendingSettlementEstimatedHours = (teamEstimatedHours: number, marginPercent: number) => {
   const safeTeamEstimate = Number(teamEstimatedHours) || 0;
