@@ -4,6 +4,13 @@
   -- Build nie powinien już pokazywać komunikatu `[BABEL] Note: The code generator has deoptimised the styling of src/App.tsx as it exceeds the max of 500KB`, a zachowanie aplikacji pozostaje bez zmian.
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
+## Dashboard projektu
+- 2026-04-27 – Podział przepracowanych godzin na `BUG` i resztę
+  -- W głównym dashboardzie projektu dodano sekcję pokazującą udział godzin przepracowanych na zadaniach typu `BUG` względem pozostałych typów zadań.
+  -- Podział bazuje na polu `issueType` zapisanym w rejestrze pracy z YouTrack i pokazuje procent oraz liczbę godzin.
+  -- Dla projektów z utrzymaniem widok pokazuje osobny podział dla zleceń, utrzymania oraz całego projektu łącznie.
+  -- Typ `WorkItemRow` uzupełniono o flagę `isMaintenance`, zgodnie z danymi zwracanymi przez hook rejestru pracy.
+
 ## Daily Command Center
 - 2026-04-27 – Dane `Do rozliczenia` w JSON Daily AI
   -- JSON budowany dla ręcznego eksportu Daily AI oraz harmonogramu `Daily z AI` zawiera teraz powiązane wpisy z zakładki `Do rozliczenia` dopasowane po kodzie zadania YouTrack.

@@ -16,6 +16,7 @@ export type WorkCategory = 'Programistyczne' | 'Obsługa projektu' | 'Inne';
 
 export interface WorkItemRow extends WorkItem {
     category: WorkCategory;
+    isMaintenance: boolean;
 }
 
 export interface SyncProgress {

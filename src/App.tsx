@@ -111,7 +111,7 @@ import {
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
-  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search, Bot
+  CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search, Bot, Bug
 } from 'lucide-react';
 
 import { 
@@ -167,6 +167,24 @@ const calculateNetFromGross = (gross: number, vatRate: number) => {
 
   return roundCurrency((gross || 0) / divisor);
 };
+
+const isBugIssueType = (value?: string | null) =>
+  value?.trim().toLowerCase() === 'bug';
+
+const buildBugHoursBreakdown = (items: Array<{ issueType?: string | null; minutes?: number }>) => (
+  items.reduce(
+    (acc, item) => {
+      const hours = (item.minutes || 0) / 60;
+      if (isBugIssueType(item.issueType)) {
+        acc.bug += hours;
+      } else {
+        acc.other += hours;
+      }
+      return acc;
+    },
+    { bug: 0, other: 0 },
+  )
+);
 
 const createClientId = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
@@ -1029,6 +1047,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
   const youtrackTotal = youtrackHours['Programistyczne'] + youtrackHours['Obsługa projektu'] + youtrackHours['Inne'];
   const maintenanceWorkedHours = maintenanceWorkItems.reduce((sum, item) => sum + (item.minutes || 0) / 60, 0);
+  const orderBugHours = buildBugHoursBreakdown(nonMaintenanceWorkItems);
+  const maintenanceBugHours = buildBugHoursBreakdown(maintenanceWorkItems);
+  const totalProjectBugHours = {
+    bug: orderBugHours.bug + maintenanceBugHours.bug,
+    other: orderBugHours.other + maintenanceBugHours.other,
+  };
   const totalProjectHoursByCategory: Record<string, number> = {
     'Programistyczne': youtrackHours['Programistyczne'] + maintenanceHoursByCategory['Programistyczne'],
     'Obsługa projektu': youtrackHours['Obsługa projektu'] + maintenanceHoursByCategory['Obsługa projektu'],
@@ -1109,6 +1133,10 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const totalProjectInPct = totalProjectWorkedHours > 0 ? (totalProjectHoursByCategory['Inne'] / totalProjectWorkedHours) * 100 : 0;
   const formatHoursWithUnit = (hours: number) => `${formatOrderHours(hours)} h`;
   const formatShareLabel = (hours: number, pct: number) => `${pct.toFixed(0)}% · ${formatHoursWithUnit(hours)}`;
+  const formatBugHoursShare = (hours: number, total: number) => {
+    const pct = total > 0 ? (hours / total) * 100 : 0;
+    return `${pct.toFixed(0)}% · ${formatHoursWithUnit(hours)}`;
+  };
   const pendingSettlementHours = contractedHours;
   const contractedTotalHours = totalHoursUsed;
   const remainingInContract = selectedProject.maxHours - contractedTotalHours;
@@ -1922,6 +1950,35 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                         <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(youtrackHours['Obsługa projektu'], obsPct)})</div>
                         <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(youtrackHours['Inne'], inPct)})</div>
                       </div>
+
+                      <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/50 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                            <Bug size={16} className="text-rose-500" />
+                            <span>Podział przepracowanych godzin: BUG / reszta</span>
+                          </div>
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                            {formatHoursWithUnit(youtrackTotal)}
+                          </span>
+                        </div>
+                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                          <div
+                            className="h-full bg-rose-500 transition-all duration-700"
+                            style={{ width: `${youtrackTotal > 0 ? Math.min(100, (orderBugHours.bug / youtrackTotal) * 100) : 0}%` }}
+                            title={`BUG: ${formatBugHoursShare(orderBugHours.bug, youtrackTotal)}`}
+                          />
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                          <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                            <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
+                            <span>{formatBugHoursShare(orderBugHours.bug, youtrackTotal)}</span>
+                          </div>
+                          <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                            <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
+                            <span>{formatBugHoursShare(orderBugHours.other, youtrackTotal)}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {selectedProject.hasMaintenance && (
@@ -1961,6 +2018,29 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(maintenanceHoursByCategory['Obsługa projektu'], maintenanceObsPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(maintenanceHoursByCategory['Inne'], maintenanceInPct)})</div>
                               </div>
+                              <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
+                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" /> BUG / reszta</span>
+                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(maintenanceWorkedHours)}</span>
+                                </div>
+                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                  <div
+                                    className="h-full bg-rose-500 transition-all duration-700"
+                                    style={{ width: `${maintenanceWorkedHours > 0 ? Math.min(100, (maintenanceBugHours.bug / maintenanceWorkedHours) * 100) : 0}%` }}
+                                    title={`BUG: ${formatBugHoursShare(maintenanceBugHours.bug, maintenanceWorkedHours)}`}
+                                  />
+                                </div>
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                    <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
+                                    <span>{formatBugHoursShare(maintenanceBugHours.bug, maintenanceWorkedHours)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                    <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
+                                    <span>{formatBugHoursShare(maintenanceBugHours.other, maintenanceWorkedHours)}</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1999,6 +2079,29 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(totalProjectHoursByCategory['Programistyczne'], totalProjectProgPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(totalProjectHoursByCategory['Obsługa projektu'], totalProjectObsPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(totalProjectHoursByCategory['Inne'], totalProjectInPct)})</div>
+                              </div>
+                              <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
+                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" /> BUG / reszta</span>
+                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(totalProjectWorkedHours)}</span>
+                                </div>
+                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                  <div
+                                    className="h-full bg-rose-500 transition-all duration-700"
+                                    style={{ width: `${totalProjectWorkedHours > 0 ? Math.min(100, (totalProjectBugHours.bug / totalProjectWorkedHours) * 100) : 0}%` }}
+                                    title={`BUG: ${formatBugHoursShare(totalProjectBugHours.bug, totalProjectWorkedHours)}`}
+                                  />
+                                </div>
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                    <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
+                                    <span>{formatBugHoursShare(totalProjectBugHours.bug, totalProjectWorkedHours)}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                    <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
+                                    <span>{formatBugHoursShare(totalProjectBugHours.other, totalProjectWorkedHours)}</span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </div>
