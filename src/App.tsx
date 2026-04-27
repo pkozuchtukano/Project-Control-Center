@@ -110,7 +110,7 @@ import {
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
   ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
-  FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon,
+  FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon, RefreshCw,
   CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search, Bot, Bug
 } from 'lucide-react';
 
@@ -127,6 +127,7 @@ import { YouTrackTab } from './components/YouTrackTab';
 import { WorkRegistryMain } from './features/work-registry/components/WorkRegistryMain';
 import { useWorkRegistry } from './features/work-registry/hooks/useWorkRegistry';
 import { exportOrdersToExcel, importOrdersFromExcel } from './features/work-registry/services/excelService';
+import { syncWorkItems, type SyncProgress } from './features/work-registry/services/youtrackSync';
 import { FileUp, FileDown, ExternalLink, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { EstimationMain } from './features/estimation/components/EstimationMain';
 import { MeetingNotesMain } from './features/meeting-notes/components/MeetingNotesMain';
@@ -155,6 +156,35 @@ export type { Project, Stakeholder, Estimation, EstimationItem, MeetingNoteData,
 const DEFAULT_MAINTENANCE_VAT_RATE = 23;
 
 const roundCurrency = (value: number) => Number((value || 0).toFixed(2));
+
+const isIsoDate = (value?: string | null) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+
+const formatDateDaysAgo = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return format(date, 'yyyy-MM-dd');
+};
+
+const getDashboardSyncStorageKey = (projectId: string) => `pcc_dashboard_youtrack_last_sync:${projectId}`;
+
+const readDashboardLastSyncDate = (projectId: string) => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const savedDate = window.localStorage.getItem(getDashboardSyncStorageKey(projectId));
+    return isIsoDate(savedDate) ? savedDate || '' : '';
+  } catch {
+    return '';
+  }
+};
+
+const saveDashboardLastSyncDate = (projectId: string, value: string) => {
+  if (typeof window === 'undefined' || !isIsoDate(value)) return;
+  try {
+    window.localStorage.setItem(getDashboardSyncStorageKey(projectId), value);
+  } catch {
+    // ignore storage write failures
+  }
+};
 
 const calculateGrossFromNet = (net: number, vatRate: number) =>
   roundCurrency((net || 0) * (1 + (vatRate || 0) / 100));
@@ -890,11 +920,16 @@ const ProjectModal = ({
 const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
-  const { workItems } = useWorkRegistry(selectedProject);
+  const { workItems, refresh: refreshWorkItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
+  const [dashboardSyncProgress, setDashboardSyncProgress] = useState<SyncProgress | null>(null);
+  const [dashboardSyncDateFrom, setDashboardSyncDateFrom] = useState('');
+  const [dashboardSyncDateTo, setDashboardSyncDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [dashboardLastSyncDate, setDashboardLastSyncDate] = useState('');
+  const [isDashboardSyncPanelOpen, setIsDashboardSyncPanelOpen] = useState(false);
   const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
   const [burnUpVisibleRange, setBurnUpVisibleRange] = useState<{ start: string; end: string } | null>(null);
   const [burnUpSelectionStart, setBurnUpSelectionStart] = useState<string | null>(null);
@@ -927,11 +962,75 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   }, [activeTab, selectedProject]);
 
   useEffect(() => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const lastSyncDate = selectedProject?.id ? readDashboardLastSyncDate(selectedProject.id) : '';
     setBurnUpRangeMode('halfYear');
     setBurnUpVisibleRange(null);
     setBurnUpSelectionStart(null);
     setBurnUpSelectionEnd(null);
+    setDashboardSyncProgress(null);
+    setDashboardLastSyncDate(lastSyncDate);
+    setDashboardSyncDateFrom(lastSyncDate || selectedProject?.dateFrom || formatDateDaysAgo(30));
+    setDashboardSyncDateTo(today);
+    setIsDashboardSyncPanelOpen(false);
   }, [selectedProject?.id]);
+
+  const applyLastThirtyDaysDashboardSyncRange = () => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    setDashboardSyncDateFrom(formatDateDaysAgo(30));
+    setDashboardSyncDateTo(today);
+  };
+
+  const handleDashboardSync = async () => {
+    if (!selectedProject) return;
+
+    if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) {
+      window.alert('Skonfiguruj YouTrack w ustawieniach głównych przed synchronizacją.');
+      return;
+    }
+
+    const projectQuery = (selectedProject.youtrackQuery || selectedProject.code || '').trim();
+    if (!projectQuery) {
+      window.alert('Projekt nie ma ustawionego kodu lub zapytania YouTrack.');
+      return;
+    }
+
+    if (!dashboardSyncDateFrom || !dashboardSyncDateTo) {
+      window.alert('Ustaw zakres dat synchronizacji.');
+      return;
+    }
+
+    if (dashboardSyncDateTo < dashboardSyncDateFrom) {
+      window.alert('Data końcowa synchronizacji jest wcześniejsza niż data początkowa.');
+      return;
+    }
+
+    await syncWorkItems(
+      selectedProject.id,
+      projectQuery,
+      dashboardSyncDateFrom,
+      dashboardSyncDateTo,
+      settings.youtrackBaseUrl,
+      settings.youtrackToken,
+      (progress) => {
+        setDashboardSyncProgress(progress);
+        if (progress.status === 'completed') {
+          const today = format(new Date(), 'yyyy-MM-dd');
+          saveDashboardLastSyncDate(selectedProject.id, today);
+          setDashboardLastSyncDate(today);
+          setDashboardSyncDateFrom(today);
+          setDashboardSyncDateTo(today);
+          void refreshWorkItems();
+          window.setTimeout(() => {
+            setDashboardSyncProgress((current) => current?.status === 'completed' ? null : current);
+          }, 3000);
+        }
+        if (progress.status === 'error') {
+          window.alert(progress.error || 'Nie udało się zsynchronizować danych z YouTrack.');
+        }
+      },
+    );
+  };
 
   useEffect(() => {
     const electronApi = window.electron;
@@ -1758,6 +1857,12 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     }));
   };
   const isSettlementSectionCollapsed = (sectionKey: string) => Boolean(collapsedSettlementSections[sectionKey]);
+  const isDashboardSyncing = dashboardSyncProgress?.status === 'syncing';
+  const dashboardSyncLabel = isDashboardSyncing
+    ? `Synchronizacja: ${dashboardSyncProgress.currentMonth}`
+    : dashboardSyncProgress?.status === 'completed'
+      ? 'Zsynchronizowano'
+      : 'Synchronizacja';
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
@@ -1779,13 +1884,100 @@ const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{selectedProject.name}</h1>
           </div>
-          <button
-            onClick={() => onEdit(selectedProject)}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
-          >
-            <Edit2 size={16} /> Edytuj szczegóły
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setIsDashboardSyncPanelOpen((current) => !current)}
+              disabled={isDashboardSyncing}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm border ${
+                dashboardSyncProgress?.status === 'completed'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40'
+                  : 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-75 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800 dark:hover:bg-indigo-900/50'
+              }`}
+              title={`Pobierz logi pracy z YouTrack dla zakresu ${dashboardSyncDateFrom || 'brak daty od'} - ${dashboardSyncDateTo || 'brak daty do'}`}
+            >
+              {isDashboardSyncing ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : dashboardSyncProgress?.status === 'completed' ? (
+                <CheckCircle size={16} />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+              <span>{dashboardSyncLabel}</span>
+              {!isDashboardSyncing && <ChevronDown size={14} className={`transition-transform ${isDashboardSyncPanelOpen ? 'rotate-180' : ''}`} />}
+            </button>
+            <button
+              onClick={() => onEdit(selectedProject)}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition shadow-sm"
+            >
+              <Edit2 size={16} /> Edytuj szczegóły
+            </button>
+          </div>
         </div>
+
+        {isDashboardSyncPanelOpen && (
+          <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm dark:border-indigo-900/40 dark:bg-gray-800">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Od</label>
+                  <input
+                    type="date"
+                    value={dashboardSyncDateFrom}
+                    max={dashboardSyncDateTo}
+                    onChange={(event) => setDashboardSyncDateFrom(event.target.value)}
+                    disabled={isDashboardSyncing}
+                    className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Do</label>
+                  <input
+                    type="date"
+                    value={dashboardSyncDateTo}
+                    min={dashboardSyncDateFrom}
+                    onChange={(event) => setDashboardSyncDateTo(event.target.value)}
+                    disabled={isDashboardSyncing}
+                    className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={applyLastThirtyDaysDashboardSyncRange}
+                  disabled={isDashboardSyncing}
+                  className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-700"
+                  title="Ustaw zakres synchronizacji od 30 dni temu do dzisiaj"
+                >
+                  Ostatnie 30 dni
+                </button>
+                {dashboardLastSyncDate && (
+                  <span className="flex h-9 items-center text-xs text-gray-500 dark:text-gray-400">
+                    Ostatnia synchronizacja: {dashboardLastSyncDate}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsDashboardSyncPanelOpen(false)}
+                  disabled={isDashboardSyncing}
+                  className="h-9 rounded-lg px-3 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 disabled:cursor-wait disabled:opacity-70 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  Zamknij
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDashboardSync()}
+                  disabled={isDashboardSyncing}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-75"
+                >
+                  {isDashboardSyncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  Pobierz dane
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* NAVIGATION TABS */}
         {serviceAlerts.length > 0 && (
@@ -6047,14 +6239,14 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
-                  <th className="px-6 py-4 whitespace-nowrap">ID</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Zgłaszający</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Data zgłoszenia</th>
-                  <th className="px-6 py-4">Tytuł</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Liczba godzin wycenionych</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Akceptacja?</th>
-                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
-                  <th className="px-6 py-4 text-center">Akcje</th>
+                  <th className="w-36 px-6 py-4 whitespace-nowrap">ID</th>
+                  <th className="w-28 px-4 py-4 whitespace-nowrap">Zgłaszający</th>
+                  <th className="w-32 px-4 py-4 whitespace-nowrap">Data zgłoszenia</th>
+                  <th className="min-w-[360px] px-4 py-4">Tytuł</th>
+                  <th className="w-20 px-2 py-4 text-center whitespace-nowrap" title="Liczba godzin wycenionych">Godz.</th>
+                  <th className="w-20 px-2 py-4 text-center whitespace-nowrap">Akcept.</th>
+                  <th className="w-36 px-2 py-4 whitespace-nowrap">Status</th>
+                  <th className="w-24 px-2 py-4 text-center">Akcje</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -6085,9 +6277,9 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{formatPendingSettlementRequester(entry.requester)}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4 text-gray-700 dark:text-gray-200 whitespace-nowrap">{formatPendingSettlementRequester(entry.requester)}</td>
+                    <td className="px-4 py-4 text-gray-600 dark:text-gray-300 whitespace-nowrap">{entry.requestDate}</td>
+                    <td className="px-4 py-4">
                       <div className="space-y-1">
                         <div className="font-medium text-gray-900 dark:text-white">{entry.title}</div>
                         {!entry.isEstimated && (
@@ -6107,22 +6299,22 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">
+                    <td className="px-2 py-4 text-center whitespace-nowrap text-gray-700 dark:text-gray-200">
                       <span className="font-bold text-gray-900 dark:text-white">{formatPendingSettlementHoursForExport(entry.estimatedHours)}</span>
-                      <span>{` (${formatPendingSettlementHoursForExport(entry.teamEstimatedHours)})`}</span>
+                      <span className="text-xs">{` (${formatPendingSettlementHoursForExport(entry.teamEstimatedHours)})`}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-2 py-4 text-center whitespace-nowrap text-gray-700 dark:text-gray-200">{entry.isAccepted ? 'Tak' : 'Nie'}</td>
+                    <td className="px-2 py-4 whitespace-nowrap">
                       <div className="relative inline-flex items-center">
                         <span
-                          className={`pointer-events-none absolute left-3 h-2 w-2 rounded-full ${getPendingSettlementStatusDotClass(entry)}`}
+                          className={`pointer-events-none absolute left-2.5 h-2 w-2 rounded-full ${getPendingSettlementStatusDotClass(entry)}`}
                           aria-hidden="true"
                         />
                         <select
                           value={getPendingSettlementStatusValue(entry)}
                           onChange={(event) => void handlePendingSettlementStatusChange(entry, event.target.value as PendingSettlementStatusValue)}
                           disabled={savingStatusEntryId === entry.id}
-                          className="max-w-[230px] appearance-none rounded-full border border-gray-200 bg-white py-1 pl-8 pr-8 text-xs font-semibold text-gray-800 outline-none transition hover:border-indigo-200 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/30 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-indigo-500/50 dark:focus:border-indigo-500"
+                          className="w-32 appearance-none rounded-full border border-gray-200 bg-white py-1 pl-6 pr-6 text-xs font-semibold text-gray-800 outline-none transition hover:border-indigo-200 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/30 disabled:cursor-wait disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-indigo-500/50 dark:focus:border-indigo-500"
                           title="Zmień status pozycji"
                         >
                           {pendingSettlementStatusOptions.map((option) => (
@@ -6132,13 +6324,13 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                           ))}
                         </select>
                         {savingStatusEntryId === entry.id ? (
-                          <Loader2 size={13} className="pointer-events-none absolute right-2 animate-spin text-current" />
+                          <Loader2 size={13} className="pointer-events-none absolute right-1.5 animate-spin text-current" />
                         ) : (
-                          <ChevronDown size={13} className="pointer-events-none absolute right-2 text-current" />
+                          <ChevronDown size={13} className="pointer-events-none absolute right-1.5 text-current" />
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td className="px-2 py-4 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"

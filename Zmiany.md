@@ -5,6 +5,12 @@
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
 ## Dashboard projektu
+- 2026-04-27 – Synchronizacja YouTrack z dashboardu projektu
+  -- W nagłówku dashboardu każdego projektu dodano przycisk `Synchronizacja`, który pobiera logi pracy z YouTrack dla zakresu dat ustawionego w projekcie.
+  -- Synchronizacja używa istniejącego mechanizmu rejestru pracy `syncWorkItems`, zapisuje dane przez dotychczasowy upsert i po zakończeniu odświeża metryki dashboardu bez zmiany schematu bazy.
+  -- Mechanizm synchronizacji nadal dzieli pobieranie na miesiące, ale pierwszy i ostatni fragment są teraz ograniczane dokładnie do wskazanych dat `od` i `do`.
+  -- Dashboard zapamiętuje lokalnie datę ostatniej udanej synchronizacji per projekt, domyślnie ustawia zakres od tej daty do dzisiaj oraz udostępnia szybki przycisk `Ostatnie 30 dni`.
+  -- Kliknięcie głównego przycisku `Synchronizacja` otwiera teraz panel ustawień zakresu dat, a samo pobranie danych uruchamia dopiero przycisk `Pobierz dane` w panelu.
 - 2026-04-27 – Podział przepracowanych godzin na `BUG` i resztę
   -- W głównym dashboardzie projektu dodano sekcję pokazującą udział godzin przepracowanych na zadaniach typu `BUG` względem pozostałych typów zadań.
   -- Podział bazuje na polu `issueType` zapisanym w rejestrze pracy z YouTrack i pokazuje procent oraz liczbę godzin.
@@ -723,6 +729,7 @@
   -- Zmiana korzysta z istniejących pól statusu i zapisuje wpis przez dotychczasowy mechanizm `savePendingSettlementEntry`, bez migracji bazy i bez utraty danych.
   -- Poprawiono kolorystykę kontrolki zmiany statusu: lista wyboru ma neutralne, czytelne tło, a status jest wyróżniany kolorową kropką zamiast barwienia całego natywnego selecta.
   -- Do kafelków filtrów dodano osobny filtr `Nowe`, liczony według właściwego statusu pozycji, a nie według samego stanu wyceny.
+  -- Zwężono prawe kolumny tabeli (`Godz.`, `Akcept.`, `Status`, `Akcje`), aby ważniejsze dane z wcześniejszych kolumn mieściły się w widoku bez nadmiernego przewijania.
   -- Uporządkowano typowanie pomocniczego liczenia kolejnego ID pozycji, bez zmiany formatu generowanych identyfikatorów.
 - 2026-04-16 – Zrzut ekranu w pozycjach `Do rozliczenia`
   -- Formularz pozycji `Do rozliczenia` został rozszerzony o pole obrazu z podglądem, dodawaniem pliku oraz wklejaniem zrzutu ekranu bezpośrednio ze schowka.

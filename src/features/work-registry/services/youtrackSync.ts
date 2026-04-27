@@ -35,20 +35,21 @@ export const syncWorkItems = async (
             parsedTo = new Date();
         }
 
-        const start = startOfMonth(parsedFrom);
-        const end = endOfMonth(parsedTo);
+        const start = parsedFrom;
+        const end = parsedTo;
 
         let currentIntervalStart = start;
         const chunks: { from: string; to: string; label: string }[] = [];
 
         while (!isAfter(currentIntervalStart, end)) {
-            const chunkEnd = endOfMonth(currentIntervalStart);
+            const monthEnd = endOfMonth(currentIntervalStart);
+            const chunkEnd = isAfter(monthEnd, end) ? end : monthEnd;
             chunks.push({
                 from: format(currentIntervalStart, 'yyyy-MM-dd'),
                 to: format(chunkEnd, 'yyyy-MM-dd'),
                 label: format(currentIntervalStart, 'LLLL yyyy', { locale: pl })
             });
-            currentIntervalStart = addMonths(currentIntervalStart, 1);
+            currentIntervalStart = addMonths(startOfMonth(currentIntervalStart), 1);
         }
 
         if (chunks.length === 0) {
