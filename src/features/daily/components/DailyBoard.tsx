@@ -402,6 +402,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
   const [showOnlyCommented, setShowOnlyCommented] = useState(false);
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
   const [isMinimalView, setIsMinimalView] = useState(false);
+  const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const [isAiExporting, setIsAiExporting] = useState(false);
   const [isAiCopied, setIsAiCopied] = useState(false);
   const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
@@ -1323,8 +1324,10 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
           ref={boardRef}
           className="flex-1 overflow-auto bg-gray-50/50 dark:bg-gray-950/50 scrollbar-thin scroll-smooth"
         >
-          <div className="flex items-start gap-6 px-6 py-6 min-w-max min-h-full">
-            {sections.map((section) => (
+          <div className={`flex items-start gap-6 px-6 py-6 min-h-full ${expandedSectionId ? 'min-w-full' : 'min-w-max'}`}>
+            {sections
+              .filter((section) => !expandedSectionId || section.id === expandedSectionId)
+              .map((section) => (
               <DailySectionColumn
                 key={section.id}
                 section={section}
@@ -1344,7 +1347,9 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
                 dateTo={dateTo}
                 isGlobalExpanded={isGlobalExpanded}
                 isMinimalView={isMinimalView}
-                columnCollapsed={!!collapsedSections[section.id]}
+                isWideExpanded={expandedSectionId === section.id}
+                onToggleWide={() => setExpandedSectionId((current) => current === section.id ? null : section.id)}
+                columnCollapsed={expandedSectionId === section.id ? false : !!collapsedSections[section.id]}
                 onToggleColumnCollapse={() => setCollapsedSections(prev => ({
                   ...prev,
                   [section.id]: !prev[section.id]

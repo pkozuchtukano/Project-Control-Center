@@ -212,7 +212,7 @@ export const DailyIssueCard = ({
             >
               {assigneeInitials}
             </button>
-            <span className="min-w-0 flex-1 truncate text-[11px] font-bold leading-none text-white">
+            <span className="min-w-0 flex-1 truncate text-[11px] font-normal leading-none text-white">
               {issue.summary}
             </span>
           </div>
@@ -302,7 +302,7 @@ export const DailyIssueCard = ({
           className="px-2 py-2 cursor-zoom-in"
           onClick={() => setIsDetailModalOpen(true)}
         >
-          <h4 className="text-[13px] font-black leading-tight text-white break-words">
+          <h4 className="text-[13px] font-normal leading-tight text-white break-words">
             {issue.summary}
           </h4>
         </div>

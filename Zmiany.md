@@ -10,11 +10,15 @@
   -- Minimalistyczna karta pokazuje kod zadania, typ, priorytet, status, tytuł oraz osobę przypisaną, a ponowne kliknięcie `Min` przywraca dotychczasowy pełny widok.
   -- Układ minimalistyczny został dodatkowo zagęszczony: typ, priorytet, status i osoba są prezentowane jako małe chipy/inicjały w nagłówku, a pełny tytuł zachowuje dotychczasową wielkość.
   -- Zadania przygaszone w trybie `Min` są prezentowane jako pojedynczy, ultra-kompaktowy wiersz z pełnym tytułem w jednej linii.
+  -- Tytuł zadania w trybie `Min` ma teraz normalną grubość tekstu zamiast pogrubienia.
 - 2026-04-27 – Rozwijanie karty z trybu `Min`
   -- W trybie `Min` kliknięcie nagłówka minimalistycznej karty rozwija pojedyncze zadanie do normalnego widoku.
   -- Kliknięcie nagłówka rozwiniętej karty w trybie `Min` zwija ją z powrotem do minimalistycznej prezentacji.
   -- Kliknięcie menu z trzema kropkami nadal otwiera szczegóły zadania i nie przełącza przypadkowo widoku karty.
   -- Minimalistyczna karta zachowuje widoczność zgodną z trybem normalnym, więc zadania zwinięte automatycznie lub ręcznie pozostają przygaszone do czasu najechania albo rozwinięcia.
+- 2026-04-27 – Sekcja Daily na pełną szerokość
+  -- Nagłówek każdej rozwiniętej sekcji Daily ma przycisk strzałki pozwalający pokazać tylko tę sekcję na pełnej szerokości tablicy.
+  -- W trybie pełnej szerokości zadania w sekcji układają się jako kafelki w siatce obok siebie, a przycisk w nagłówku przywraca normalny układ kolumn.
 - 2026-04-24 – Pełne Daily w wiadomości `Daily z AI`
   -- Harmonogram `Daily z AI` dołącza teraz do e-maila pełny, deterministycznie wyrenderowany blok `Pełne Daily` po sekcji analizy AI.
   -- Dzięki temu wiadomość nie opiera się wyłącznie na streszczeniu modelu Gemini i zawiera także wszystkie zadania oraz sekcje wybrane w źródle Daily, w lżejszym formacie HTML ograniczającym ryzyko przycięcia przez klienta poczty.
