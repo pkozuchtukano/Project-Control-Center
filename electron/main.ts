@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
-import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis } from '../src/types.js';
+import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis, PendingSettlementEntry } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -2170,6 +2170,124 @@ const pruneScheduledDailyJson = (value: unknown): unknown => {
     return value;
 };
 
+const pendingSettlementEntrySelectSql = `
+    SELECT
+        id,
+        projectId,
+        externalId,
+        requester,
+        requestDate,
+        requestChannel,
+        module,
+        title,
+        youtrackIssueUrl,
+        details,
+        priority,
+        teamEstimatedHours,
+        marginPercent,
+        estimatedHours,
+        isEstimated,
+        estimationDate,
+        isAccepted,
+        acceptanceDate,
+        acceptedBy,
+        acceptanceChannel,
+        preAcceptanceWorkHours,
+        preAcceptanceWorkDescription,
+        isInProgress,
+        isCompleted,
+        isSentToSettlement,
+        isSettled,
+        evidenceImageDataUrl,
+        evidenceImageName,
+        notes,
+        createdAt,
+        updatedAt
+    FROM pending_settlement_entries
+`;
+
+const mapPendingSettlementEntryRow = (row: any): PendingSettlementEntry => ({
+    ...row,
+    teamEstimatedHours: Number(row.teamEstimatedHours) || 0,
+    marginPercent: Number(row.marginPercent) || 0,
+    estimatedHours: Number(row.estimatedHours) || 0,
+    isEstimated: row.isEstimated === 1,
+    isAccepted: row.isAccepted === 1,
+    preAcceptanceWorkHours: Number(row.preAcceptanceWorkHours) || 0,
+    isInProgress: row.isInProgress === 1,
+    isCompleted: row.isCompleted === 1,
+    isSentToSettlement: row.isSentToSettlement === 1,
+    isSettled: row.isSettled === 1,
+});
+
+const extractYouTrackIssueId = (value?: string | null) => {
+    const match = value?.match(/\b[A-Z][A-Z0-9]+-\d+\b/i);
+    return match ? match[0].toUpperCase() : null;
+};
+
+const resolvePendingSettlementStatus = (entry: PendingSettlementEntry) => {
+    if (entry.isSettled) return 'settled';
+    if (entry.isSentToSettlement) return 'sentToSettlement';
+    if (entry.isCompleted) return 'completed';
+    if (entry.isInProgress) return 'inProgress';
+    if (entry.isAccepted) return 'accepted';
+    if (entry.isEstimated) return 'estimated';
+    return 'new';
+};
+
+const serializePendingSettlementEntryForDailyAi = (entry: PendingSettlementEntry) => ({
+    id: entry.id,
+    externalId: entry.externalId,
+    title: entry.title,
+    module: entry.module,
+    priority: entry.priority,
+    status: resolvePendingSettlementStatus(entry),
+    request: {
+        requester: anonymizeDailyDisplayName(entry.requester),
+        date: entry.requestDate,
+        channel: entry.requestChannel,
+    },
+    estimation: {
+        isEstimated: entry.isEstimated,
+        teamEstimatedHours: entry.teamEstimatedHours,
+        marginPercent: entry.marginPercent,
+        estimatedHours: entry.estimatedHours,
+        date: entry.estimationDate || null,
+    },
+    acceptance: {
+        isAccepted: entry.isAccepted,
+        acceptedBy: anonymizeDailyDisplayName(entry.acceptedBy || null),
+        date: entry.acceptanceDate || null,
+        channel: entry.acceptanceChannel || null,
+    },
+    preAcceptanceWork: {
+        hours: entry.preAcceptanceWorkHours,
+        description: entry.preAcceptanceWorkDescription,
+    },
+    flags: {
+        isInProgress: entry.isInProgress,
+        isCompleted: entry.isCompleted,
+        isSentToSettlement: entry.isSentToSettlement,
+        isSettled: entry.isSettled,
+    },
+    notes: entry.notes || null,
+});
+
+const getPendingSettlementEntriesByIssueId = () => {
+    const entries = db.prepare(`${pendingSettlementEntrySelectSql} ORDER BY requestDate DESC, createdAt DESC`)
+        .all()
+        .map(mapPendingSettlementEntryRow);
+    const entriesByIssueId = new Map<string, PendingSettlementEntry[]>();
+
+    entries.forEach((entry) => {
+        const issueId = extractYouTrackIssueId(entry.youtrackIssueUrl || entry.externalId || entry.title);
+        if (!issueId) return;
+        entriesByIssueId.set(issueId, [...(entriesByIssueId.get(issueId) || []), entry]);
+    });
+
+    return entriesByIssueId;
+};
+
 const shouldIncludeDailyActivity = (activity: DailyReportIssue['timeline'][number]) => {
     if (activity.type === 'comment') return true;
     if (activity.type === 'work-item') return true;
@@ -2841,6 +2959,7 @@ const buildScheduledDailyAiPayload = (
     const toTime = new Date(`${to}T23:59:59`).getTime();
     const issuesById = new Map<string, DailyReportIssue>();
     const currentSectionByIssue = new Map<string, DailySection>();
+    const pendingSettlementEntriesByIssueId = getPendingSettlementEntriesByIssueId();
 
     const sectionSummaries = sections.map((section) => {
         const issues = getScheduledDailySectionIssues(section, activityIssues, boardIssues, activityIssueIds, skippedInAiIssues);
@@ -2890,6 +3009,8 @@ const buildScheduledDailyAiPayload = (
             }));
 
         const pmNote = comments[issue.idReadable]?.trim() || null;
+        const pendingSettlementEntries = (pendingSettlementEntriesByIssueId.get(issue.idReadable.toUpperCase()) || [])
+            .map(serializePendingSettlementEntryForDailyAi);
 
         return {
             id: issue.idReadable,
@@ -2911,6 +3032,17 @@ const buildScheduledDailyAiPayload = (
             assignee: anonymizeDailyDisplayName(issue.assignee?.fullName || issue.assignee?.name || issue.assignee?.login || null),
             spentTime: issue.spentTime || null,
             estimation: issue.estimation || null,
+            ...(pendingSettlementEntries.length
+                ? {
+                    settlement: {
+                        isReportedForSettlement: true,
+                        count: pendingSettlementEntries.length,
+                        isEstimated: pendingSettlementEntries.some((entry) => entry.estimation.isEstimated),
+                        isAccepted: pendingSettlementEntries.some((entry) => entry.acceptance.isAccepted),
+                        pendingSettlementEntries,
+                    },
+                }
+                : {}),
             isActiveInRange: activityIssueIds.has(issue.idReadable),
             ...(pmNote ? { hasPmNote: true, pmNote } : {}),
             activitiesInRange,
@@ -2950,6 +3082,7 @@ const buildScheduledDailyAiPayload = (
             issues: serializedIssues.length,
             activeIssuesInRange: serializedIssues.filter((issue) => issue.isActiveInRange).length,
             issuesWithPmNotes: serializedIssues.filter((issue) => issue.hasPmNote).length,
+            issuesWithPendingSettlement: serializedIssues.filter((issue) => Boolean(issue.settlement)).length,
         },
         issueTitles: Object.fromEntries(serializedIssues.map((issue) => [issue.id, issue.title])),
         sections: sectionSummaries,
@@ -2962,6 +3095,7 @@ const appendScheduledDailyAiSystemRules = (systemInstruction: string) => [
     'W każdej odpowiedzi, gdy wymieniasz zadanie z YouTrack, podawaj kod razem z tytułem w formacie `KOD-123 - Tytuł zadania`. Nie wypisuj samego kodu bez tytułu.',
     'Pisz raport w krótkich sekcjach projektowych. Dla każdego zadania użyj osobnego punktu listy, zaczynając punkt od `KOD-123 - Tytuł zadania:`, a po dwukropku dodaj krótki opis statusu i najważniejszych aktywności. Unikaj bardzo długich akapitów.',
     'Nie pomijaj zadań przekazanych w JSON. Jeżeli zadanie jest widoczne tylko w sekcji planowania lub nie ma aktywności w zakresie dat, nadal uwzględnij je w odpowiedniej sekcji raportu.',
+    'Jeżeli zadanie ma pole `settlement`, uwzględnij w opisie informacje z zakładki Do rozliczenia: kto i kiedy zgłosił zadanie, czy zostało wycenione oraz czy zaakceptowano je do realizacji. Nie deanonimizuj osób.',
     'Nie analizuj i nie wspominaj zadań, których nie ma w przekazanym JSON. Zadania oznaczone jako pominięte w AI są usunięte z JSON i mają być traktowane jako niewidoczne.',
 ].filter(Boolean).join('\n\n');
 
@@ -4646,54 +4780,10 @@ ipcMain.handle('import-service-obligations', async (_, data: { projectId: string
 ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) => {
     try {
         return db.prepare(`
-            SELECT
-                id,
-                projectId,
-                externalId,
-                requester,
-                requestDate,
-                requestChannel,
-                module,
-                title,
-                youtrackIssueUrl,
-                details,
-                priority,
-                teamEstimatedHours,
-                marginPercent,
-                estimatedHours,
-                isEstimated,
-                estimationDate,
-                isAccepted,
-                acceptanceDate,
-                acceptedBy,
-                acceptanceChannel,
-                preAcceptanceWorkHours,
-                preAcceptanceWorkDescription,
-                isInProgress,
-                isCompleted,
-                isSentToSettlement,
-                isSettled,
-                evidenceImageDataUrl,
-                evidenceImageName,
-                notes,
-                createdAt,
-                updatedAt
-            FROM pending_settlement_entries
+            ${pendingSettlementEntrySelectSql}
             WHERE projectId = ?
             ORDER BY requestDate DESC, createdAt DESC
-        `).all(projectId).map((row: any) => ({
-            ...row,
-            teamEstimatedHours: Number(row.teamEstimatedHours) || 0,
-            marginPercent: Number(row.marginPercent) || 0,
-            estimatedHours: Number(row.estimatedHours) || 0,
-            isEstimated: row.isEstimated === 1,
-            isAccepted: row.isAccepted === 1,
-            preAcceptanceWorkHours: Number(row.preAcceptanceWorkHours) || 0,
-            isInProgress: row.isInProgress === 1,
-            isCompleted: row.isCompleted === 1,
-            isSentToSettlement: row.isSentToSettlement === 1,
-            isSettled: row.isSettled === 1,
-        }));
+        `).all(projectId).map(mapPendingSettlementEntryRow);
     } catch (error) {
         console.error('Błąd pobierania wpisów do rozliczenia:', error);
         throw error;

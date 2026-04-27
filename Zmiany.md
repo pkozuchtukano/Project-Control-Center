@@ -5,6 +5,10 @@
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
 ## Daily Command Center
+- 2026-04-27 – Dane `Do rozliczenia` w JSON Daily AI
+  -- JSON budowany dla ręcznego eksportu Daily AI oraz harmonogramu `Daily z AI` zawiera teraz powiązane wpisy z zakładki `Do rozliczenia` dopasowane po kodzie zadania YouTrack.
+  -- Przy zadaniu przekazywane są dane zgłoszenia, wyceny, akceptacji, statusu rozliczeniowego, prac przedakceptacyjnych i notatek, aby analiza AI mogła opisać kto i kiedy zgłosił zadanie oraz czy zostało wycenione i zaakceptowane do realizacji.
+  -- Dane osobowe z pól zgłaszającego i zatwierdzającego są anonimizowane tym samym mechanizmem co dane YouTrack w Daily AI, czyli do formatu imię plus inicjał nazwiska z kropką.
 - 2026-04-27 – Minimalistyczny widok kart Daily
   -- Na pasku akcji tablicy Daily dodano przycisk `Min`, który przełącza wszystkie widoczne zadania na minimalistyczne karty.
   -- Minimalistyczna karta pokazuje kod zadania, typ, priorytet, status, tytuł oraz osobę przypisaną, a ponowne kliknięcie `Min` przywraca dotychczasowy pełny widok.

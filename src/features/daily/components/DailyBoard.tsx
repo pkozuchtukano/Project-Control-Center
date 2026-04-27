@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, ArrowUp, MessageSquare, Bot, Sparkles } from 'lucide-react';
 import { useProjectContext } from '../../../context/ProjectContext';
-import type { DailyAiAnalysis, DailySection, GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
+import type { DailyAiAnalysis, DailySection, GeminiGenerateRequest, GeminiGenerateResponse, PendingSettlementEntry } from '../../../types';
 import { getSmartDateRange } from '../utils/dailyUtils';
 import { DailySectionColumn } from './DailySectionColumn';
 import { DailyAiAnalysisModal } from './DailyAiAnalysisModal';
@@ -25,6 +25,59 @@ const anonymizeDisplayName = (value?: string | null) => {
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[parts.length - 1][0]}.`;
 };
+
+const extractYouTrackIssueId = (value?: string | null) => {
+  const match = value?.match(/\b[A-Z][A-Z0-9]+-\d+\b/i);
+  return match ? match[0].toUpperCase() : null;
+};
+
+const resolvePendingSettlementStatus = (entry: PendingSettlementEntry) => {
+  if (entry.isSettled) return 'settled';
+  if (entry.isSentToSettlement) return 'sentToSettlement';
+  if (entry.isCompleted) return 'completed';
+  if (entry.isInProgress) return 'inProgress';
+  if (entry.isAccepted) return 'accepted';
+  if (entry.isEstimated) return 'estimated';
+  return 'new';
+};
+
+const serializePendingSettlementEntryForAi = (entry: PendingSettlementEntry) => ({
+  id: entry.id,
+  externalId: entry.externalId,
+  title: entry.title,
+  module: entry.module,
+  priority: entry.priority,
+  status: resolvePendingSettlementStatus(entry),
+  request: {
+    requester: anonymizeDisplayName(entry.requester),
+    date: entry.requestDate,
+    channel: entry.requestChannel,
+  },
+  estimation: {
+    isEstimated: entry.isEstimated,
+    teamEstimatedHours: entry.teamEstimatedHours,
+    marginPercent: entry.marginPercent,
+    estimatedHours: entry.estimatedHours,
+    date: entry.estimationDate || null,
+  },
+  acceptance: {
+    isAccepted: entry.isAccepted,
+    acceptedBy: anonymizeDisplayName(entry.acceptedBy || null),
+    date: entry.acceptanceDate || null,
+    channel: entry.acceptanceChannel || null,
+  },
+  preAcceptanceWork: {
+    hours: entry.preAcceptanceWorkHours,
+    description: entry.preAcceptanceWorkDescription,
+  },
+  flags: {
+    isInProgress: entry.isInProgress,
+    isCompleted: entry.isCompleted,
+    isSentToSettlement: entry.isSentToSettlement,
+    isSettled: entry.isSettled,
+  },
+  notes: entry.notes || null,
+});
 
 const normalizeForAnalysis = (value?: string | null) => (value || '').toLowerCase();
 
@@ -374,7 +427,7 @@ interface DailyBoardProps {
 }
 
 export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoardProps) => {
-  const { settings } = useProjectContext();
+  const { settings, projects: configuredProjects } = useProjectContext();
   const boardRef = useRef<HTMLDivElement>(null);
   const normalizedLockedProjectCode = lockedProjectCode?.trim().toUpperCase() || null;
 
@@ -430,6 +483,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
     return saved ? JSON.parse(saved) : { fixed_aktywnosci: false };
   });
   const [dynamicSections, setDynamicSections] = useState<DailySection[]>([]);
+  const [pendingSettlementEntriesByIssueId, setPendingSettlementEntriesByIssueId] = useState<Record<string, PendingSettlementEntry[]>>({});
 
   useEffect(() => {
     setSelectedProject(normalizedLockedProjectCode);
@@ -601,6 +655,51 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
     return configuredCodes.filter(code => foundCodes.has(code));
   }, [combinedIssues, projectCodes]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadPendingSettlementEntries = async () => {
+      if (!window.electron?.getPendingSettlementEntries) {
+        setPendingSettlementEntriesByIssueId({});
+        return;
+      }
+
+      const configuredCodes = new Set(projectCodes.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean));
+      const projectIds = configuredProjects
+        .filter((project) => configuredCodes.has(project.code.trim().toUpperCase()))
+        .map((project) => project.id);
+
+      if (projectIds.length === 0) {
+        setPendingSettlementEntriesByIssueId({});
+        return;
+      }
+
+      const entriesByIssueId: Record<string, PendingSettlementEntry[]> = {};
+      const entriesByProject = await Promise.all(projectIds.map((projectId) => window.electron!.getPendingSettlementEntries(projectId)));
+
+      entriesByProject.flat().forEach((entry) => {
+        const issueId = extractYouTrackIssueId(entry.youtrackIssueUrl || entry.externalId || entry.title);
+        if (!issueId) return;
+        entriesByIssueId[issueId] = [...(entriesByIssueId[issueId] || []), entry];
+      });
+
+      if (!isCancelled) {
+        setPendingSettlementEntriesByIssueId(entriesByIssueId);
+      }
+    };
+
+    void loadPendingSettlementEntries().catch((error) => {
+      console.error('Błąd pobierania wpisów do rozliczenia dla Daily AI:', error);
+      if (!isCancelled) {
+        setPendingSettlementEntriesByIssueId({});
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [configuredProjects, projectCodes]);
+
   const uniqueAssignees = useMemo(() => {
     const aMap = new Map<string, { name: string; projects: Set<string> }>();
     let hasUnassigned = false;
@@ -737,6 +836,8 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
       const stateName = typeof issue.state === 'string' ? issue.state : issue.state?.name || null;
       const stage = classifyExecutionStage(currentSection?.name || 'Aktywności', stateName);
       const pmNote = comments[issue.idReadable]?.trim() || null;
+      const pendingSettlementEntries = (pendingSettlementEntriesByIssueId[issue.idReadable.toUpperCase()] || [])
+        .map(serializePendingSettlementEntryForAi);
       const activitiesInRange = (issue.timeline || [])
         .filter((item) => item.timestamp >= new Date(`${dateFrom}T00:00:00`).getTime() && item.timestamp <= new Date(`${dateTo}T23:59:59`).getTime())
         .map((item) => ({
@@ -792,6 +893,17 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
         dueDate: formatIsoDateTime(issue.dueDate),
         estimation: issue.estimation || null,
         spentTime: issue.spentTime || null,
+        ...(pendingSettlementEntries.length
+          ? {
+              settlement: {
+                isReportedForSettlement: true,
+                count: pendingSettlementEntries.length,
+                isEstimated: pendingSettlementEntries.some((entry) => entry.estimation.isEstimated),
+                isAccepted: pendingSettlementEntries.some((entry) => entry.acceptance.isAccepted),
+                pendingSettlementEntries,
+              },
+            }
+          : {}),
         activitiesInRange,
         ...(activitiesInRange.length ? { activityCountInRange: activitiesInRange.length } : {}),
         ...(activitiesInRange.length ? { latestActivityAt: activitiesInRange[activitiesInRange.length - 1].timestamp } : {}),
@@ -865,6 +977,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
         visibleIssues: serializedIssues.length,
         activeIssuesInRange: serializedIssues.filter((issue) => issue.isActiveInRange).length,
         issuesWithPmNotes: serializedIssues.filter((issue) => issue.hasPmNote).length,
+        issuesWithPendingSettlement: serializedIssues.filter((issue) => Boolean(issue.settlement)).length,
         executionStages: Object.fromEntries(Object.entries(stageBuckets).map(([key, value]) => [key, value.length])),
       },
       aiContext: {
@@ -892,7 +1005,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
       sections: Array<Record<string, unknown>>;
       issues: Array<Record<string, unknown>>;
     };
-  }, [sections, collapsedSections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
+  }, [sections, collapsedSections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, pendingSettlementEntriesByIssueId, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
 
   const visibleAnalysisProjectCodes = useMemo(() => {
     const codes = new Set<string>();
