@@ -461,6 +461,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
   const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [isSavingAiAnalysis, setIsSavingAiAnalysis] = useState(false);
+  const [isExportingAiToClickUp, setIsExportingAiToClickUp] = useState(false);
   const [comments, setComments] = useState<Record<string, string>>({});
   const [savedAiAnalyses, setSavedAiAnalyses] = useState<DailyAiAnalysis[]>([]);
   const [selectedAiAnalysisId, setSelectedAiAnalysisId] = useState<string | null>(null);
@@ -1032,6 +1033,14 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
     return titles;
   }, [aiExportSummary]);
 
+  const clickUpDailyTargetProject = useMemo(() => {
+    const targetCode = normalizedLockedProjectCode || (visibleAnalysisProjectCodes.length === 1 ? visibleAnalysisProjectCodes[0] : null);
+    if (!targetCode) return null;
+    return configuredProjects.find((project) => project.code.trim().toUpperCase() === targetCode.trim().toUpperCase()) || null;
+  }, [configuredProjects, normalizedLockedProjectCode, visibleAnalysisProjectCodes]);
+
+  const clickUpDailyUrl = clickUpDailyTargetProject?.clickupDailyUrl?.trim() || '';
+
   const fetchActivitiesFirst = async () => {
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) return;
     if (!dateFrom || !dateTo) return;
@@ -1188,6 +1197,33 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
       await persistAiAnalysis(analysis);
     } finally {
       setIsSavingAiAnalysis(false);
+    }
+  };
+
+  const handleExportAiAnalysisToClickUp = async (content: string) => {
+    if (!window.electron?.exportDailyAiToClickUp) {
+      throw new Error('Eksport do ClickUp jest dostępny tylko w aplikacji desktopowej Electron.');
+    }
+
+    if (!clickUpDailyUrl) {
+      throw new Error('Uzupełnij `Url do daily` w sekcji ClickUp w ustawieniach projektu.');
+    }
+
+    const projectLabel = clickUpDailyTargetProject?.code || visibleAnalysisProjectCodes.join(', ') || projectCodes;
+    const title = `Daily AI ${projectLabel} ${dateFrom} - ${dateTo}`;
+
+    setIsExportingAiToClickUp(true);
+    try {
+      const result = await window.electron.exportDailyAiToClickUp({
+        docUrl: clickUpDailyUrl,
+        title,
+        content,
+      });
+      return result.mode === 'append'
+        ? `Dopisano treść do istniejącej strony ClickUp (${result.pageId}).`
+        : `Utworzono nową stronę ClickUp (${result.pageId || 'brak page_id w odpowiedzi'}).`;
+    } finally {
+      setIsExportingAiToClickUp(false);
     }
   };
 
@@ -1511,6 +1547,9 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
         isAnalyzing={isAiAnalyzing}
         onSaveAnalysis={handleSaveAiAnalysisFromModal}
         isSavingAnalysis={isSavingAiAnalysis}
+        onExportToClickUp={handleExportAiAnalysisToClickUp}
+        isExportingToClickUp={isExportingAiToClickUp}
+        canExportToClickUp={Boolean(clickUpDailyUrl)}
       />
 
       <DailyAiAnalysisEditorModal

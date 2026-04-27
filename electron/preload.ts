@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('electron', {
     exportPdf: (options?: { defaultFileName?: string, password?: string }) => ipcRenderer.invoke('export-pdf', options),
     writeClipboardHtml: (data: { html: string, text?: string }) => ipcRenderer.invoke('write-clipboard-html', data),
     askGemini: (data: any) => ipcRenderer.invoke('ask-gemini', data),
+    exportDailyAiToClickUp: (data: any) => ipcRenderer.invoke('export-daily-ai-to-clickup', data),
     
     // Daily Handlers
     getDailyHubs: () => ipcRenderer.invoke('get-daily-hubs'),

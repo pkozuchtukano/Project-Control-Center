@@ -37,12 +37,14 @@ const ProjectModal = ({
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [youtrackQuery, setYoutrackQuery] = useState('');
+  const [clickupDailyUrl, setClickupDailyUrl] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
     setCode(projectToEdit?.code || '');
     setName(projectToEdit?.name || '');
     setYoutrackQuery(projectToEdit?.youtrackQuery || projectToEdit?.code || '');
+    setClickupDailyUrl(projectToEdit?.clickupDailyUrl || '');
   }, [isOpen, projectToEdit]);
 
   if (!isOpen) return null;
@@ -58,10 +60,12 @@ const ProjectModal = ({
           onSubmit={async (event) => {
             event.preventDefault();
             await pccRepository.saveProject({
+              ...(projectToEdit || {}),
               id: projectToEdit?.id || createClientId('project'),
               code: code.trim(),
               name: name.trim(),
               youtrackQuery: youtrackQuery.trim() || code.trim(),
+              clickupDailyUrl: clickupDailyUrl.trim(),
             });
             onSaved();
           }}
@@ -88,6 +92,16 @@ const ProjectModal = ({
             <input
               value={youtrackQuery}
               onChange={(event) => setYoutrackQuery(event.target.value)}
+              className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+          <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+            <h3 className="mb-3 text-sm font-bold text-gray-900 dark:text-white">ClickUp</h3>
+            <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-gray-400">Url do daily</label>
+            <input
+              value={clickupDailyUrl}
+              onChange={(event) => setClickupDailyUrl(event.target.value)}
+              placeholder="https://app.clickup.com/..."
               className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
           </div>

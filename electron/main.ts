@@ -31,6 +31,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS = [1200, 2800];
 const DEFAULT_SCHEDULED_TASK_MAX_OUTPUT_TOKENS = 24000;
+const CLICKUP_API_BASE_URL = 'https://api.clickup.com/api/v3';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -190,6 +191,232 @@ const generateGeminiContent = async ({
             throw fallbackError;
         }
     }
+};
+
+type ClickUpDailyExportRequest = {
+    docUrl: string;
+    title: string;
+    content: string;
+};
+
+type ClickUpPageResponse = {
+    id?: string;
+    name?: string;
+    content?: string;
+    page?: {
+        id?: string;
+        name?: string;
+        content?: string;
+    };
+};
+
+const encodeClickUpPathPart = (value: string) => encodeURIComponent(value);
+
+const extractClickUpDailyTarget = (docUrl: string) => {
+    const trimmedUrl = docUrl.trim();
+    if (!trimmedUrl) {
+        throw new Error('Brak adresu dokumentu ClickUp w konfiguracji projektu.');
+    }
+
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmedUrl);
+    } catch {
+        throw new Error('Niepoprawny adres dokumentu ClickUp w konfiguracji projektu.');
+    }
+
+    const segments = parsed.pathname
+        .split('/')
+        .map((segment) => decodeURIComponent(segment.trim()))
+        .filter(Boolean);
+
+    const workspaceId =
+        parsed.searchParams.get('workspace_id') ||
+        parsed.searchParams.get('workspaceId') ||
+        segments.find((segment) => /^\d+$/.test(segment));
+
+    let docId =
+        parsed.searchParams.get('doc_id') ||
+        parsed.searchParams.get('docId') ||
+        '';
+    let pageId =
+        parsed.searchParams.get('page_id') ||
+        parsed.searchParams.get('pageId') ||
+        parsed.searchParams.get('page') ||
+        '';
+
+    const docMarkerIndex = segments.findIndex((segment) => ['dc', 'docs', 'doc'].includes(segment.toLowerCase()));
+    if (docMarkerIndex >= 0) {
+        const afterMarker = segments.slice(docMarkerIndex + 1);
+        const docIdIndex = afterMarker.findIndex((segment) => segment && !/^\d+$/.test(segment));
+        if (!docId && docIdIndex >= 0) {
+            docId = afterMarker[docIdIndex];
+        }
+        if (!pageId && docIdIndex >= 0 && afterMarker[docIdIndex + 1]) {
+            pageId = afterMarker[docIdIndex + 1];
+        }
+    }
+
+    if (!workspaceId) {
+        throw new Error('Nie udało się odczytać workspace_id z adresu ClickUp. Użyj pełnego URL dokumentu z ClickUp.');
+    }
+
+    if (!docId) {
+        throw new Error('Nie udało się odczytać doc_id z adresu ClickUp. Użyj pełnego URL dokumentu z ClickUp.');
+    }
+
+    return { workspaceId, docId, pageId: pageId || null, sourceUrl: trimmedUrl };
+};
+
+const sendClickUpRequest = async (endpoint: string, init: RequestInit) => {
+    const apiToken = envSettings.clickupApiToken?.trim();
+    if (!apiToken) {
+        throw new Error('Brak CLICKUP_API_TOKEN w pliku .env.');
+    }
+
+    const response = await fetch(`${CLICKUP_API_BASE_URL}${endpoint}`, {
+        ...init,
+        headers: {
+            Authorization: apiToken,
+            'Content-Type': 'application/json',
+            ...(init.headers || {}),
+        },
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`ClickUp API zwróciło błąd ${response.status}${errorBody ? `: ${errorBody}` : ''}`);
+    }
+
+    const text = await response.text();
+    if (!text.trim()) return {};
+    try {
+        return JSON.parse(text);
+    } catch {
+        return {};
+    }
+};
+
+const getClickUpPage = async (workspaceId: string, docId: string, pageId: string) =>
+    sendClickUpRequest(
+        `/workspaces/${encodeClickUpPathPart(workspaceId)}/docs/${encodeClickUpPathPart(docId)}/pages/${encodeClickUpPathPart(pageId)}?content_format=text/md`,
+        { method: 'GET' },
+    ) as Promise<ClickUpPageResponse>;
+
+const getClickUpPageContent = (page: ClickUpPageResponse) =>
+    typeof page.content === 'string'
+        ? page.content
+        : typeof page.page?.content === 'string'
+            ? page.page.content
+            : '';
+
+const assertClickUpPageContainsExport = async (workspaceId: string, docId: string, pageId: string, title: string, content: string) => {
+    const page = await getClickUpPage(workspaceId, docId, pageId);
+    const pageContent = getClickUpPageContent(page);
+    const contentProbe = content.slice(0, 80).trim();
+
+    if (!pageContent.includes(title) && (!contentProbe || !pageContent.includes(contentProbe))) {
+        throw new Error(
+            `ClickUp przyjął zapis, ale pobrana treść strony ${pageId} nie zawiera eksportu. ` +
+            'Sprawdź, czy URL wskazuje właściwą stronę dokumentu i czy token ma uprawnienia edycji tej strony.',
+        );
+    }
+};
+
+const describeClickUpTarget = (target: ReturnType<typeof extractClickUpDailyTarget>) =>
+    `workspace_id=${target.workspaceId}, doc_id=${target.docId}, page_id=${target.pageId || 'brak'}, url=${target.sourceUrl}`;
+
+const buildYouTrackIssueUrlForExport = (issueId: string) => {
+    const baseUrl = envSettings.youtrackBaseUrl?.trim().replace(/\/+$/, '');
+    if (!baseUrl) return null;
+    return `${baseUrl}/issue/${encodeURIComponent(issueId)}`;
+};
+
+const linkifyYouTrackIssueCodesForMarkdown = (content: string) =>
+    content.replace(/(?<![\w\[\]\)/-])\b([A-Z][A-Z0-9]+-\d+)\b(?![\w\]/-])/g, (match, issueId: string, offset: number, source: string) => {
+        const before = source.slice(Math.max(0, offset - 2), offset);
+        if (before === '](') return match;
+
+        const issueUrl = buildYouTrackIssueUrlForExport(issueId);
+        if (!issueUrl) return match;
+
+        return `[${issueId}](${issueUrl})`;
+    });
+
+const exportDailyAiToClickUp = async ({ docUrl, title, content }: ClickUpDailyExportRequest) => {
+    const normalizedContent = content.trim();
+    if (!normalizedContent) {
+        throw new Error('Brak treści analizy AI do eksportu.');
+    }
+
+    const target = extractClickUpDailyTarget(docUrl);
+    const exportTitle = title.trim() || `Daily AI ${new Date().toLocaleString('pl-PL')}`;
+    const linkedContent = linkifyYouTrackIssueCodesForMarkdown(normalizedContent);
+    const markdownContent = [`---`, `# ${exportTitle}`, '', linkedContent].join('\n');
+
+    if (target.pageId) {
+        try {
+            await sendClickUpRequest(
+                `/workspaces/${encodeClickUpPathPart(target.workspaceId)}/docs/${encodeClickUpPathPart(target.docId)}/pages/${encodeClickUpPathPart(target.pageId)}`,
+                {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        content: `\n\n${markdownContent}`,
+                        content_edit_mode: 'append',
+                        content_format: 'text/md',
+                    }),
+                },
+            );
+
+            await assertClickUpPageContainsExport(target.workspaceId, target.docId, target.pageId, exportTitle, linkedContent);
+        } catch (error: any) {
+            throw new Error(`${error?.message || 'Nie udało się dopisać treści do strony ClickUp.'} Odczytany cel: ${describeClickUpTarget(target)}`);
+        }
+
+        return {
+            success: true,
+            mode: 'append' as const,
+            workspaceId: target.workspaceId,
+            docId: target.docId,
+            pageId: target.pageId,
+            verified: true,
+        };
+    }
+
+    let createdPage: { id?: string; page?: { id?: string } };
+    try {
+        createdPage = await sendClickUpRequest(
+            `/workspaces/${encodeClickUpPathPart(target.workspaceId)}/docs/${encodeClickUpPathPart(target.docId)}/pages`,
+            {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: exportTitle,
+                    content: linkedContent,
+                    content_format: 'text/md',
+                }),
+            },
+        ) as { id?: string; page?: { id?: string } };
+    } catch (error: any) {
+        throw new Error(`${error?.message || 'Nie udało się utworzyć strony ClickUp.'} Odczytany cel: ${describeClickUpTarget(target)}`);
+    }
+
+    const createdPageId = createdPage.id || createdPage.page?.id;
+    if (createdPageId) {
+        try {
+            await assertClickUpPageContainsExport(target.workspaceId, target.docId, createdPageId, exportTitle, linkedContent);
+        } catch (error: any) {
+            throw new Error(`${error?.message || 'Nie udało się zweryfikować strony ClickUp.'} Odczytany cel: ${describeClickUpTarget(target)}`);
+        }
+    }
+
+    return {
+        success: true,
+        mode: 'create_page' as const,
+        workspaceId: target.workspaceId,
+        docId: target.docId,
+        pageId: createdPageId,
+        verified: Boolean(createdPageId),
+    };
 };
 
 // Inicjalizacja SQLite
@@ -1617,6 +1844,15 @@ ipcMain.handle('ask-gemini', async (_, request: GeminiGenerateRequest) => {
         });
     } catch (error: any) {
         console.error('Błąd zapytania ask-gemini:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('export-daily-ai-to-clickup', async (_, request: ClickUpDailyExportRequest) => {
+    try {
+        return await exportDailyAiToClickUp(request);
+    } catch (error: any) {
+        console.error('Błąd eksportu Daily AI do ClickUp:', error);
         throw error;
     }
 });

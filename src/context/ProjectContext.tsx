@@ -26,6 +26,7 @@ const normalizeProject = (project: Project): Project => {
     maintenanceNetAmount,
     maintenanceVatRate,
     maintenanceGrossAmount,
+    clickupDailyUrl: project.clickupDailyUrl ?? '',
   };
 };
 

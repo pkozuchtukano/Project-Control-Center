@@ -5,6 +5,10 @@
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
 ## Dashboard projektu
+- 2026-04-27 - Sekcja ClickUp w ustawieniach projektu
+  -- W formularzu dodawania i edycji projektu dodano sekcje `ClickUp` z polem `Url do daily`.
+  -- Wartosc jest zapisywana w danych projektu jako `clickupDailyUrl` i bedzie mogla sluzyc jako adres dokumentu ClickUp do eksportu daily opracowanego przez AI.
+  -- Istniejace projekty otrzymuja pusta wartosc domyslna bez migracji schematu bazy, poniewaz projekty sa zapisywane jako JSON.
 - 2026-04-27 – Przygotowanie konfiguracji ClickUp
   -- Do lokalnego pliku `.env` dodano placeholder `CLICKUP_API_TOKEN`, przeznaczony na token API ClickUp bez zapisywania prawdziwego sekretu w repozytorium.
   -- Konfiguracja Electrona odczytuje teraz `CLICKUP_API_TOKEN` jako `clickupApiToken`, aby przyszła implementacja integracji ClickUp mogła korzystać z istniejącego mechanizmu ładowania ustawień środowiskowych.
@@ -21,6 +25,22 @@
   -- Typ `WorkItemRow` uzupełniono o flagę `isMaintenance`, zgodnie z danymi zwracanymi przez hook rejestru pracy.
 
 ## Daily Command Center
+- 2026-04-27 - Eksport analizy AI do ClickUp
+  -- W modalu `Analizuj z AI` dodano przycisk `Export do ClickUp`, aktywny po wygenerowaniu odpowiedzi AI.
+  -- Eksport używa pola projektu `Url do daily` z sekcji `ClickUp` oraz tokena `CLICKUP_API_TOKEN` odczytywanego po stronie Electron z pliku `.env`.
+  -- Jeżeli URL wskazuje konkretną stronę dokumentu ClickUp, analiza jest dopisywana do tej strony; jeżeli wskazuje tylko dokument, aplikacja tworzy nową stronę z raportem Daily AI.
+  -- Token ClickUp nie jest przekazywany do frontendu; wywołanie API odbywa się przez dedykowany handler IPC `export-daily-ai-to-clickup`.
+- 2026-04-27 - Weryfikacja eksportu Daily AI do ClickUp
+  -- Po eksporcie aplikacja pobiera docelową stronę ClickUp i sprawdza, czy zawiera tytuł lub początek wyeksportowanej treści.
+  -- Komunikat w modalu informuje teraz, czy treść została dopisana do istniejącej strony, czy utworzono nową stronę.
+  -- Jeżeli ClickUp przyjmie zapis, ale pobrana strona nie zawiera eksportu, użytkownik dostaje błąd z identyfikatorem strony do sprawdzenia.
+- 2026-04-27 - Diagnostyka celu eksportu ClickUp
+  -- Błędy eksportu do ClickUp zawierają teraz odczytany z konfiguracji `workspace_id`, `doc_id`, `page_id` oraz URL źródłowy.
+  -- Ułatwia to wykrycie sytuacji, w której aplikacja używa starego lub niepoprawnego linku do dokumentu Daily.
+- 2026-04-27 - Linki YouTrack w eksporcie Daily AI do ClickUp
+  -- Eksport Daily AI do ClickUp zamienia kody zgłoszeń YouTrack, np. `ABC-123`, na linki markdown prowadzące do zgłoszeń w YouTrack.
+  -- Adresy zgłoszeń są budowane po stronie Electron na podstawie `VITE_YOUTRACK_BASE_URL` z konfiguracji środowiskowej.
+  -- Już istniejące linki markdown nie są ponownie opakowywane, aby nie tworzyć zagnieżdżonych linków.
 - 2026-04-27 – Dane `Do rozliczenia` w JSON Daily AI
   -- JSON budowany dla ręcznego eksportu Daily AI oraz harmonogramu `Daily z AI` zawiera teraz powiązane wpisy z zakładki `Do rozliczenia` dopasowane po kodzie zadania YouTrack.
   -- Przy zadaniu przekazywane są dane zgłoszenia, wyceny, akceptacji, statusu rozliczeniowego, prac przedakceptacyjnych i notatek, aby analiza AI mogła opisać kto i kiedy zgłosił zadanie oraz czy zostało wycenione i zaakceptowane do realizacji.

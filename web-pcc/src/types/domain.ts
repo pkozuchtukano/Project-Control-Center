@@ -3,6 +3,7 @@ export type Project = {
   code: string;
   name: string;
   youtrackQuery: string;
+  clickupDailyUrl?: string;
 };
 
 export type ProjectLink = {

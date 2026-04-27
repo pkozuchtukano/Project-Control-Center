@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Copy, Loader2, RotateCcw, Save, Send, X } from 'lucide-react';
+import { Bot, Copy, Loader2, RotateCcw, Save, Send, UploadCloud, X } from 'lucide-react';
 import type { GeminiGenerateRequest, GeminiGenerateResponse } from '../../../types';
 
 type DailyAiAnalysisModalProps = {
@@ -11,6 +11,9 @@ type DailyAiAnalysisModalProps = {
   isAnalyzing: boolean;
   onSaveAnalysis: (content: string) => Promise<void>;
   isSavingAnalysis: boolean;
+  onExportToClickUp?: (content: string) => Promise<string | void>;
+  isExportingToClickUp?: boolean;
+  canExportToClickUp?: boolean;
 };
 
 type DailyAiAnalysisFormState = {
@@ -144,11 +147,15 @@ export const DailyAiAnalysisModal = ({
   isAnalyzing,
   onSaveAnalysis,
   isSavingAnalysis,
+  onExportToClickUp,
+  isExportingToClickUp = false,
+  canExportToClickUp = false,
 }: DailyAiAnalysisModalProps) => {
   const [formState, setFormState] = useState<DailyAiAnalysisFormState>(() => createDefaultFormState(defaultModel));
   const [analysisResult, setAnalysisResult] = useState<GeminiGenerateResponse | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<'payload' | 'result' | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
   const isCustomModel = useMemo(
     () => Boolean(formState.model.trim()) && !GEMINI_MODEL_OPTIONS.some((option) => option.value === formState.model.trim()),
     [formState.model],
@@ -175,6 +182,7 @@ export const DailyAiAnalysisModal = ({
     setAnalysisResult(null);
     setAnalysisError(null);
     setCopiedTarget(null);
+    setExportSuccess(null);
   }, [isOpen, sourcePayloadText, defaultModel]);
 
   useEffect(() => {
@@ -281,6 +289,7 @@ export const DailyAiAnalysisModal = ({
 
     setAnalysisError(null);
     setAnalysisResult(null);
+    setExportSuccess(null);
 
     try {
       const response = await onAnalyze(requestPreview);
@@ -307,6 +316,27 @@ export const DailyAiAnalysisModal = ({
       setAnalysisError(null);
     } catch (error: any) {
       setAnalysisError(error?.message || 'Nie udało się zapisać analizy do historii.');
+    }
+  };
+
+  const handleExportToClickUp = async () => {
+    if (!analysisResult?.text?.trim()) {
+      setAnalysisError('Najpierw uruchom analizę AI, aby wyeksportować odpowiedź do ClickUp.');
+      return;
+    }
+
+    if (!onExportToClickUp || !canExportToClickUp) {
+      setAnalysisError('Brak konfiguracji ClickUp `Url do daily` dla tego projektu.');
+      return;
+    }
+
+    try {
+      const message = await onExportToClickUp(analysisResult.text);
+      setExportSuccess(message || 'Wyeksportowano odpowiedź AI do ClickUp.');
+      setAnalysisError(null);
+    } catch (error: any) {
+      setExportSuccess(null);
+      setAnalysisError(error?.message || 'Nie udało się wyeksportować odpowiedzi AI do ClickUp.');
     }
   };
 
@@ -383,6 +413,12 @@ export const DailyAiAnalysisModal = ({
               {analysisError && (
                 <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300">
                   {analysisError}
+                </div>
+              )}
+
+              {exportSuccess && (
+                <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300">
+                  {exportSuccess}
                 </div>
               )}
 
@@ -653,6 +689,20 @@ export const DailyAiAnalysisModal = ({
               className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
             >
               Zamknij
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportToClickUp()}
+              disabled={isExportingToClickUp || !analysisResult?.text?.trim() || !canExportToClickUp}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white ${
+                isExportingToClickUp || !analysisResult?.text?.trim() || !canExportToClickUp
+                  ? 'bg-gray-300 cursor-not-allowed dark:bg-gray-700'
+                  : 'bg-sky-600 hover:bg-sky-700'
+              }`}
+              title={canExportToClickUp ? 'Eksportuj odpowiedź AI do dokumentu ClickUp' : 'Uzupełnij Url do daily w ustawieniach projektu'}
+            >
+              {isExportingToClickUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+              {isExportingToClickUp ? 'Eksport...' : 'Export do ClickUp'}
             </button>
             <button
               type="button"

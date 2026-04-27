@@ -71,6 +71,7 @@ declare global {
       offServiceAlerts: (callback: (payload: Array<{ taskId: string; projectId: string; projectCode?: string; projectName?: string; obligationCode?: string; title: string; dueDate: string; status: 'pending' | 'overdue' }>) => void) => void;
       writeClipboardHtml: (data: { html: string; text?: string; imageDataUrl?: string }) => Promise<{ success: boolean }>;
       askGemini: (data: GeminiGenerateRequest) => Promise<GeminiGenerateResponse>;
+      exportDailyAiToClickUp: (data: { docUrl: string; title: string; content: string }) => Promise<{ success: boolean; mode: 'append' | 'create_page'; pageId?: string; docId: string; workspaceId: string; verified?: boolean }>;
       appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => Promise<{ success: boolean }>;
       getGoogleAuthStatus: () => Promise<{ isAuthenticated: boolean, hasCredentials: boolean }>;
       getGoogleAuthUrl: () => Promise<string>;
@@ -389,6 +390,7 @@ const ProjectModal = ({
     taskTypes: [],
     googleDocLink: '',
     pendingSettlementYoutrackUrl: '',
+    clickupDailyUrl: '',
     stakeholders: []
   });
   const [isMaintenanceGrossLocked, setIsMaintenanceGrossLocked] = useState(true);
@@ -420,6 +422,7 @@ const ProjectModal = ({
         taskTypes: projectToEdit.taskTypes || [],
         googleDocLink: projectToEdit.googleDocLink || '',
         pendingSettlementYoutrackUrl: projectToEdit.pendingSettlementYoutrackUrl || '',
+        clickupDailyUrl: projectToEdit.clickupDailyUrl || '',
         stakeholders: projectToEdit.stakeholders || []
       });
       setIsMaintenanceGrossLocked(true);
@@ -434,6 +437,7 @@ const ProjectModal = ({
         taskTypes: [],
         googleDocLink: '',
         pendingSettlementYoutrackUrl: '',
+        clickupDailyUrl: '',
         stakeholders: []
       });
       setIsMaintenanceGrossLocked(true);
@@ -689,6 +693,23 @@ const ProjectModal = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-md font-bold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">ClickUp</h3>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Url do daily</label>
+                <input
+                  name="clickupDailyUrl"
+                  value={formData.clickupDailyUrl || ''}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                  placeholder="https://app.clickup.com/..."
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Link do dokumentu ClickUp, do którego będzie można eksportować daily opracowane przez AI.
+                </p>
               </div>
             </div>
 
