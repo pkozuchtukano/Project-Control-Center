@@ -15,6 +15,7 @@ interface DailyIssueCardProps {
   onToggleCollapse?: (isCollapsed: boolean) => void;
   onAssigneeFilter: (assignee: string | null) => void;
   showState?: boolean;
+  isMinimalView?: boolean;
 }
 
 export const DailyIssueCard = ({ 
@@ -28,10 +29,12 @@ export const DailyIssueCard = ({
   onToggleSkipInAi,
   onToggleCollapse,
   onAssigneeFilter,
-  showState = true
+  showState = true,
+  isMinimalView = false
 }: DailyIssueCardProps) => {
   const [comment, setComment] = useState(localComment);
   const [isEditing, setIsEditing] = useState(false);
+  const [isMinimalExpanded, setIsMinimalExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings } = useProjectContext();
 
@@ -40,6 +43,12 @@ export const DailyIssueCard = ({
   useEffect(() => {
     setComment(localComment);
   }, [localComment]);
+
+  useEffect(() => {
+    if (!isMinimalView) {
+      setIsMinimalExpanded(false);
+    }
+  }, [isMinimalView]);
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
@@ -141,8 +150,178 @@ export const DailyIssueCard = ({
     });
   }, [issue.timeline, dateFrom, dateTo]);
 
+  if (isMinimalView && !isMinimalExpanded) {
+    const assigneeName = issue.assignee?.name || issue.assignee?.fullName || issue.assignee?.login || 'Nieprzypisane';
+    const assigneeInitials = assigneeName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part: string) => part.charAt(0).toUpperCase())
+      .join('') || '?';
+    const stateInitial = issue.state?.name?.charAt(0).toUpperCase();
+
+    if (isCollapsed) {
+      return (
+        <div
+          className="bg-slate-950 dark:bg-gray-900 rounded-md border border-slate-800 dark:border-gray-800 shadow-sm transition-all overflow-hidden opacity-20 hover:opacity-100"
+        >
+          <div
+            className="min-h-7 px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-slate-900/80 transition-colors"
+            onClick={() => setIsMinimalExpanded(true)}
+            title="Rozwiń zadanie do normalnego widoku"
+          >
+            <a
+              href={youtrackUrl}
+              onClick={handleOpenYouTrack}
+              className="text-[9px] font-mono font-black text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded leading-none shrink-0 hover:bg-indigo-900"
+            >
+              {issue.idReadable}
+            </a>
+            {typeInfo && (
+              <span
+                title={typeInfo.name}
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded border border-black/10 leading-none shrink-0"
+                style={{ backgroundColor: typeInfo.color.background, color: typeInfo.color.foreground }}
+              >
+                {typeInfo.initial}
+              </span>
+            )}
+            {priorityInfo && (
+              <span
+                title={issue.priority?.name}
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded border border-black/10 leading-none shrink-0"
+                style={{ backgroundColor: priorityInfo.color.background, color: priorityInfo.color.foreground }}
+              >
+                {priorityInfo.initial}
+              </span>
+            )}
+            {showState && issue.state && (
+              <span
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded leading-none shrink-0"
+                style={{ backgroundColor: issue.state.color.background, color: issue.state.color.foreground }}
+                title={issue.state.name}
+              >
+                {stateInitial}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleAssigneeClick}
+              className="min-w-4 h-4 inline-flex items-center justify-center rounded-full bg-slate-800 px-1 text-[8px] font-black text-slate-300 hover:bg-indigo-950 hover:text-indigo-200 transition-colors leading-none shrink-0"
+              title={`Filtruj po: ${assigneeName}`}
+            >
+              {assigneeInitials}
+            </button>
+            <span className="min-w-0 flex-1 truncate text-[11px] font-bold leading-none text-white">
+              {issue.summary}
+            </span>
+          </div>
+
+          {isDetailModalOpen && (
+            <DailyIssueDetailsModal
+              issue={issue}
+              isOpen={isDetailModalOpen}
+              onClose={() => setIsDetailModalOpen(false)}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+            />
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="bg-slate-950 dark:bg-gray-900 rounded-lg border border-slate-800 dark:border-gray-800 shadow-sm hover:shadow-md transition-all overflow-hidden group"
+      >
+        <div
+          className="px-2 py-1.5 border-b border-slate-800/80 flex items-center justify-between gap-1.5 cursor-pointer hover:bg-slate-900/80 transition-colors"
+          onClick={() => setIsMinimalExpanded(true)}
+          title="Rozwiń zadanie do normalnego widoku"
+        >
+          <div className="flex items-center gap-1 min-w-0">
+            <a
+              href={youtrackUrl}
+              onClick={handleOpenYouTrack}
+              className="text-[9px] font-mono font-black text-indigo-300 bg-indigo-950/80 px-1.5 py-0.5 rounded transition-colors hover:bg-indigo-900 leading-none"
+            >
+              {issue.idReadable}
+            </a>
+
+            {typeInfo && (
+              <span
+                title={typeInfo.name}
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded shadow-sm border border-black/10 leading-none"
+                style={{ backgroundColor: typeInfo.color.background, color: typeInfo.color.foreground }}
+              >
+                {typeInfo.initial}
+              </span>
+            )}
+            {priorityInfo && (
+              <span
+                title={issue.priority?.name}
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded shadow-sm border border-black/10 leading-none"
+                style={{ backgroundColor: priorityInfo.color.background, color: priorityInfo.color.foreground }}
+              >
+                {priorityInfo.initial}
+              </span>
+            )}
+            {showState && issue.state && (
+              <span
+                className="min-w-4 h-4 inline-flex items-center justify-center text-[8px] font-black px-1 rounded shadow-sm leading-none"
+                style={{ backgroundColor: issue.state.color.background, color: issue.state.color.foreground }}
+                title={issue.state.name}
+              >
+                {stateInitial}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleAssigneeClick}
+              className="min-w-4 h-4 inline-flex items-center justify-center rounded-full bg-slate-800 px-1 text-[8px] font-black text-slate-300 hover:bg-indigo-950 hover:text-indigo-200 transition-colors leading-none"
+              title={`Filtruj po: ${assigneeName}`}
+            >
+              {assigneeInitials}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsDetailModalOpen(true);
+            }}
+            className="p-1 rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            title="Szczegóły"
+          >
+            <MoreVertical size={14} />
+          </button>
+        </div>
+
+        <div
+          className="px-2 py-2 cursor-zoom-in"
+          onClick={() => setIsDetailModalOpen(true)}
+        >
+          <h4 className="text-[13px] font-black leading-tight text-white break-words">
+            {issue.summary}
+          </h4>
+        </div>
+
+        {isDetailModalOpen && (
+          <DailyIssueDetailsModal
+            issue={issue}
+            isOpen={isDetailModalOpen}
+            onClose={() => setIsDetailModalOpen(false)}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+          />
+        )}
+      </div>
+    );
+  }
+
   // COLLAPSED VIEW (ONE LINE)
-  if (isCollapsed) {
+  if (!isMinimalExpanded && isCollapsed) {
     return (
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-all px-2.5 py-1.5 flex items-center justify-between gap-3 group opacity-20 hover:opacity-100">
         <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -226,7 +405,11 @@ export const DailyIssueCard = ({
       className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-lg transition-all flex flex-col group overflow-hidden"
     >
       {/* Header */}
-      <div className="bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2 border-b dark:border-gray-800 flex items-center justify-between">
+      <div
+        className={`bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2 border-b dark:border-gray-800 flex items-center justify-between ${isMinimalExpanded ? 'cursor-pointer hover:bg-gray-100/80 dark:hover:bg-gray-800/60 transition-colors' : ''}`}
+        onClick={isMinimalExpanded ? () => setIsMinimalExpanded(false) : undefined}
+        title={isMinimalExpanded ? 'Zwiń zadanie do widoku Min' : undefined}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <a 
             href={youtrackUrl}
@@ -266,9 +449,9 @@ export const DailyIssueCard = ({
         </div>
 
         {/* Triple Dot Menu */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
           <div className="relative group/menu">
-            <button className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-400">
+            <button type="button" className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-400">
               <MoreVertical size={14} />
             </button>
             <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all z-20 overflow-hidden">

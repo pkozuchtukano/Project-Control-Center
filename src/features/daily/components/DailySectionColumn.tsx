@@ -18,6 +18,7 @@ interface DailySectionColumnProps {
   columnCollapsed?: boolean;
   onToggleColumnCollapse?: () => void;
   isGlobalExpanded?: boolean;
+  isMinimalView?: boolean;
 }
 
 export const DailySectionColumn = ({ 
@@ -25,7 +26,8 @@ export const DailySectionColumn = ({
   onCommentSave, onToggleSkipInAi, onSaveIssueState, 
   onAssigneeFilter, dateFrom, dateTo,
   columnCollapsed = false, onToggleColumnCollapse,
-  isGlobalExpanded = false
+  isGlobalExpanded = false,
+  isMinimalView = false
 }: DailySectionColumnProps) => {
   const isActivitySection = section.id === 'fixed_aktywnosci';
 
@@ -87,6 +89,7 @@ export const DailySectionColumn = ({
                   dateFrom={dateFrom}
                   dateTo={dateTo}
                   onAssigneeFilter={onAssigneeFilter}
+                  isMinimalView={isMinimalView}
                   onSaveComment={(content: string) => onCommentSave(issue.idReadable, content)}
                   onToggleSkipInAi={(skipInAi: boolean) => onToggleSkipInAi(issue.idReadable, skipInAi)}
                   onToggleCollapse={(collapsed: boolean) => onSaveIssueState(issue.idReadable, collapsed)}

@@ -401,6 +401,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null);
   const [showOnlyCommented, setShowOnlyCommented] = useState(false);
   const [isGlobalExpanded, setIsGlobalExpanded] = useState(false);
+  const [isMinimalView, setIsMinimalView] = useState(false);
   const [isAiExporting, setIsAiExporting] = useState(false);
   const [isAiCopied, setIsAiCopied] = useState(false);
   const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
@@ -1223,6 +1224,14 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
             </button>
 
             <button
+              onClick={() => setIsMinimalView(!isMinimalView)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isMinimalView ? 'bg-slate-900 border-slate-900 text-white shadow-sm dark:bg-white dark:border-white dark:text-slate-950' : 'bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+              title={isMinimalView ? 'Przywróć pełny widok kart' : 'Pokaż minimalistyczne karty zadań'}
+            >
+              Min
+            </button>
+
+            <button
               onClick={syncYouTrack}
               disabled={isSyncing}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${isSyncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'}`}
@@ -1334,6 +1343,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
                 dateFrom={dateFrom}
                 dateTo={dateTo}
                 isGlobalExpanded={isGlobalExpanded}
+                isMinimalView={isMinimalView}
                 columnCollapsed={!!collapsedSections[section.id]}
                 onToggleColumnCollapse={() => setCollapsedSections(prev => ({
                   ...prev,
