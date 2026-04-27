@@ -5,6 +5,16 @@
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
 ## Daily Command Center
+- 2026-04-24 – Pełne Daily w wiadomości `Daily z AI`
+  -- Harmonogram `Daily z AI` dołącza teraz do e-maila pełny, deterministycznie wyrenderowany blok `Pełne Daily` po sekcji analizy AI.
+  -- Dzięki temu wiadomość nie opiera się wyłącznie na streszczeniu modelu Gemini i zawiera także wszystkie zadania oraz sekcje wybrane w źródle Daily, w lżejszym formacie HTML ograniczającym ryzyko przycięcia przez klienta poczty.
+  -- Domyślny limit odpowiedzi AI dla nowych i uzupełnianych zadań harmonogramu zwiększono do `24000` tokenów, a przy dojściu modelu do limitu wiadomość pokazuje ostrzeżenie i nadal zawiera pełne Daily.
+- 2026-04-24 – Poprawa polskich znaków w pełnym Daily w e-mailu
+  -- Poprawiono uszkodzone literały tekstowe używane w rendererze pełnego bloku Daily dołączanego do wiadomości `Daily z AI`.
+  -- Nagłówki aktywności, separatory listy i komunikaty walidacyjne harmonogramu nie powinny już trafiać do e-maila w postaci mojibake, np. `AktywnoĹ›Ä‡` albo `â€”`.
+- 2026-04-24 – Kolorowy blok `Pełne Daily` w e-mailu
+  -- Sekcja `Pełne Daily` w wiadomości `Daily z AI` korzysta teraz z kolorowego renderera kart Daily zamiast uproszczonego markdowna.
+  -- E-mail pokazuje karty zadań, akcenty sekcji, kolorowe oznaczenia typu, priorytetu i statusu oraz bursztynowe bloki notatek PM w stylu zbliżonym do tablicy Daily.
 - 2026-04-22 – Usunięcie tła z maila analizy AI
   -- HTML wiadomości generowanej przez harmonogram `Daily z AI` nie ustawia już kolorowego tła na całym body maila.
   -- Sekcja `Analiza AI` nie dostaje już osobnego tła, obramowania ani cienia, dzięki czemu klient poczty nie przyciemnia bloku i tekst pozostaje czytelniejszy.

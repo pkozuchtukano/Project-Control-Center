@@ -9005,7 +9005,7 @@ const createScheduledTaskDraft = (): ScheduledTask => {
       temperature: 0.2,
       topP: null,
       topK: null,
-      maxOutputTokens: 12000,
+      maxOutputTokens: 24000,
       generationConfigText: '',
       additionalRequestFieldsText: '',
     },

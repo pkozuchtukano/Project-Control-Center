@@ -30,6 +30,7 @@ const DEFAULT_GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_HIGH_DEMAND_RETRY_DELAYS_MS = [1200, 2800];
+const DEFAULT_SCHEDULED_TASK_MAX_OUTPUT_TOKENS = 24000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1591,7 +1592,7 @@ const normalizeScheduledTask = (task: ScheduledTask): ScheduledTask => ({
         temperature: normalizeOptionalScheduledTaskNumber(task.aiSettings?.temperature, 0.2),
         topP: normalizeOptionalScheduledTaskNumber(task.aiSettings?.topP),
         topK: normalizeOptionalScheduledTaskNumber(task.aiSettings?.topK),
-        maxOutputTokens: normalizeOptionalScheduledTaskNumber(task.aiSettings?.maxOutputTokens, 12000),
+        maxOutputTokens: normalizeOptionalScheduledTaskNumber(task.aiSettings?.maxOutputTokens, DEFAULT_SCHEDULED_TASK_MAX_OUTPUT_TOKENS),
         generationConfigText: task.aiSettings?.generationConfigText || '',
         additionalRequestFieldsText: task.aiSettings?.additionalRequestFieldsText || '',
     },
@@ -2130,7 +2131,7 @@ const formatTimelineActivity = (activity: DailyReportIssue['timeline'][number]) 
             .map((comment) => sanitizeDailyCommentText(comment))
             .filter(Boolean);
         const commentSuffix = sanitizedWorkComments.length > 0
-            ? ` â€” ${sanitizedWorkComments.join(', ')}`
+            ? ` - ${sanitizedWorkComments.join(', ')}`
             : '';
         return `${activity.author.name}: Dodał log czasu ${formatDailyMinutes(activity.minutes || 0)}${commentSuffix}`;
     }
@@ -2477,7 +2478,7 @@ const loadDailyContentSourcePayload = async (
 };
 
 const renderDailyIssueLines = (issue: DailyReportIssue, comments: Record<string, string>, includeActivities: boolean, dateFrom: string, dateTo: string) => {
-    const lines = [`- ${issue.idReadable} â€” ${issue.summary}`];
+    const lines = [`- ${issue.idReadable} - ${issue.summary}`];
     const issueUrl = buildYouTrackIssueUrl(issue.idReadable);
 
     if (issueUrl) {
@@ -2518,9 +2519,9 @@ const renderDailyIssueLines = (issue: DailyReportIssue, comments: Record<string,
         );
 
         if (periodActivities.length > 0) {
-            lines.push('  AktywnoĹ›Ä‡:');
+            lines.push('  Aktywność:');
             periodActivities.forEach((activity) => {
-                lines.push(`    â€˘ ${formatTimelineActivity(activity)}`);
+                lines.push(`    - ${formatTimelineActivity(activity)}`);
             });
         }
     }
@@ -2960,6 +2961,7 @@ const appendScheduledDailyAiSystemRules = (systemInstruction: string) => [
     systemInstruction.trim(),
     'W każdej odpowiedzi, gdy wymieniasz zadanie z YouTrack, podawaj kod razem z tytułem w formacie `KOD-123 - Tytuł zadania`. Nie wypisuj samego kodu bez tytułu.',
     'Pisz raport w krótkich sekcjach projektowych. Dla każdego zadania użyj osobnego punktu listy, zaczynając punkt od `KOD-123 - Tytuł zadania:`, a po dwukropku dodaj krótki opis statusu i najważniejszych aktywności. Unikaj bardzo długich akapitów.',
+    'Nie pomijaj zadań przekazanych w JSON. Jeżeli zadanie jest widoczne tylko w sekcji planowania lub nie ma aktywności w zakresie dat, nadal uwzględnij je w odpowiedniej sekcji raportu.',
     'Nie analizuj i nie wspominaj zadań, których nie ma w przekazanym JSON. Zadania oznaczone jako pominięte w AI są usunięte z JSON i mają być traktowane jako niewidoczne.',
 ].filter(Boolean).join('\n\n');
 
@@ -3038,6 +3040,34 @@ const buildScheduledTaskEmailBody = async (task: ScheduledTask, executionDate: D
                                 <div style="margin-top:8px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
                             </div>
                             ${markdownToScheduledEmailHtml(analysisText, issueTitles)}
+                        </section>
+                    `);
+                }
+
+                if (response.finishReason === 'MAX_TOKENS') {
+                    const warningText = 'Uwaga: odpowiedź AI osiągnęła limit tokenów. Pełne Daily znajduje się poniżej w wiadomości.';
+                    textBlocks.push(warningText);
+                    htmlBlocks.push(`
+                        <section style="margin:0 auto 20px auto; padding:12px 14px; max-width:960px; border:1px solid #fbbf24; border-radius:10px; background:#fffbeb; color:#92400e; font-size:13px; line-height:1.55;">
+                            ${escapeHtml(warningText)}
+                        </section>
+                    `);
+                }
+
+                const fullDailyText = await renderDailyContentSource(task, source, executionDate, payload);
+                if (fullDailyText.trim()) {
+                    textBlocks.push(`# Pełne Daily: ${payload.hub.name}\n\n${fullDailyText}`);
+                }
+
+                const fullDailyHtml = await renderDailyContentSourceHtml(task, source, executionDate, payload);
+                if (fullDailyHtml.trim()) {
+                    htmlBlocks.push(`
+                        <section style="margin:0 auto 20px auto; padding:22px; max-width:960px; color:#0f172a;">
+                            <div style="margin-bottom:12px; padding-bottom:14px; border-bottom:1px solid #e2e8f0;">
+                                <div style="font-size:22px; font-weight:900; color:#0f172a; line-height:1.25;">Pełne Daily: ${escapeHtml(payload.hub.name)}</div>
+                                <div style="margin-top:8px; font-size:13px; color:#64748b;">Zakres: <strong>${escapeHtml(payload.from)}</strong> -> <strong>${escapeHtml(payload.to)}</strong></div>
+                            </div>
+                            ${fullDailyHtml}
                         </section>
                     `);
                 }
@@ -3125,16 +3155,16 @@ const executeScheduledEmailTask = async (task: ScheduledTask, executionDate = ne
 
     const authStatus = await gDocsService.getAuthStatus();
     if (!authStatus.isAuthenticated) {
-        throw new Error('Brak aktywnej autoryzacji Google. Zaloguj siĂ„â„˘ ponownie w ustawieniach aplikacji.');
+        throw new Error('Brak aktywnej autoryzacji Google. Zaloguj się ponownie w ustawieniach aplikacji.');
     }
 
     const to = task.emailTemplate.to.trim();
     const subject = task.emailTemplate.subject.trim();
     if (!to) {
-        throw new Error('Brak odbiorcy wiadomoÄąâ€şci w harmonogramie.');
+        throw new Error('Brak odbiorcy wiadomości w harmonogramie.');
     }
     if (!subject) {
-        throw new Error('Brak tytuÄąâ€šu wiadomoÄąâ€şci w harmonogramie.');
+        throw new Error('Brak tytułu wiadomości w harmonogramie.');
     }
 
     const { textBody, htmlBody } = await buildScheduledTaskEmailBody(task, executionDate);
