@@ -99,6 +99,72 @@ const getScheduleLabel = (obligation: ServiceObligation) => {
   }
 };
 
+const getRelativeUnitLabel = (unit?: ServiceRelativeUnit) => {
+  switch (unit) {
+    case 'hours':
+      return 'godziny';
+    case 'business_days':
+      return 'dni robocze';
+    case 'months':
+      return 'miesiące';
+    default:
+      return 'dni kalendarzowe';
+  }
+};
+
+const getObligationScheduleDetails = (obligation: ServiceObligation) => {
+  switch (obligation.scheduleType) {
+    case 'none':
+      return {
+        schedule: 'Ciągłe monitorowanie',
+        amountUnit: 'Nie dotyczy',
+        trigger: 'Stały obowiązek',
+      };
+    case 'fixed_date':
+      return {
+        schedule: 'Jednorazowy termin',
+        amountUnit: '1 termin',
+        trigger: obligation.fixedDate ? formatShortDate(obligation.fixedDate) : 'Brak daty',
+      };
+    case 'monthly':
+      return {
+        schedule: 'Cykliczny',
+        amountUnit: '1 miesiąc',
+        trigger: obligation.anchorDate ? `od ${formatShortDate(obligation.anchorDate)}` : 'Brak daty bazowej',
+      };
+    case 'quarterly':
+      return {
+        schedule: 'Cykliczny',
+        amountUnit: '3 miesiące',
+        trigger: obligation.anchorDate ? `od ${formatShortDate(obligation.anchorDate)}` : 'Brak daty bazowej',
+      };
+    case 'semiannual':
+      return {
+        schedule: 'Cykliczny',
+        amountUnit: '6 miesięcy',
+        trigger: obligation.anchorDate ? `od ${formatShortDate(obligation.anchorDate)}` : 'Brak daty bazowej',
+      };
+    case 'annual':
+      return {
+        schedule: 'Cykliczny',
+        amountUnit: '1 rok',
+        trigger: obligation.anchorDate ? `od ${formatShortDate(obligation.anchorDate)}` : 'Brak daty bazowej',
+      };
+    case 'relative':
+      return {
+        schedule: 'Po zdarzeniu',
+        amountUnit: `${obligation.relativeValue || 0} ${getRelativeUnitLabel(obligation.relativeUnit)}`,
+        trigger: obligation.triggerLabel || 'Brak wyzwalacza',
+      };
+    default:
+      return {
+        schedule: 'Brak harmonogramu',
+        amountUnit: 'Nie dotyczy',
+        trigger: 'Brak',
+      };
+  }
+};
+
 const getEventTypeLabel = (eventType: ServiceEventType) => {
   switch (eventType) {
     case 'incident':
@@ -1537,56 +1603,76 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                {state.obligations.map((obligation) => (
-                  <div key={obligation.id} className="px-6 py-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                            {obligation.code || 'Bez kodu'}
-                          </span>
-                          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200">
-                            {obligation.kind === 'continuous' ? 'Ciągły' : obligation.kind === 'event' ? 'Od zdarzenia' : 'Cykliczny'}
-                          </span>
-                          {!obligation.isActive && (
-                            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                              Nieaktywny
+                {state.obligations.map((obligation) => {
+                  const scheduleDetails = getObligationScheduleDetails(obligation);
+
+                  return (
+                    <div key={obligation.id} className="px-6 py-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                              {obligation.code || 'Bez kodu'}
                             </span>
-                          )}
-                          {obligation.requiresProtocol && (
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                              Protokół wymagany
+                            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200">
+                              {obligation.kind === 'continuous' ? 'Ciągły' : obligation.kind === 'event' ? 'Od zdarzenia' : 'Cykliczny'}
                             </span>
-                          )}
-                        </div>
-                        <div>
-                          <h4 className="text-base font-bold text-gray-900 dark:text-white">{obligation.title}</h4>
-                          <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{obligation.description}</p>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 text-xs text-gray-500 dark:text-gray-400 md:grid-cols-3">
-                          <p><span className="font-semibold text-gray-700 dark:text-gray-300">Harmonogram:</span> {getScheduleLabel(obligation)}</p>
-                          <p><span className="font-semibold text-gray-700 dark:text-gray-300">Właściciel:</span> {obligation.owner || 'Nie wskazano'}</p>
-                          <p><span className="font-semibold text-gray-700 dark:text-gray-300">Źródło:</span> {obligation.sourceRequirement || 'Brak'}</p>
-                        </div>
-                        {obligation.evidenceHint && (
+                            {!obligation.isActive && (
+                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                Nieaktywny
+                              </span>
+                            )}
+                            {obligation.requiresProtocol && (
+                              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                                Protokół wymagany
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="text-base font-bold text-gray-900 dark:text-white">{obligation.title}</h4>
+                            <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{obligation.description}</p>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                              <span className="block text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-200">Harmonogram</span>
+                              <span className="mt-1 block text-xs font-semibold text-gray-900 dark:text-white">{scheduleDetails.schedule}</span>
+                            </div>
+                            <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-3 py-2 dark:border-amber-500/20 dark:bg-amber-500/10">
+                              <span className="block text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-200">Ilość i jednostka</span>
+                              <span className="mt-1 block text-xs font-semibold text-gray-900 dark:text-white">{scheduleDetails.amountUnit}</span>
+                            </div>
+                            <div className="rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2 dark:border-sky-500/20 dark:bg-sky-500/10">
+                              <span className="block text-[11px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-200">Wyzwalacz</span>
+                              <span className="mt-1 block text-xs font-semibold text-gray-900 dark:text-white">{scheduleDetails.trigger}</span>
+                            </div>
+                          </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            <span className="font-semibold text-gray-700 dark:text-gray-300">Dowód wykonania:</span> {obligation.evidenceHint}
+                            <span className="font-semibold text-gray-700 dark:text-gray-300">Pełny opis harmonogramu:</span> {getScheduleLabel(obligation)}
                           </p>
-                        )}
+                          <div className="grid grid-cols-1 gap-2 text-xs text-gray-500 dark:text-gray-400 md:grid-cols-2">
+                            <p><span className="font-semibold text-gray-700 dark:text-gray-300">Właściciel:</span> {obligation.owner || 'Nie wskazano'}</p>
+                            <p><span className="font-semibold text-gray-700 dark:text-gray-300">Źródło:</span> {obligation.sourceRequirement || 'Brak'}</p>
+                          </div>
+                          {obligation.evidenceHint && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              <span className="font-semibold text-gray-700 dark:text-gray-300">Dowód wykonania:</span> {obligation.evidenceHint}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingObligation(obligation)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            <Edit2 size={15} />
+                            Edytuj
+                          </button>
+                        </div>
+                        </div>
                       </div>
-                      <div className="shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setEditingObligation(obligation)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
-                        >
-                          <Edit2 size={15} />
-                          Edytuj
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

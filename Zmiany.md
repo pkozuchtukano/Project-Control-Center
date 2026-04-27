@@ -890,6 +890,9 @@
 - 2026-04-15 – Dropdown `Linki` renderowany nad kartą nagłówka
   -- Lista linków w zakładce `Obowiązki` została przepięta na portal renderowany do `document.body`, dzięki czemu nie jest już obcinana przez kontener nagłówka z `overflow-hidden`.
   -- Dropdown utrzymuje pozycję względem przycisku podczas przewijania i zamyka się po kliknięciu poza menu.
+- 2026-04-27 – Wyróżnienie parametrów harmonogramu obowiązku
+  -- Katalog obowiązków pokazuje teraz osobne pola `Harmonogram`, `Ilość i jednostka` oraz `Wyzwalacz` dla każdej pozycji.
+  -- Dzięki temu terminy cykliczne, jednorazowe, ciągłe i liczone od zdarzenia są łatwiejsze do porównania bez zmiany zapisu danych w bazie.
 
 ## PCC Web
 - 2026-04-08 – Nowy projekt webowy dla Daily i Status
