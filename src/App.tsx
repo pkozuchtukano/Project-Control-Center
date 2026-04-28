@@ -110,7 +110,7 @@ import {
 import { 
   LayoutDashboard, Plus, Briefcase,
   Clock, AlertTriangle,
-  ChevronDown, Edit2, X, Moon, Sun, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
+  ChevronDown, ChevronLeft, ChevronRight, Edit2, X, Loader2, BarChart as BarChartIcon, Info, FileText, Printer,
   FileSpreadsheet, Activity, DollarSign, Settings as SettingsIcon, RefreshCw,
   CheckCircle, AlertCircle, Code, Lock, LockOpen, Mail, Copy, Send, ClipboardPaste, Search, Bot, Bug
 } from 'lucide-react';
@@ -248,16 +248,18 @@ const createMaintenanceDraft = (project: Project): MaintenanceEntry => {
   };
 };
 
-const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportDatabase, onImportDatabase, isDatabaseTransferPending, currentView, onViewChange }: {
-  isDark: boolean,
-  toggleDark: () => void,
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'pcc_sidebar_collapsed';
+
+const Sidebar = ({ onOpenModal, onOpenSettings, onExportDatabase, onImportDatabase, isDatabaseTransferPending, currentView, onViewChange, isCollapsed, onToggleCollapsed }: {
   onOpenModal: () => void,
   onOpenSettings: () => void,
   onExportDatabase: () => Promise<void>,
   onImportDatabase: () => Promise<void>,
   isDatabaseTransferPending: boolean,
   currentView: 'dashboard' | 'daily',
-  onViewChange: (view: 'dashboard' | 'daily') => void
+  onViewChange: (view: 'dashboard' | 'daily') => void,
+  isCollapsed: boolean,
+  onToggleCollapsed: () => void
 }) => {
   const { projects, selectedProject, setSelectedProject, isLoading } = useProjectContext();
 
@@ -272,30 +274,39 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportData
   };
 
   return (
-    <aside className="w-64 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-screen h-full sticky top-0 transition-colors shrink-0">
-      <div className="p-6 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-2">
+    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-screen h-full sticky top-0 transition-all duration-200 shrink-0`}>
+      <div className={`${isCollapsed ? 'p-3' : 'p-6'} flex items-center ${isCollapsed ? 'flex-col gap-2' : 'justify-between'} border-b border-gray-100 dark:border-gray-800`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'}`}>
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
             <LayoutDashboard size={18} />
           </div>
-          <h1 className="font-bold text-lg text-gray-900 dark:text-white">PCC</h1>
+          {!isCollapsed && <h1 className="font-bold text-lg text-gray-900 dark:text-white">PCC</h1>}
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onOpenSettings} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors" title="Ustawienia Główne">
-            <SettingsIcon size={18} />
+        <div className={`flex items-center ${isCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
+          <button
+            onClick={onToggleCollapsed}
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            title={isCollapsed ? 'Rozwiń sidebar' : 'Zminimalizuj sidebar'}
+          >
+            {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
-          <button onClick={toggleDark} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors" title="Zmień motyw">
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          {!isCollapsed && (
+            <>
+              <button onClick={onOpenSettings} className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors" title="Ustawienia Główne">
+                <SettingsIcon size={18} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="p-4 flex-1 overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Projekty</h2>
+      <div className={`${isCollapsed ? 'p-3' : 'p-4'} flex-1 overflow-y-auto`}>
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} mb-4`}>
+          {!isCollapsed && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Projekty</h2>}
           <button
             onClick={onOpenModal}
             className="p-1 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors"
+            title="Dodaj projekt"
           >
             <Plus size={16} />
           </button>
@@ -309,63 +320,67 @@ const Sidebar = ({ isDark, toggleDark, onOpenModal, onOpenSettings, onExportData
               <button
                 key={p.id}
                 onClick={() => handleProjectClick(p)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'dashboard' && selectedProject?.id === p.id
+                title={p.code}
+                className={`w-full ${isCollapsed ? 'justify-center px-2 py-2.5' : 'text-left px-3 py-2.5'} rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'dashboard' && selectedProject?.id === p.id
                   ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-600 dark:text-white shadow-sm'
                   : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
                   }`}
               >
                 <Briefcase size={16} className={currentView === 'dashboard' && selectedProject?.id === p.id ? 'opacity-100' : 'opacity-50'} />
-                <span className="truncate">{p.code}</span>
+                {!isCollapsed && <span className="truncate">{p.code}</span>}
               </button>
             ))}
             {projects.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-4">Brak projektów</p>
+              <p className={`text-sm text-gray-400 text-center py-4 ${isCollapsed ? 'hidden' : ''}`}>Brak projektów</p>
             )}
           </div>
         )}
 
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Narzędzia</h2>
+          {!isCollapsed && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Narzędzia</h2>}
           <button
             onClick={handleDailyClick}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'daily'
+            title="DAILY"
+            className={`w-full ${isCollapsed ? 'justify-center px-2 py-2.5' : 'text-left px-3 py-2.5'} rounded-lg text-sm font-medium transition-all flex items-center gap-3 ${currentView === 'daily'
               ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-600 dark:text-white shadow-sm'
               : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
               }`}
           >
             <Activity size={16} className={currentView === 'daily' ? 'opacity-100' : 'opacity-50'} />
-            <span className="font-semibold">DAILY</span>
+            {!isCollapsed && <span className="font-semibold">DAILY</span>}
           </button>
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+      <div className={`${isCollapsed ? 'p-3' : 'p-4'} border-t border-gray-100 dark:border-gray-800 space-y-4`}>
         <div className="space-y-2">
           <button
             onClick={() => void onExportDatabase()}
             disabled={isDatabaseTransferPending}
+            title="Eksport bazy"
             className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FileDown size={16} />
-            Eksport bazy
+            {!isCollapsed && 'Eksport bazy'}
           </button>
           <button
             onClick={() => void onImportDatabase()}
             disabled={isDatabaseTransferPending}
+            title="Import bazy"
             className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FileUp size={16} />
-            Import bazy
+            {!isCollapsed && 'Import bazy'}
           </button>
         </div>
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`} title="Admin - Project Manager">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
             PM
           </div>
-          <div>
+          {!isCollapsed && <div>
             <p className="text-sm font-medium text-gray-900 dark:text-white">Admin</p>
             <p className="text-xs text-gray-500">Project Manager</p>
-          </div>
+          </div>}
         </div>
       </div>
     </aside>
@@ -11048,12 +11063,20 @@ export default function App() {
 }
 
 const MainLayout = () => {
-  const { isDark, toggleDark } = useDarkMode();
+  useDarkMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
   const [isDatabaseTransferPending, setIsDatabaseTransferPending] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   const handleOpenModal = () => {
     setEditingProject(null);
@@ -11102,8 +11125,6 @@ const MainLayout = () => {
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 font-sans transition-colors dark:bg-gray-950 dark:text-gray-100 overflow-hidden">
       <Sidebar 
-        isDark={isDark} 
-        toggleDark={toggleDark} 
         onOpenModal={handleOpenModal} 
         onOpenSettings={() => setIsSettingsOpen(true)} 
         onExportDatabase={handleExportDatabase}
@@ -11111,6 +11132,8 @@ const MainLayout = () => {
         isDatabaseTransferPending={isDatabaseTransferPending}
         currentView={currentView}
         onViewChange={setCurrentView}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapsed={() => setIsSidebarCollapsed(prev => !prev)}
       />
       
       <main className="flex-1 min-w-0 bg-gray-50 dark:bg-gray-950 transition-colors overflow-hidden flex flex-col h-screen">

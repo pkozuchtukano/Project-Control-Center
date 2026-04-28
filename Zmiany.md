@@ -1,3 +1,9 @@
+## Sidebar i nawigacja
+- 2026-04-28 - Minimalizowanie sidebara
+  -- W `src/App.tsx` dodano przycisk zwijania i rozwijania lewego sidebara w glownym layoucie aplikacji.
+  -- Zminimalizowany sidebar zachowuje dostep do projektow, widoku `DAILY` oraz importu i eksportu bazy przez widok ikon z podpowiedziami, a z pelnego widoku usunieto rowniez nieuzywany przelacznik motywu.
+  -- Stan sidebara jest zapisywany w `localStorage` pod kluczem `pcc_sidebar_collapsed`, dzieki czemu preferencja uzytkownika pozostaje po ponownym uruchomieniu aplikacji.
+
 ## Build i konfiguracja
 - 2026-04-24 – Wyciszenie ostrzeżenia Babel dla dużego App.tsx
   -- Konfiguracja `@vitejs/plugin-react` w `vite.config.ts` ustawia teraz `babel.generatorOpts.compact` na `false`.
