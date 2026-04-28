@@ -10,6 +10,15 @@
   -- Build nie powinien już pokazywać komunikatu `[BABEL] Note: The code generator has deoptimised the styling of src/App.tsx as it exceeds the max of 500KB`, a zachowanie aplikacji pozostaje bez zmian.
   -- Zmiana nie modyfikuje danych ani schematu bazy; docelowo warto rozbić `src/App.tsx` na mniejsze moduły widoków.
 
+## Architektura aplikacji
+- 2026-04-28 – Rozbicie dużego pliku `App.tsx`
+  -- `src/App.tsx` ograniczono do roli głównego shella aplikacji, providera, sidebara, przełączania widoków oraz obsługi importu i eksportu bazy.
+  -- Sidebar, modal projektu, deklaracje Electron API oraz wspólne kalkulacje przeniesiono do osobnych modułów, aby zmniejszyć sprzężenie i ułatwić dalszy rozwój.
+  -- Dashboard projektu i ustawienia przeniesiono do modułu funkcjonalnego `src/features/dashboard/components/DashboardView.tsx`, zachowując dotychczasową logikę widoków.
+- 2026-04-28 – Lazy loading ciężkich widoków
+  -- Widoki `DashboardView`, `DailyMain` oraz modal ustawień są teraz ładowane przez `React.lazy` i `Suspense`.
+  -- Produkcyjny build rozdziela główny pakiet frontendu na mniejszy shell oraz osobne chunki widoków, co skraca odpowiedzialność modułu startowego bez zmiany danych w bazie.
+
 ## Dashboard projektu
 - 2026-04-27 - Sekcja ClickUp w ustawieniach projektu
   -- W formularzu dodawania i edycji projektu dodano sekcje `ClickUp` z polem `Url do daily`.

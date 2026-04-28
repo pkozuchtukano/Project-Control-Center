@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Image as ImageIcon } from 'lucide-react';
-import { useProjectContext } from '../App';
+import { useProjectContext } from '../context/ProjectContext';
 
 interface AuthenticatedImageProps {
     src: string;

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Project, Estimation, EstimationItem } from '../../../App';
+import type { Project, Estimation, EstimationItem } from '../../../types';
 import { Plus, X, AlertCircle } from 'lucide-react';
 import { generateId } from '../services/EstimationService';
 

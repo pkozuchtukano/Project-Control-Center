@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Estimation } from '../../../App';
+import type { Estimation } from '../../../types';
 import { Plus, X, Calendar, List } from 'lucide-react';
 import { generateId } from '../services/EstimationService';
 

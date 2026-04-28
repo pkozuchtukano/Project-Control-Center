@@ -4,7 +4,8 @@ import {
     BarChart3, Trello, RefreshCw,
     AlertCircle, CheckCircle2, Loader2
 } from 'lucide-react';
-import { type Project, useProjectContext } from '../../../App';
+import type { Project } from '../../../types';
+import { useProjectContext } from '../../../context/ProjectContext';
 import { useWorkRegistry } from '../hooks/useWorkRegistry';
 import { YouTrackTable } from './YouTrackTable';
 import { StatisticsView } from './StatisticsView';
