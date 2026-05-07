@@ -100,9 +100,12 @@ export const syncWorkItems = async (
                 lastModified: new Date(log.date).toISOString()
             }));
 
-            if (items.length > 0) {
-                await window.electron.upsertWorkItems({ items, projectId });
-            }
+            await window.electron.replaceWorkItemsForPeriod({
+                items,
+                projectId,
+                dateFrom: chunk.from,
+                dateTo: chunk.to
+            });
 
             // Small delay to prevent hammering
             await new Promise(resolve => setTimeout(resolve, 300));

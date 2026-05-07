@@ -40,6 +40,9 @@
   -- Typ `WorkItemRow` uzupełniono o flagę `isMaintenance`, zgodnie z danymi zwracanymi przez hook rejestru pracy.
 
 ## Daily Command Center
+- 2026-05-04 - Stabilny eksport Daily AI po pobraniu danych z YouTrack
+  -- W `src/features/daily/components/DailyBoard.tsx` zabezpieczono obiekt eksportu AI tak, aby zawsze zawierał tablice `sections` i `issues`, również wtedy, gdy po synchronizacji nie ma widocznych zgłoszeń.
+  -- Przyciski `Export do AI` i `Analizuj z AI` korzystają teraz z bezpiecznie wyliczonej liczby zgłoszeń, co usuwa błąd `Cannot read properties of undefined (reading 'length')` po kliknięciu `Pobierz dane`.
 - 2026-04-27 - Eksport analizy AI do ClickUp
   -- W modalu `Analizuj z AI` dodano przycisk `Export do ClickUp`, aktywny po wygenerowaniu odpowiedzi AI.
   -- Eksport używa pola projektu `Url do daily` z sekcji `ClickUp` oraz tokena `CLICKUP_API_TOKEN` odczytywanego po stronie Electron z pliku `.env`.
@@ -567,6 +570,9 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
+- 2026-05-06 – Pełna aktualizacja logowań z YouTrack
+  -- Synchronizacja przyciskiem `Aktualizuj z YouTrack` zastępuje teraz lokalne wpisy `work_items` dla synchronizowanego projektu i zakresu dat pełnym wynikiem pobranym z YouTrack.
+  -- Jeżeli logowanie czasu zostało usunięte w YouTrack, po ponownej synchronizacji znika także z lokalnego rejestru pracy, a suma godzin odzwierciedla aktualny stan YouTrack.
 - 2026-03-18 – Stabilizacja statystyk i wykresów
   -- Przepisano komponent statystyk rejestru pracy, aby tooltipy Recharts renderowały wyłącznie tekstowe etykiety zamiast obiektów oraz aby wykres kołowy jawnie używał pola `name` jako etykiety segmentu.
   -- Dodano zabezpieczenia dla pustych zakresów dat i kontenerów wykresów (`min-w-0`, minimalne wysokości, warunkowe renderowanie wykresów), dzięki czemu widok nie wywołuje błędu Reacta o renderowaniu obiektu ani ostrzeżeń Recharts o szerokości/wysokości `-1`.

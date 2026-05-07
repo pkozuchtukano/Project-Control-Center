@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electron', {
     setIssueTaskType: (issueId: string, taskTypeId: string) => ipcRenderer.invoke('set-issue-task-type', issueId, taskTypeId),
     getWorkItems: (projectId: string) => ipcRenderer.invoke('get-work-items', projectId),
     upsertWorkItems: (data: { items: any[], projectId: string }) => ipcRenderer.invoke('upsert-work-items', data),
+    replaceWorkItemsForPeriod: (data: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => ipcRenderer.invoke('replace-work-items-for-period', data),
     getOrderItemTemplate: (projectId: string) => ipcRenderer.invoke('get-order-item-template', projectId),
     saveOrderItemTemplate: (data: { projectId: string, data: any }) => ipcRenderer.invoke('save-order-item-template', data),
     getIssueCategories: () => ipcRenderer.invoke('get-issue-categories'),

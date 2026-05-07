@@ -12,6 +12,17 @@ import type { IssueWithHistory } from '../../../services/youtrackApi';
 
 type IssueTitleMap = Record<string, string>;
 
+type DailyAiExportSummary = {
+  generatedAt: string;
+  generatedAtLocal: string;
+  hub: { id: string; projectCodes: string[] };
+  filters?: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  aiContext?: Record<string, unknown>;
+  sections: Array<Record<string, unknown>>;
+  issues: Array<Record<string, unknown>>;
+};
+
 const formatIsoDateTime = (value?: number | null) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -955,7 +966,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
       return acc;
     }, {});
 
-    return pruneJson({
+    const prunedSummary = pruneJson({
       generatedAt: new Date().toISOString(),
       generatedAtLocal: new Date().toLocaleString('pl-PL'),
       hub: {
@@ -996,17 +1007,20 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
       },
       sections: sectionSummaries,
       issues: serializedIssues,
-    }) as {
-      generatedAt: string;
-      generatedAtLocal: string;
-      hub: { id: string; projectCodes: string[] };
-      filters?: Record<string, unknown>;
-      summary: Record<string, unknown>;
-      aiContext?: Record<string, unknown>;
-      sections: Array<Record<string, unknown>>;
-      issues: Array<Record<string, unknown>>;
-    };
+    }) as Partial<DailyAiExportSummary> | undefined;
+
+    return {
+      ...prunedSummary,
+      generatedAt: prunedSummary?.generatedAt || new Date().toISOString(),
+      generatedAtLocal: prunedSummary?.generatedAtLocal || new Date().toLocaleString('pl-PL'),
+      hub: prunedSummary?.hub || { id: hubId, projectCodes: projectCodes.split(',').map((item) => item.trim()).filter(Boolean) },
+      summary: prunedSummary?.summary || {},
+      sections: Array.isArray(prunedSummary?.sections) ? prunedSummary.sections : [],
+      issues: Array.isArray(prunedSummary?.issues) ? prunedSummary.issues : [],
+    } satisfies DailyAiExportSummary;
   }, [sections, collapsedSections, sectionIssuesMap, comments, skippedInAiIssues, activityIssueIds, pendingSettlementEntriesByIssueId, dateFrom, dateTo, hubId, projectCodes, selectedProject, selectedAssignee, showOnlyCommented]);
+
+  const aiExportIssueCount = Array.isArray(aiExportSummary.issues) ? aiExportSummary.issues.length : 0;
 
   const visibleAnalysisProjectCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -1124,7 +1138,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
   };
 
   const handleExportToAi = async () => {
-    if (!hasLoadedActivities || aiExportSummary.issues.length === 0) {
+    if (!hasLoadedActivities || aiExportIssueCount === 0) {
       window.alert('Najpierw kliknij `Pobierz dane`, aby przygotować eksport aktualnej tablicy.');
       return;
     }
@@ -1142,7 +1156,7 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
   };
 
   const handleOpenAiAnalysis = () => {
-    if (!hasLoadedActivities || aiExportSummary.issues.length === 0) {
+    if (!hasLoadedActivities || aiExportIssueCount === 0) {
       window.alert('Najpierw kliknij `Pobierz dane`, aby przygotowac dane do analizy AI.');
       return;
     }
@@ -1391,9 +1405,9 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
             </button>
             <button
               onClick={handleExportToAi}
-              disabled={isAiExporting || !hasLoadedActivities || aiExportSummary.issues.length === 0}
+              disabled={isAiExporting || !hasLoadedActivities || aiExportIssueCount === 0}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                isAiExporting || !hasLoadedActivities || aiExportSummary.issues.length === 0
+                isAiExporting || !hasLoadedActivities || aiExportIssueCount === 0
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'
               }`}
@@ -1403,9 +1417,9 @@ export const DailyBoard = ({ hubId, projectCodes, lockedProjectCode }: DailyBoar
             </button>
             <button
               onClick={handleOpenAiAnalysis}
-              disabled={isAiAnalyzing || !hasLoadedActivities || aiExportSummary.issues.length === 0}
+              disabled={isAiAnalyzing || !hasLoadedActivities || aiExportIssueCount === 0}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                isAiAnalyzing || !hasLoadedActivities || aiExportSummary.issues.length === 0
+                isAiAnalyzing || !hasLoadedActivities || aiExportIssueCount === 0
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-violet-600 text-white hover:bg-violet-700 active:scale-95'
               }`}

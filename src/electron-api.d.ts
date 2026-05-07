@@ -37,6 +37,7 @@ declare global {
       setIssueTaskType: (issueId: string, taskTypeId: string) => Promise<{ success: boolean }>;
       getWorkItems: (projectId: string) => Promise<any[]>;
       upsertWorkItems: (data: { items: any[], projectId: string }) => Promise<{ success: boolean }>;
+      replaceWorkItemsForPeriod: (data: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => Promise<{ success: boolean }>;
       getOrderItemTemplate: (projectId: string) => Promise<{ names?: string[]; lastDate?: string } | null>;
       saveOrderItemTemplate: (data: { projectId: string, data: { names: string[]; lastDate: string } }) => Promise<{ success: boolean }>;
       getIssueCategories: () => Promise<Record<string, string>>;

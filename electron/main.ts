@@ -1490,6 +1490,61 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
     }
 });
 
+ipcMain.handle('replace-work-items-for-period', async (_, { items, projectId, dateFrom, dateTo }: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => {
+    try {
+        const fromIso = new Date(`${dateFrom}T00:00:00`).toISOString();
+        const toIso = new Date(`${dateTo}T23:59:59.999`).toISOString();
+
+        const transaction = db.transaction(() => {
+            db.prepare(`
+                DELETE FROM work_items
+                WHERE projectId = ?
+                  AND date >= ?
+                  AND date <= ?
+            `).run(projectId, fromIso, toIso);
+
+            const stmt = db.prepare(`
+                INSERT INTO work_items (id, issueId, issueReadableId, issueSummary, issueType, author, authorName, date, minutes, description, lastModified, projectId)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    issueId = excluded.issueId,
+                    issueReadableId = excluded.issueReadableId,
+                    issueSummary = excluded.issueSummary,
+                    issueType = excluded.issueType,
+                    author = excluded.author,
+                    authorName = excluded.authorName,
+                    date = excluded.date,
+                    minutes = excluded.minutes,
+                    description = excluded.description,
+                    lastModified = excluded.lastModified,
+                    projectId = excluded.projectId
+            `);
+
+            for (const item of items) {
+                stmt.run(
+                    item.id,
+                    item.issueId,
+                    item.issueReadableId,
+                    item.issueSummary,
+                    item.issueType || null,
+                    item.author,
+                    item.authorName,
+                    item.date,
+                    item.minutes,
+                    item.description,
+                    item.lastModified,
+                    projectId
+                );
+            }
+        });
+        transaction();
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zastępowania work_items dla zakresu:', error);
+        throw error;
+    }
+});
+
 ipcMain.handle('import-work-items', async (_, { items, projectId }: { items: any[], projectId: string }) => {
     try {
         const transaction = db.transaction(() => {
