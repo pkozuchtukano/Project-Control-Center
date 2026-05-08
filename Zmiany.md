@@ -1,3 +1,36 @@
+## Konfiguracja projektu
+- 2026-05-08 - Role personelu w projekcie
+  -- Do modelu projektu dodano opcjonalny parametr `Projekt z rolami personelu` oraz listę ról personelu z nazwą roli, procentem udziału, minimalną liczbą roboczogodzin i maksymalną liczbą roboczogodzin.
+  -- Formularz dodawania i edycji projektu pokazuje sekcję `Role personelu`; po zaznaczeniu checkboxa można dopisać role i uzupełnić ich parametry.
+  -- Zapis projektu waliduje zakres procentu udziału od 0 do 100 oraz wymaga, aby minimalna liczba godzin roli nie przekraczała maksymalnej.
+  -- Każda rola personelu ma teraz także pole `Stawka brutto / h`, zapisywane jako stawka brutto za roboczogodzinę i walidowane przed wartościami ujemnymi.
+  -- Pole stawki brutto w konfiguracji roli przeniesiono na koniec wiersza, po maksymalnej liczbie godzin.
+  -- Istniejące projekty dostają domyślnie wyłączony parametr i pustą listę ról bez migracji tabel, ponieważ projekty są zapisywane jako JSON w tabeli `projects`.
+
+## Wycena
+- 2026-05-08 - Automatyczne wypełnianie godzin według udziału ról
+  -- Obok pola `Oczekiwane` w tabeli wyceny z rolami personelu dodano przycisk `Wypełnij`.
+  -- Kliknięcie rozdziela oczekiwaną liczbę godzin najpierw na role według procentu udziału z konfiguracji projektu, a następnie dzieli pulę roli między wszystkie pozycje z tą samą rolą.
+  -- Automatyczne wypełnianie używa wyłącznie procentu udziału roli; minimalna i maksymalna liczba godzin z konfiguracji roli nie ograniczają wyliczenia pojedynczej wyceny.
+  -- Pozycje bez wybranej roli dostają `0` godzin, a różnica między oczekiwaną liczbą godzin i sumą rozdzielonych godzin jest pokazywana w polu `Pozostało`.
+  -- Pole `Oczekiwane` poszerzono w stopce tabeli, aby można było wygodnie wpisać liczbę godzin obok przycisku `Wypełnij`.
+  -- Przycisk `Wypełnij` używa teraz bieżącej wartości widocznej w polu `Oczekiwane`, także wtedy, gdy użytkownik klika bez wcześniejszego opuszczenia pola.
+  -- Podczas wpisywania pole `Oczekiwane` nie formatuje już wartości w locie, dzięki czemu można swobodnie zaznaczyć i nadpisać dotychczasową liczbę.
+  -- Rozpoznawanie ról przy automatycznym wypełnianiu działa teraz zarówno po technicznym identyfikatorze roli, jak i po zapisanej nazwie roli w pozycji wyceny.
+  -- Po resecie wyceny pole `Oczekiwane` pozostaje edytowalne, bo jego bieżąca wartość jest obsługiwana przez referencję do inputa zamiast przez agresywnie synchronizowany stan Reacta.
+- 2026-05-08 - Oczekiwana liczba godzin w tabeli z rolami
+  -- W tabeli wyceny dla projektów z rolami personelu dodano pod wierszem `RAZEM` pole `Oczekiwane`, pozwalające wpisać docelową liczbę godzin.
+  -- Po wpisaniu oczekiwanej liczby godzin widok pokazuje różnicę między sumą godzin z pozycji wyceny a wartością oczekiwaną.
+- 2026-05-08 - Zwijany panel Flow wyceny
+  -- Panel `Flow wyceny` można teraz zwinąć do wąskiego paska po lewej stronie widoku wyceny, analogicznie do zwijania głównego sidebara.
+  -- Po zwinięciu kalkulator roboczogodzin dostaje więcej szerokości roboczej, co ułatwia pracę z tabelą wyceny projektów używających ról personelu.
+  -- Stan zwinięcia panelu jest zapisywany w `localStorage` pod kluczem `pcc_estimation_flow_collapsed`, więc preferencja zostaje zachowana po odświeżeniu aplikacji.
+- 2026-05-08 - Tabela wyceny dla projektów z rolami personelu
+  -- Dla projektów z włączonym parametrem `Projekt z rolami personelu` tabela wyceny pokazuje układ: `Przedmiot wyceny`, `Rola`, `Uwagi / Wyszczególnienie`, `Liczba Godzin`, `Stawka za godz.` oraz `Kwota razem`.
+  -- W każdej pozycji wyceny można wybrać rolę z konfiguracji projektu, a po wyborze roli pole stawki brutto za godzinę uzupełnia się automatycznie stawką tej roli.
+  -- Kwota razem w pozycji i podsumowaniu jest liczona jako liczba godzin razy stawka brutto przypisana do pozycji.
+  -- Kopiowanie tabeli oraz eksport do Excela używają tego samego układu i stawek brutto dla projektów z rolami personelu.
+
 ## Sidebar i nawigacja
 - 2026-04-28 - Minimalizowanie sidebara
   -- W `src/App.tsx` dodano przycisk zwijania i rozwijania lewego sidebara w glownym layoucie aplikacji.

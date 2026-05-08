@@ -41,6 +41,11 @@ const buildScheduleRows = (estimation: Estimation) => {
   ]);
 };
 
+const getRoleBasedItemRate = (item: Estimation['items'][number], project: Project) => {
+  const role = (project.personnelRoles || []).find((personnelRole) => personnelRole.id === item.roleId);
+  return Number(item.rate ?? role?.hourlyRate ?? 0) || 0;
+};
+
 const applyBorder = (cell: ExcelJS.Cell) => {
   cell.border = {
     top: BORDER_STYLE,
@@ -72,14 +77,114 @@ const styleTotalCell = (cell: ExcelJS.Cell, horizontal: ExcelJS.Alignment['horiz
 export const exportEstimationToExcel = async (estimation: Estimation, project: Project, isBrutto: boolean) => {
   const timestamp = format(new Date(), 'yyyyMMddHHmm');
   const fileName = `${project.code}_${timestamp}_kalkukacja zlecenia.xlsx`;
-  const rateValue = isBrutto ? project.rateBrutto : project.rateNetto;
-  const rateLabel = `Stawka za h (${isBrutto ? 'brutto' : 'netto'})`;
-  const amountLabel = `Kwota razem (${isBrutto ? 'brutto' : 'netto'})`;
 
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Wycena', {
     views: [{ showGridLines: true }],
   });
+
+  if (project.hasPersonnelRoles) {
+    worksheet.columns = [
+      { width: 8 },
+      { width: 30 },
+      { width: 22 },
+      { width: 28 },
+      { width: 16 },
+      { width: 18 },
+      { width: 20 },
+      { width: 8 },
+      { width: 18 },
+      { width: 16 },
+    ];
+
+    const estimationItems = estimation.items.map((item, index) => ({ item, displayIndex: index + 1 }));
+    const totalHours = estimationItems.reduce((sum, entry) => sum + entry.item.finalHours, 0);
+    const totalAmount = estimationItems.reduce((sum, entry) => sum + (entry.item.finalHours * getRoleBasedItemRate(entry.item, project)), 0);
+    const scheduleRows = buildScheduleRows(estimation);
+    const rowCount = Math.max(estimationItems.length, scheduleRows.length);
+
+    worksheet.addRow(['Lp.', 'Przedmiot wyceny', 'Rola', 'Uwagi / Wyszczególnienie', 'Liczba Godzin', 'Stawka za godz. brutto', 'Kwota razem brutto', '', 'Zadanie / Etap', 'Termin']);
+    worksheet.getRow(1).height = 24;
+
+    for (let index = 0; index < rowCount; index += 1) {
+      const itemEntry = estimationItems[index];
+      const item = itemEntry?.item;
+      const schedule = scheduleRows[index];
+      const rateValue = item ? getRoleBasedItemRate(item, project) : '';
+
+      worksheet.addRow([
+        itemEntry ? itemEntry.displayIndex : '',
+        item?.name || '',
+        item?.roleName || '',
+        item?.details || '',
+        item ? item.finalHours : '',
+        rateValue,
+        item && typeof rateValue === 'number' ? item.finalHours * rateValue : '',
+        '',
+        schedule?.[0] || '',
+        schedule?.[1] || '',
+      ]);
+    }
+
+    worksheet.addRow(['', '', '', 'RAZEM:', totalHours, '', totalAmount, '', '', '']);
+
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        if (colNumber === 8) return;
+
+        if (rowNumber === 1) {
+          styleHeaderCell(cell);
+          return;
+        }
+
+        const isTotalRow = rowNumber === rowCount + 2;
+        const isEstimationSide = colNumber >= 1 && colNumber <= 7;
+        const isScheduleSide = colNumber >= 9 && colNumber <= 10;
+
+        if (!isEstimationSide && !isScheduleSide) return;
+
+        if (isTotalRow && isEstimationSide) {
+          const totalAlignment = colNumber === 4 ? 'right' : colNumber === 7 ? 'right' : 'center';
+          styleTotalCell(cell, totalAlignment);
+          return;
+        }
+
+        const alignment =
+          colNumber === 1 ? 'center'
+          : colNumber === 5 ? 'right'
+          : colNumber === 6 ? 'right'
+          : colNumber === 7 ? 'right'
+          : colNumber === 10 ? 'center'
+          : 'left';
+
+        styleBodyCell(cell, alignment);
+      });
+    });
+
+    for (let rowNumber = 2; rowNumber <= rowCount + 1; rowNumber += 1) {
+      const hoursCell = worksheet.getCell(`E${rowNumber}`);
+      const rateCell = worksheet.getCell(`F${rowNumber}`);
+      const amountCell = worksheet.getCell(`G${rowNumber}`);
+
+      if (typeof hoursCell.value === 'number') hoursCell.numFmt = getHoursFormat(hoursCell.value);
+      if (typeof rateCell.value === 'number') rateCell.numFmt = '#,##0.00 "zł"';
+      if (typeof amountCell.value === 'number') amountCell.numFmt = '#,##0.00 "zł"';
+    }
+
+    const totalHoursCell = worksheet.getCell(`E${rowCount + 2}`);
+    const totalAmountCell = worksheet.getCell(`G${rowCount + 2}`);
+
+    if (typeof totalHoursCell.value === 'number') totalHoursCell.numFmt = getHoursFormat(totalHoursCell.value);
+    if (typeof totalAmountCell.value === 'number') totalAmountCell.numFmt = '#,##0.00 "zł"';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), fileName);
+    return;
+  }
+
+  const rateValue = isBrutto ? project.rateBrutto : project.rateNetto;
+  const rateLabel = `Stawka za h (${isBrutto ? 'brutto' : 'netto'})`;
+  const amountLabel = `Kwota razem (${isBrutto ? 'brutto' : 'netto'})`;
 
   worksheet.columns = [
     { width: 8 },

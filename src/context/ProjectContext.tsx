@@ -12,8 +12,18 @@ const roundCurrency = (value: number) => Number((value || 0).toFixed(2));
 const calculateGrossFromNet = (net: number, vatRate: number) =>
   roundCurrency((net || 0) * (1 + (vatRate || 0) / 100));
 
+const normalizePersonnelRole = (role: NonNullable<Project['personnelRoles']>[number]) => ({
+  ...role,
+  name: role.name ?? '',
+  participationPct: Number(role.participationPct) || 0,
+  hourlyRate: Number(role.hourlyRate) || 0,
+  minHours: Number(role.minHours) || 0,
+  maxHours: Number(role.maxHours) || 0,
+});
+
 const normalizeProject = (project: Project): Project => {
   const hasMaintenance = project.hasMaintenance ?? false;
+  const hasPersonnelRoles = project.hasPersonnelRoles ?? false;
   const maintenanceVatRate = project.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE;
   const maintenanceNetAmount = roundCurrency(project.maintenanceNetAmount ?? 0);
   const maintenanceGrossAmount = roundCurrency(
@@ -27,6 +37,8 @@ const normalizeProject = (project: Project): Project => {
     maintenanceVatRate,
     maintenanceGrossAmount,
     clickupDailyUrl: project.clickupDailyUrl ?? '',
+    hasPersonnelRoles,
+    personnelRoles: (project.personnelRoles || []).map(normalizePersonnelRole),
   };
 };
 

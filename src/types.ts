@@ -13,6 +13,15 @@ export type TaskType = {
   icon: string;
 };
 
+export type ProjectPersonnelRole = {
+  id: string;
+  name: string;
+  participationPct: number;
+  hourlyRate: number;
+  minHours: number;
+  maxHours: number;
+};
+
 export type Project = {
   id: string;
   code: string;
@@ -36,6 +45,8 @@ export type Project = {
   googleDocLink?: string;
   pendingSettlementYoutrackUrl?: string;
   clickupDailyUrl?: string;
+  hasPersonnelRoles?: boolean;
+  personnelRoles?: ProjectPersonnelRole[];
   orderProtocolFlow?: OrderProtocolFlow;
   stakeholders?: Stakeholder[];
 };
@@ -176,6 +187,9 @@ export type Order = {
 export type EstimationItem = {
   id: string;
   name: string;
+  roleId?: string;
+  roleName?: string;
+  details?: string;
   baseHours: number;
   multiplier: number;
   finalHours: number;

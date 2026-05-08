@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Project, Estimation, OrderProtocolFlow, OrderProtocolStep } from '../../../types';
-import { FileSpreadsheet, Loader2, Calculator, Save, Copy, RotateCcw, Mail, Edit2, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, X, ExternalLink, ListChecks } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Calculator, Save, Copy, RotateCcw, Mail, Edit2, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, X, ExternalLink, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import { EstimationTable } from './EstimationTable';
 import { ScheduleManager } from './ScheduleManager';
 import { EmailTemplateSection } from './EmailTemplateSection';
@@ -20,6 +20,8 @@ const createEstimationFlowStep = (): OrderProtocolStep => ({
   linkUrl: '',
   linkLabel: '',
 });
+
+const ESTIMATION_FLOW_COLLAPSED_STORAGE_KEY = 'pcc_estimation_flow_collapsed';
 
 const normalizeEstimationFlow = (flow?: OrderProtocolFlow | null): OrderProtocolFlow => {
   const steps = Array.isArray(flow?.steps)
@@ -48,6 +50,10 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [copiedType, setCopiedType] = useState<'table' | 'schedule' | null>(null);
   const [isFlowEditMode, setIsFlowEditMode] = useState(false);
+  const [isFlowCollapsed, setIsFlowCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(ESTIMATION_FLOW_COLLAPSED_STORAGE_KEY) === 'true';
+  });
   const [draftFlowSteps, setDraftFlowSteps] = useState<OrderProtocolStep[]>([]);
   const skipNextSave = React.useRef(true);
 
@@ -93,6 +99,11 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
     }
   }, [isFlowEditMode, persistedSteps]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(ESTIMATION_FLOW_COLLAPSED_STORAGE_KEY, String(isFlowCollapsed));
+  }, [isFlowCollapsed]);
+
   // Auto-save logic
   useEffect(() => {
     if (skipNextSave.current) {
@@ -129,7 +140,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
 
   const handleCopyTable = async () => {
     if (!estimation || !project) return;
-    const html = formatEstimationToHTML(estimation, project.rateNetto, isBrutto);
+    const html = formatEstimationToHTML(estimation, project, isBrutto);
     await window.electron?.writeClipboardHtml({ html });
     setCopiedType('table');
     setTimeout(() => setCopiedType(null), 2000);
@@ -312,7 +323,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.55fr)] gap-6 items-start">
+      <div className={`grid grid-cols-1 ${isFlowCollapsed ? 'xl:grid-cols-[4rem_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.55fr)]'} gap-6 items-start transition-[grid-template-columns] duration-200`}>
         {/* ESTIMATION TABLE */}
         <div className="order-2 xl:order-none xl:col-start-2 xl:row-start-1 space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -367,7 +378,27 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
             </div>
           </div>
 
-          <div className="order-1 xl:order-none xl:col-start-1 xl:row-start-1 xl:row-span-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className={`order-1 xl:order-none xl:col-start-1 xl:row-start-1 xl:row-span-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden ${isFlowCollapsed ? 'xl:min-h-[220px]' : ''}`}>
+            {isFlowCollapsed ? (
+              <div className="flex h-full min-h-[220px] flex-col items-center gap-4 p-3">
+                <button
+                  type="button"
+                  onClick={() => setIsFlowCollapsed(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/30"
+                  title="Rozwiń flow wyceny"
+                  aria-label="Rozwiń flow wyceny"
+                >
+                  <ChevronRight size={18} />
+                </button>
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="flex rotate-180 items-center gap-2 [writing-mode:vertical-rl]">
+                    <ListChecks className="text-indigo-500" size={18} />
+                    <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Flow wyceny</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-start justify-between gap-4 bg-gray-50/50 dark:bg-gray-900/50">
               <div className="min-w-0">
                 <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -378,6 +409,16 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
                   Kroki obsługi wyceny analogiczne do flow PP/PO.
                 </p>
               </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFlowCollapsed(true)}
+                  className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+                  title="Schowaj flow wyceny"
+                  aria-label="Schowaj flow wyceny"
+                >
+                  <ChevronLeft size={16} />
+                </button>
               {isFlowEditMode ? (
                 <div className="flex shrink-0 items-center gap-2">
                   <button
@@ -407,6 +448,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
                   Edytuj flow
                 </button>
               )}
+              </div>
             </div>
 
             <div className="p-4 space-y-4">
@@ -569,6 +611,8 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
 

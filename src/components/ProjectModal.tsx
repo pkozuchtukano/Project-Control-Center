@@ -10,7 +10,7 @@ import {
   X,
 } from 'lucide-react';
 
-import type { Project, Stakeholder, TaskType } from '../types';
+import type { Project, ProjectPersonnelRole, Stakeholder, TaskType } from '../types';
 import { useProjectContext } from '../context/ProjectContext';
 import { TaskTypeIconMap } from '../utils/icons';
 import {
@@ -38,11 +38,14 @@ export const ProjectModal = ({
     googleDocLink: '',
     pendingSettlementYoutrackUrl: '',
     clickupDailyUrl: '',
+    hasPersonnelRoles: false,
+    personnelRoles: [],
     stakeholders: []
   });
   const [isMaintenanceGrossLocked, setIsMaintenanceGrossLocked] = useState(true);
   const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
+  const [personnelRoles, setPersonnelRoles] = useState<ProjectPersonnelRole[]>([]);
   const predefinedIcons = Object.keys(TaskTypeIconMap);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,11 +73,14 @@ export const ProjectModal = ({
         googleDocLink: projectToEdit.googleDocLink || '',
         pendingSettlementYoutrackUrl: projectToEdit.pendingSettlementYoutrackUrl || '',
         clickupDailyUrl: projectToEdit.clickupDailyUrl || '',
+        hasPersonnelRoles: projectToEdit.hasPersonnelRoles ?? false,
+        personnelRoles: projectToEdit.personnelRoles || [],
         stakeholders: projectToEdit.stakeholders || []
       });
       setIsMaintenanceGrossLocked(true);
       setTaskTypes(projectToEdit.taskTypes || []);
       setStakeholders(projectToEdit.stakeholders || []);
+      setPersonnelRoles(projectToEdit.personnelRoles || []);
     } else {
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
@@ -85,17 +91,20 @@ export const ProjectModal = ({
         googleDocLink: '',
         pendingSettlementYoutrackUrl: '',
         clickupDailyUrl: '',
+        hasPersonnelRoles: false,
+        personnelRoles: [],
         stakeholders: []
       });
       setIsMaintenanceGrossLocked(true);
       setTaskTypes([]);
       setStakeholders([]);
+      setPersonnelRoles([]);
     }
   }, [projectToEdit, isOpen]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    let newValue: any = value;
+    let newValue: any = type === 'checkbox' ? checked : value;
 
     if (type === 'number') {
       newValue = parseFloat(value) || 0;
@@ -186,6 +195,29 @@ export const ProjectModal = ({
     });
   };
 
+  const createPersonnelRole = (): ProjectPersonnelRole => ({
+    id: Date.now().toString(),
+    name: '',
+    participationPct: 0,
+    hourlyRate: 0,
+    minHours: 0,
+    maxHours: 0,
+  });
+
+  const updatePersonnelRole = (
+    roleId: string,
+    field: keyof Omit<ProjectPersonnelRole, 'id'>,
+    value: string,
+  ) => {
+    setPersonnelRoles(prev => prev.map(role => {
+      if (role.id !== roleId) return role;
+      return {
+        ...role,
+        [field]: field === 'name' ? value : parseFloat(value) || 0,
+      };
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -201,12 +233,38 @@ export const ProjectModal = ({
       return;
     }
 
+    const normalizedPersonnelRoles = personnelRoles
+      .map(role => ({
+        ...role,
+        name: role.name.trim(),
+        participationPct: Number(role.participationPct) || 0,
+        hourlyRate: Number(role.hourlyRate) || 0,
+        minHours: Number(role.minHours) || 0,
+        maxHours: Number(role.maxHours) || 0,
+      }))
+      .filter(role => role.name !== '');
+
+    const invalidPersonnelRole = normalizedPersonnelRoles.find(role =>
+      role.participationPct < 0 ||
+      role.participationPct > 100 ||
+      role.hourlyRate < 0 ||
+      role.minHours < 0 ||
+      role.maxHours < 0 ||
+      role.minHours > role.maxHours
+    );
+
+    if (invalidPersonnelRole) {
+      setError('Sprawdz role personelu: procent udzialu musi byc w zakresie 0-100, stawka nie moze byc ujemna, a min godzin nie moze przekraczac max godzin.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const finalFormData = {
         ...formData,
         taskTypes: taskTypes.filter(t => t.name.trim() !== ''),
-        stakeholders: stakeholders.filter(s => s.name.trim() !== '')
+        stakeholders: stakeholders.filter(s => s.name.trim() !== ''),
+        personnelRoles: normalizedPersonnelRoles,
       };
 
       if (projectToEdit) {
@@ -435,6 +493,119 @@ export const ProjectModal = ({
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h3 className="text-md font-bold text-gray-900 dark:text-white mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">Role personelu</h3>
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    name="hasPersonnelRoles"
+                    checked={formData.hasPersonnelRoles ?? false}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <div>
+                    <span className="block text-sm font-medium text-gray-900 dark:text-white">Projekt z rolami personelu</span>
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                      Włączenie pozwala przypisać role z udziałem procentowym oraz minimalną i maksymalną pulą roboczogodzin.
+                    </span>
+                  </div>
+                </label>
+
+                {formData.hasPersonnelRoles && (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/40 p-4">
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Definicje ról</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Procent udziału będzie podstawą przyszłych wycen wraz z pulą godzin.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPersonnelRoles(prev => [...prev, createPersonnelRole()])}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 hover:text-indigo-700 transition px-3 py-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg"
+                      >
+                        <Plus size={14} /> Dodaj rolę
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {personnelRoles.map((role) => (
+                        <div key={role.id} className="grid grid-cols-1 lg:grid-cols-[minmax(180px,1fr)_120px_120px_120px_120px_auto] gap-3 items-start rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Rola</label>
+                            <input
+                              value={role.name}
+                              onChange={(e) => updatePersonnelRole(role.id, 'name', e.target.value)}
+                              placeholder="np. Analityk, Developer"
+                              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Udział (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={role.participationPct}
+                              onChange={(e) => updatePersonnelRole(role.id, 'participationPct', e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Min godzin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={role.minHours}
+                              onChange={(e) => updatePersonnelRole(role.id, 'minHours', e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Max godzin</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={role.maxHours}
+                              onChange={(e) => updatePersonnelRole(role.id, 'maxHours', e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Stawka brutto / h</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={role.hourlyRate}
+                              onChange={(e) => updatePersonnelRole(role.id, 'hourlyRate', e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPersonnelRoles(prev => prev.filter(item => item.id !== role.id))}
+                            className="lg:mt-6 inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 text-gray-400 transition-colors hover:text-red-500"
+                            title="Usuń rolę"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      {personnelRoles.length === 0 && (
+                        <p className="text-xs text-center text-gray-500 py-4 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
+                          Brak zdefiniowanych ról personelu dla tego projektu.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
