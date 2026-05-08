@@ -354,6 +354,9 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-05-08 – Zaznaczanie pozycji w `Do rozliczenia`
+  -- W tabeli zakładki `Do rozliczenia` dodano checkboxy pozwalające zaznaczać pojedyncze widoczne wiersze oraz wszystkie aktualnie widoczne pozycje z nagłówka tabeli.
+  -- Obok `Suma godzin` dodano podsumowanie `Zaznaczone`, które pokazuje liczbę zaznaczonych pozycji i sumę ich godzin wyceny.
 - 2026-04-22 – Odblokowanie pól formularza zlecenia
   -- Formularz dodawania i edycji zlecenia nie resetuje już danych po każdej zmianie referencji obiektu projektu w kontekście aplikacji.
   -- Inicjalizacja formularza zależy teraz od stabilnych identyfikatorów zlecenia i projektu, a spóźnione wczytanie szablonu pozycji nie nadpisuje już formularza po zamknięciu lub zmianie kontekstu.

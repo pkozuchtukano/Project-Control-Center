@@ -4949,6 +4949,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [copiedExport, setCopiedExport] = useState(false);
   const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
   const [savingStatusEntryId, setSavingStatusEntryId] = useState<string | null>(null);
+  const [selectedPendingSettlementIds, setSelectedPendingSettlementIds] = useState<Set<string>>(() => new Set());
 
   const formatPendingSettlementRequester = (value: string) => {
     const parts = value.trim().split(/\s+/).filter(Boolean);
@@ -5157,6 +5158,14 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     void loadEntries();
   }, [project.id]);
 
+  useEffect(() => {
+    setSelectedPendingSettlementIds((current) => {
+      const availableEntryIds = new Set(entries.map((entry) => entry.id));
+      const nextSelectedIds = new Set([...current].filter((entryId) => availableEntryIds.has(entryId)));
+      return nextSelectedIds.size === current.size ? current : nextSelectedIds;
+    });
+  }, [entries]);
+
   const handleSave = async (entry: PendingSettlementEntry) => {
     if (!window.electron?.savePendingSettlementEntry) return;
 
@@ -5247,6 +5256,10 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   });
   const filteredEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.estimatedHours) || 0), 0);
   const filteredTeamEstimatedHoursTotal = filteredEntries.reduce((sum, entry) => sum + (Number(entry.teamEstimatedHours) || 0), 0);
+  const selectedEntries = entries.filter((entry) => selectedPendingSettlementIds.has(entry.id));
+  const selectedEstimatedHoursTotal = selectedEntries.reduce((sum, entry) => sum + (Number(entry.estimatedHours) || 0), 0);
+  const areAllFilteredEntriesSelected = filteredEntries.length > 0
+    && filteredEntries.every((entry) => selectedPendingSettlementIds.has(entry.id));
 
   const summaryCards = [
     { id: 'all' as const, label: 'Pozycji', count: entries.length, dotClass: 'bg-slate-400 dark:bg-slate-500' },
@@ -5293,6 +5306,30 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     window.setTimeout(() => {
       setCopiedEntryId((current) => current === entry.id ? null : current);
     }, 1800);
+  };
+
+  const togglePendingSettlementSelection = (entryId: string) => {
+    setSelectedPendingSettlementIds((current) => {
+      const nextSelectedIds = new Set(current);
+      if (nextSelectedIds.has(entryId)) {
+        nextSelectedIds.delete(entryId);
+      } else {
+        nextSelectedIds.add(entryId);
+      }
+      return nextSelectedIds;
+    });
+  };
+
+  const toggleAllFilteredPendingSettlementSelection = () => {
+    setSelectedPendingSettlementIds((current) => {
+      const nextSelectedIds = new Set(current);
+      if (areAllFilteredEntriesSelected) {
+        filteredEntries.forEach((entry) => nextSelectedIds.delete(entry.id));
+      } else {
+        filteredEntries.forEach((entry) => nextSelectedIds.add(entry.id));
+      }
+      return nextSelectedIds;
+    });
   };
 
   return (
@@ -5367,11 +5404,20 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
 
       <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4 shadow-sm dark:border-indigo-900/30 dark:from-indigo-500/10 dark:via-gray-800 dark:to-sky-500/10">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Suma godzin</p>
-            <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
-              {formatPendingSettlementHoursForExport(filteredEstimatedHoursTotal)} h
-            </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Suma godzin</p>
+              <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
+                {formatPendingSettlementHoursForExport(filteredEstimatedHoursTotal)} h
+              </p>
+            </div>
+            <div className="border-t border-indigo-100 pt-4 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0 dark:border-indigo-900/40">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Zaznaczone</p>
+              <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
+                {formatPendingSettlementHoursForExport(selectedEstimatedHoursTotal)} h
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedEntries.length} pozycji</p>
+            </div>
           </div>
           <div className="flex flex-col gap-3 xl:min-w-[420px] xl:max-w-[520px] xl:flex-1 xl:items-end">
             <div className="w-full relative">
@@ -5433,6 +5479,16 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
+                  <th className="w-12 px-4 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={areAllFilteredEntriesSelected}
+                      onChange={toggleAllFilteredPendingSettlementSelection}
+                      aria-label="Zaznacz wszystkie widoczne pozycje do rozliczenia"
+                      title="Zaznacz wszystkie widoczne pozycje"
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
+                    />
+                  </th>
                   <th className="w-36 px-6 py-4 whitespace-nowrap">ID</th>
                   <th className="w-28 px-4 py-4 whitespace-nowrap">Zgłaszający</th>
                   <th className="w-32 px-4 py-4 whitespace-nowrap">Data zgłoszenia</th>
@@ -5449,6 +5505,15 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                     key={entry.id}
                     className={`transition ${getPendingSettlementRowToneClass(entry)}`}
                   >
+                    <td className="px-4 py-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedPendingSettlementIds.has(entry.id)}
+                        onChange={() => togglePendingSettlementSelection(entry.id)}
+                        aria-label={`Zaznacz pozycję ${entry.externalId || entry.title}`}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
                         {entry.youtrackIssueUrl && (
