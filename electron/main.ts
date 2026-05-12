@@ -3,6 +3,7 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = electron;
 import path from 'path';
 import fs from 'fs/promises';
+import tls from 'tls';
 import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
@@ -17,6 +18,23 @@ const isDev = !app.isPackaged;
 const appDir = app.getAppPath();
 const executableDir = path.dirname(app.getPath('exe'));
 const envSettings = getEnvSettings(appDir, executableDir);
+
+const configureSystemCertificateAuthorities = () => {
+    try {
+        const systemCertificates = tls.getCACertificates('system');
+        if (!systemCertificates.length) return;
+
+        tls.setDefaultCACertificates([
+            ...tls.getCACertificates('default'),
+            ...systemCertificates,
+        ]);
+        console.log(`Main: loaded ${systemCertificates.length} system CA certificates for Node TLS requests.`);
+    } catch (error) {
+        console.warn('Main: could not load system CA certificates for Node TLS requests:', error);
+    }
+};
+
+configureSystemCertificateAuthorities();
 
 // Odnalezienie prawidĹ‚owego miejsca na bazÄ™
 const dbPath = isDev

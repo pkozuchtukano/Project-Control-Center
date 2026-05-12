@@ -38,6 +38,10 @@
   -- Stan sidebara jest zapisywany w `localStorage` pod kluczem `pcc_sidebar_collapsed`, dzieki czemu preferencja uzytkownika pozostaje po ponownym uruchomieniu aplikacji.
 
 ## Build i konfiguracja
+- 2026-05-12 - Systemowe certyfikaty CA w Electronie
+  -- Proces główny Electron dołącza teraz systemowe certyfikaty CA do domyślnego zestawu Node TLS przy starcie aplikacji.
+  -- Integracje wykonywane z procesu głównego, w tym Google OAuth/Drive oraz proxy YouTrack, mogą korzystać z lokalnie zaufanych certyfikatów Windows bez wyłączania walidacji TLS.
+  -- Zmiana nie modyfikuje danych ani schematu bazy.
 - 2026-04-24 – Wyciszenie ostrzeżenia Babel dla dużego App.tsx
   -- Konfiguracja `@vitejs/plugin-react` w `vite.config.ts` ustawia teraz `babel.generatorOpts.compact` na `false`.
   -- Build nie powinien już pokazywać komunikatu `[BABEL] Note: The code generator has deoptimised the styling of src/App.tsx as it exceeds the max of 500KB`, a zachowanie aplikacji pozostaje bez zmian.
