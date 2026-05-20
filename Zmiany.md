@@ -77,6 +77,9 @@
   -- Typ `WorkItemRow` uzupełniono o flagę `isMaintenance`, zgodnie z danymi zwracanymi przez hook rejestru pracy.
 
 ## Daily Command Center
+- 2026-05-20 - Pole tekstowe modelu w analizie AI
+  -- W modalu `Analizuj z AI` zastąpiono listę modeli Gemini pojedynczym polem tekstowym `Model`.
+  -- Użytkownik może wpisać dowolną aktualną nazwę modelu, a pozostawienie pola pustego nadal używa modelu domyślnego z konfiguracji.
 - 2026-05-04 - Stabilny eksport Daily AI po pobraniu danych z YouTrack
   -- W `src/features/daily/components/DailyBoard.tsx` zabezpieczono obiekt eksportu AI tak, aby zawsze zawierał tablice `sections` i `issues`, również wtedy, gdy po synchronizacji nie ma widocznych zgłoszeń.
   -- Przyciski `Export do AI` i `Analizuj z AI` korzystają teraz z bezpiecznie wyliczonej liczby zgłoszeń, co usuwa błąd `Cannot read properties of undefined (reading 'length')` po kliknięciu `Pobierz dane`.

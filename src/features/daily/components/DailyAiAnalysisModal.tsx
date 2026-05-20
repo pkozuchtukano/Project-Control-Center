@@ -47,12 +47,6 @@ type DailyAiAnalysisFormState = {
 };
 
 const STORAGE_KEY = 'daily_ai_analysis_settings';
-const CUSTOM_MODEL_VALUE = '__custom_model__';
-const GEMINI_MODEL_OPTIONS = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-] as const;
 
 const DEFAULT_SYSTEM_INSTRUCTION = [
   'Jestes analitykiem projektu IT.',
@@ -156,10 +150,6 @@ export const DailyAiAnalysisModal = ({
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [copiedTarget, setCopiedTarget] = useState<'payload' | 'result' | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
-  const isCustomModel = useMemo(
-    () => Boolean(formState.model.trim()) && !GEMINI_MODEL_OPTIONS.some((option) => option.value === formState.model.trim()),
-    [formState.model],
-  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -499,25 +489,12 @@ export const DailyAiAnalysisModal = ({
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Model</span>
-                  <select
-                    value={isCustomModel ? CUSTOM_MODEL_VALUE : (formState.model.trim() || defaultModel || 'gemini-2.5-flash')}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      if (nextValue === CUSTOM_MODEL_VALUE) {
-                        handleFormChange('model', formState.model.trim() || '');
-                        return;
-                      }
-                      handleFormChange('model', nextValue);
-                    }}
+                  <input
+                    value={formState.model}
+                    onChange={(event) => handleFormChange('model', event.target.value)}
+                    placeholder={defaultModel || 'gemini-2.5-flash'}
                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  >
-                    {GEMINI_MODEL_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_MODEL_VALUE}>Własny model...</option>
-                  </select>
+                  />
                 </label>
 
                 <label className="space-y-1.5">
@@ -530,18 +507,6 @@ export const DailyAiAnalysisModal = ({
                   />
                 </label>
               </div>
-
-              {isCustomModel && (
-                <label className="space-y-1.5 mt-3 block">
-                  <span className="text-xs font-bold uppercase tracking-wide text-gray-500">Własna nazwa modelu</span>
-                  <input
-                    value={formState.model}
-                    onChange={(event) => handleFormChange('model', event.target.value)}
-                    placeholder="np. gemini-2.5-flash-preview-09-2025"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  />
-                </label>
-              )}
 
               <label className="space-y-1.5 mt-3 block">
                 <span className="text-xs font-bold uppercase tracking-wide text-gray-500">systemInstruction</span>
