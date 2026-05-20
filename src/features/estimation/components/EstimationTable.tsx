@@ -140,6 +140,8 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
 
   if (hasPersonnelRoles) {
     const totalGross = estimation.items.reduce((sum, item) => sum + (item.finalHours * getItemGrossRate(item)), 0);
+    const vatMultiplier = 1 + ((Number(project.vatRate) || 0) / 100);
+    const totalNet = vatMultiplier > 0 ? totalGross / vatMultiplier : totalGross;
     const parsedRoleExpectedHours = parseFloat(roleExpectedHoursInputRef.current.replace(',', '.'));
     const visibleExpectedHours = Number.isFinite(parsedRoleExpectedHours) ? parsedRoleExpectedHours : expectedHours;
     const remainingHours = visibleExpectedHours !== null ? visibleExpectedHours - totalHours : null;
@@ -285,8 +287,11 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
                 {totalHours.toFixed(2)}h
               </td>
               <td></td>
-              <td className="px-4 py-4 text-right text-indigo-600 dark:text-indigo-400 text-lg">
-                {totalGross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              <td className="px-4 py-4 text-right text-indigo-600 dark:text-indigo-400 text-lg leading-tight">
+                <div>{totalGross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                <div className="mt-0.5 text-xs font-normal uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  ({totalNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                </div>
               </td>
               <td></td>
             </tr>
@@ -477,8 +482,13 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
             <td className="px-4 py-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">
               {totalHours.toFixed(2)}h
             </td>
-            <td className="px-4 py-4 text-right text-indigo-600 dark:text-indigo-400 text-lg">
-              {(totalNetto * (isBrutto ? 1.23 : 1)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+            <td className="px-4 py-4 text-right text-indigo-600 dark:text-indigo-400 text-lg leading-tight">
+              <div>{(totalNetto * (isBrutto ? 1.23 : 1)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+              {isBrutto && (
+                <div className="mt-0.5 text-xs font-normal uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  ({totalNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                </div>
+              )}
             </td>
             <td></td>
           </tr>

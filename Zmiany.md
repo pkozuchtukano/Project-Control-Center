@@ -8,6 +8,9 @@
   -- Istniejące projekty dostają domyślnie wyłączony parametr i pustą listę ról bez migracji tabel, ponieważ projekty są zapisywane jako JSON w tabeli `projects`.
 
 ## Wycena
+- 2026-05-20 - Netto pod kwotą brutto w podsumowaniu wyceny
+  -- W stopce tabeli wyceny dodano kwotę netto w nawiasie pod kwotą brutto, gdy widok pokazuje wartości brutto.
+  -- W wycenach projektów z rolami personelu kwota netto w podsumowaniu jest wyliczana z sumy brutto według stawki VAT projektu.
 - 2026-05-08 - Automatyczne wypełnianie godzin według udziału ról
   -- Obok pola `Oczekiwane` w tabeli wyceny z rolami personelu dodano przycisk `Wypełnij`.
   -- Kliknięcie rozdziela oczekiwaną liczbę godzin najpierw na role według procentu udziału z konfiguracji projektu, a następnie dzieli pulę roli między wszystkie pozycje z tą samą rolą.
