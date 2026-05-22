@@ -92,6 +92,45 @@ export const exportExecutiveSettlementReportToWord = async (
   const categoryRows = report.categoryChartData.map((item) => [item.name, `${formatHours(item.value)} h`]);
   const teamRows = report.topContributors.map((person) => [person.name, `${formatHours(person.hours)} h`, `${person.sharePct.toFixed(1)}%`]);
   const valueRows = report.valuesChartData.map((item) => [item.name, `${formatMoney(item.value)} zł`]);
+  const burnUpSummaryRows = report.burnUp
+    ? [
+        ['Zakres', report.burnUp.rangeLabel],
+        ['Plan godzin zleceń narastająco', `${formatHours(report.burnUp.estimateHours)} h`],
+        ['Godziny zalogowane narastająco', `${formatHours(report.burnUp.actualHours)} h`],
+        ['Różnica planu do logów', `${formatHours(report.burnUp.deltaHours)} h`],
+        ['Relacja zleceń do logów', report.burnUp.trendRatio !== null ? report.burnUp.trendRatio.toFixed(2) : 'brak'],
+        ['Trend 30 dni', report.burnUp.rollingTrendRatio !== null ? report.burnUp.rollingTrendRatio.toFixed(2) : 'brak'],
+      ]
+    : [];
+  const burnUpPointRows = report.burnUp
+    ? report.burnUp.points.map((point) => [
+        point.date,
+        `${formatHours(point.dailyEstimate)} h`,
+        `${formatHours(point.dailyActual)} h`,
+        `${formatHours(point.cumulativeEstimate)} h`,
+        `${formatHours(point.cumulativeActual)} h`,
+        `${formatHours(point.deltaHours)} h`,
+      ])
+    : [];
+  const orderVsWorkRows = report.orderVsWork
+    ? [
+        ['Zakres', report.orderVsWork.rangeLabel],
+        ['Wykorzystane w zleceniach', `${formatHours(report.orderVsWork.usedHours)} h`],
+        ['Przepracowane w zleceniach', `${formatHours(report.orderVsWork.workedHours)} h`],
+        ['Różnica godzin', `${formatHours(report.orderVsWork.differenceHours)} h`],
+        ['Różnica %', `${report.orderVsWork.differencePct.toFixed(1)}%`],
+        ['Status', report.orderVsWork.differenceLabel],
+      ]
+    : [];
+  const orderVsWorkCategoryRows = report.orderVsWork
+    ? [
+        ['Programistyczne', `${formatHours(report.orderVsWork.categoryHours.development)} h`],
+        ['Obsługa projektu', `${formatHours(report.orderVsWork.categoryHours.management)} h`],
+        ['Inne', `${formatHours(report.orderVsWork.categoryHours.other)} h`],
+        ['BUG', `${formatHours(report.orderVsWork.bugHours.bug)} h`],
+        ['Reszta', `${formatHours(report.orderVsWork.bugHours.other)} h`],
+      ]
+    : [];
 
   const doc = new Document({
     sections: [{
@@ -113,6 +152,8 @@ export const exportExecutiveSettlementReportToWord = async (
             ['Data raportu', report.reportDate],
             ['Umowa', project.contractNo || 'brak'],
             ['Okres projektu', report.projectPeriodLabel],
+            ['Stawka netto za roboczogodzinę', `${formatMoney(project.rateNetto)} zł`],
+            ['Stawka brutto za roboczogodzinę', `${formatMoney(project.rateBrutto)} zł`],
             ['Liczba zleceń', String(report.totalOrders)],
             ['Rozliczone zlecenia', String(report.settledOrders)],
           ],
@@ -140,6 +181,26 @@ export const exportExecutiveSettlementReportToWord = async (
         sectionHeading('Zestawienia godzinowe'),
         new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: 'Kontrakt, rozliczenia i praca zespołu', bold: true, size: 22 })] }),
         buildTable(['Pozycja', 'Wartość'], hoursRows),
+        ...(report.orderVsWork
+          ? [
+              sectionHeading('Zlecenia vs Praca'),
+              buildTable(['Pozycja', 'Wartość'], orderVsWorkRows),
+              new Paragraph({ spacing: { before: 220, after: 120 }, children: [new TextRun({ text: 'Podział przepracowanych godzin', bold: true, size: 22 })] }),
+              buildTable(['Pozycja', 'Godziny'], orderVsWorkCategoryRows),
+            ]
+          : []),
+        ...(report.burnUp
+          ? [
+              sectionHeading('Narastanie godzin'),
+              new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: 'Dane nagłówkowe wykresu', bold: true, size: 22 })] }),
+              buildTable(['Pozycja', 'Wartość'], burnUpSummaryRows),
+              new Paragraph({ spacing: { before: 220, after: 120 }, children: [new TextRun({ text: 'Dane wykresu narastania godzin', bold: true, size: 22 })] }),
+              buildTable(
+                ['Data', 'Przyrost planu zleceń', 'Przyrost logów', 'Plan zleceń narastająco', 'Logi narastająco', 'Różnica'],
+                burnUpPointRows,
+              ),
+            ]
+          : []),
         new Paragraph({ spacing: { before: 220, after: 120 }, children: [new TextRun({ text: 'Godziny według etapu formalnego', bold: true, size: 22 })] }),
         buildTable(['Status', 'Godziny'], statusHoursRows),
         new Paragraph({ spacing: { before: 220, after: 120 }, children: [new TextRun({ text: 'Kategorie pracy z YouTrack', bold: true, size: 22 })] }),

@@ -1510,16 +1510,24 @@ ipcMain.handle('upsert-work-items', async (_, { items, projectId }: { items: any
 
 ipcMain.handle('replace-work-items-for-period', async (_, { items, projectId, dateFrom, dateTo }: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => {
     try {
-        const fromIso = new Date(`${dateFrom}T00:00:00`).toISOString();
-        const toIso = new Date(`${dateTo}T23:59:59.999`).toISOString();
+        const fromDate = new Date(`${dateFrom}T00:00:00`);
+        const toDate = new Date(`${dateTo}T23:59:59.999`);
+        const fromIso = fromDate.toISOString();
+        const toIso = toDate.toISOString();
+        const fromMs = fromDate.getTime();
+        const toMs = toDate.getTime();
 
         const transaction = db.transaction(() => {
             db.prepare(`
                 DELETE FROM work_items
                 WHERE projectId = ?
-                  AND date >= ?
-                  AND date <= ?
-            `).run(projectId, fromIso, toIso);
+                  AND (
+                    (date >= ? AND date <= ?)
+                    OR (datetime(date) IS NOT NULL AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?))
+                    OR (CAST(date AS INTEGER) >= ? AND CAST(date AS INTEGER) <= ?)
+                    OR (substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ?)
+                  )
+            `).run(projectId, fromIso, toIso, fromIso, toIso, fromMs, toMs, dateFrom, dateTo);
 
             const stmt = db.prepare(`
                 INSERT INTO work_items (id, issueId, issueReadableId, issueSummary, issueType, author, authorName, date, minutes, description, lastModified, projectId)

@@ -35,6 +35,43 @@ export type ExecutiveReportStatusCard = {
   fill: string;
 };
 
+export type ExecutiveReportBurnUpPoint = {
+  date: string;
+  dailyEstimate: number;
+  dailyActual: number;
+  cumulativeEstimate: number;
+  cumulativeActual: number;
+  deltaHours: number;
+};
+
+export type ExecutiveReportBurnUp = {
+  rangeLabel: string;
+  estimateHours: number;
+  actualHours: number;
+  deltaHours: number;
+  trendRatio: number | null;
+  rollingTrendRatio: number | null;
+  points: ExecutiveReportBurnUpPoint[];
+};
+
+export type ExecutiveReportOrderVsWork = {
+  rangeLabel: string;
+  usedHours: number;
+  workedHours: number;
+  differenceHours: number;
+  differencePct: number;
+  differenceLabel: string;
+  categoryHours: {
+    development: number;
+    management: number;
+    other: number;
+  };
+  bugHours: {
+    bug: number;
+    other: number;
+  };
+};
+
 export type ExecutiveSettlementReportData = {
   reportDate: string;
   projectPeriodLabel: string;
@@ -63,6 +100,8 @@ export type ExecutiveSettlementReportData = {
   statusChartData: ExecutiveReportChartBar[];
   topContributors: ExecutiveReportContributor[];
   statusCards: ExecutiveReportStatusCard[];
+  burnUp?: ExecutiveReportBurnUp;
+  orderVsWork?: ExecutiveReportOrderVsWork;
 };
 
 const HOURS_FORMATTER = new Intl.NumberFormat('pl-PL', {

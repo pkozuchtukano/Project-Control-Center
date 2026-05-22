@@ -538,6 +538,25 @@
   -- Wszystkie kwoty w zakładce `Rozliczenia` i w raporcie zarządczym PDF są domyślnie ukryte, aby ograniczyć przypadkowe ujawnienie danych finansowych.
   -- Dodano przełącznik z ikoną dolara, który odsłania albo ponownie chowa całe linie finansowe `Netto` i `Brutto` oraz wykres finansowy, zamiast maskować same liczby.
   -- Poprawiono źródło danych finansowych w zestawieniach, aby kwoty były przechowywane jako wartości liczbowe do momentu renderowania i nie wyświetlały `NaN` po odsłonięciu.
+- 2026-05-22 – Ukrycie wykresu wartości bez aktywnych kwot
+  -- W raporcie zarządczym rozliczeń usunięto kartę `Wykres wartości` z widoku i eksportu PDF, gdy przełącznik kwot z ikoną dolara nie jest aktywny.
+  -- Przy ukrytych kwotach raport pozostawia wyłącznie rozliczenie godzinowe, a dane finansowe pojawiają się dopiero po włączeniu kwot.
+- 2026-05-22 – Narastanie godzin w raporcie zarządczym
+  -- Do raportu zarządczego dodano sekcję `Narastanie godzin` z wykresem planu zleceń i logów oraz z danymi nagłówkowymi: plan godzin zleceń narastająco, godziny zalogowane narastająco, różnica planu do logów i relacja zleceń do logów.
+  -- Eksporty Word i Excel dostały te same dane nagłówkowe oraz tabelę punktów trendu, dzięki czemu można zweryfikować przebieg narastania godzin poza widokiem aplikacji.
+- 2026-05-22 – Czytelny wykres narastania godzin w PDF
+  -- W eksporcie PDF raportu zarządczego wykres `Narastanie godzin` renderuje się jako statyczny SVG o stałych wymiarach, zamiast używać responsywnego wykresu Recharts.
+  -- Zmiana usuwa nachodzenie wykresu na kolejną sekcję, błędny pusty element legendy oraz przycięcie osi przy zapisie PDF.
+  -- Zmniejszono wysokość statycznego wykresu PDF i zdjęto stałą wysokość z jego wrappera w trybie eksportu, aby wykres mieścił się w karcie raportu.
+- 2026-05-22 – Zlecenia vs Praca w rozliczeniach i eksportach
+  -- Do zakładki `Rozliczenia` dodano kartę `Zlecenia vs Praca` z porównaniem godzin wykorzystanych w zleceniach i przepracowanych w YouTrack, z podziałem na kategorie oraz `BUG / reszta`.
+  -- Raport zarządczy oraz eksporty Word i Excel dostały tę samą sekcję z aktywnego zakresu dat, aby widok i pliki eksportowe pokazywały spójne dane godzinowe.
+- 2026-05-22 – Stawki roboczogodziny w nagłówkach rozliczeń
+  -- Do nagłówka zakładki `Rozliczenia` oraz nagłówka raportu zarządczego dodano stawkę netto i brutto za roboczogodzinę z danych projektu.
+  -- Eksporty Word i Excel raportu zarządczego zawierają teraz stawki netto/brutto w metadanych projektu.
+- 2026-05-22 – Spójne narastanie godzin po filtrze dat
+  -- Wykres `Narastanie godzin` po zastosowaniu zakresu dat jest teraz przeliczany narastająco od początku wybranego zakresu, zamiast pokazywać kumulację od początku projektu.
+  -- Nagłówki wykresu, karta `Zlecenia vs Praca`, `Zyskowność projektu` oraz eksporty raportu zarządczego pokazują dzięki temu spójne wartości przepracowanych godzin dla aktywnego filtra dat; różnica na wykresie została opisana jako różnica planu do logów.
 - 2026-03-18 – Pionowy układ raportu zarządczego PDF
   -- Raport zarządczy PDF przebudowano z układu poziomego na pionowy `A4 portrait`, aby strony łamały się przewidywalnie przy wydruku.
   -- Zawartość rozdzielono na osobne strony: podsumowanie i KPI, analitykę godzin oraz osobną stronę operacyjną dla zespołu, dzięki czemu druga i kolejne strony nie są gubione przy generowaniu PDF.
@@ -558,7 +577,7 @@
   -- Do zakładki `Rozliczenia` dodano wykres typu burn-up porównujący skumulowane estymaty godzin ze zleceń z rzeczywiście zalogowanymi godzinami z YouTrack dzień po dniu.
   -- Estymaty są rozkładane liniowo pomiędzy datą rozpoczęcia i zakończenia zlecenia, a wykres pokazuje dodatkowo wskaźnik `Accuracy Index`, trend 30-dniowy, regresję liniową oraz kolorowe wypełnienie bufora lub przekroczenia względem planu.
   -- Widok dostał filtry `Osoba` i `Kategoria pracy` dla danych rzeczywistych; obecny model danych nie zawiera niezależnego tagu projektu ani rozbicia estymat po osobie/kategorii, więc linia planu pozostaje projektowa.
-  -- Następnie uproszczono prezentację wykresu do w pełni polskiego układu z dwiema głównymi liniami narastającymi (`Godziny zleceń narastająco`, `Godziny zalogowane narastająco`), słupkami przyrostu godzin zleceń oraz osobną linią relacji `zlecenia / logi` i kierunku trendu.
+  -- Następnie uproszczono prezentację wykresu do w pełni polskiego układu z dwiema głównymi liniami narastającymi (`Plan godzin zleceń narastająco`, `Godziny zalogowane narastająco`), słupkami przyrostu godzin zleceń oraz osobną linią relacji `zlecenia / logi` i kierunku trendu.
   -- Poprawiono parser dat dla linii godzin zalogowanych: wykres uwzględnia teraz pełne daty ISO z `Rejestru pracy`, a nie tylko pola w formacie `YYYY-MM-DD`, więc realne logi pracy wracają do serii `Godziny zalogowane narastająco`.
   -- Ostatecznie rozdzielono analizę na dwa osobne wykresy: pierwszy pokazuje wyłącznie narastające godziny zleceń i godziny zalogowane wraz z przyrostami zleceń, a drugi prezentuje sam trend relacji `godziny zleceń / godziny zalogowane`, dzięki czemu skala trendu pozostaje czytelna.
   -- Linia trendu relacji jest teraz liczona i rysowana wyłącznie do dnia bieżącego; przyszłe dni z harmonogramu zleceń mogą nadal pozostać na wykresie godzin, ale nie wydłużają już sztucznie wykresu trendu.
@@ -616,6 +635,20 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
+- 2026-05-22 – Godziny rozliczeń zgodne z rejestrem pracy
+  -- W zakładce `Rozliczenia` wartości `Przepracowane w zleceniach` i `Godziny zalogowane narastająco` korzystają teraz z pełnych wpisów `Rejestru pracy` dla projektu, zamiast odejmować pozycje oznaczone jako utrzymanie.
+  -- Domyślny zakres wykresu narastania ustawiono na pełny zakres danych, a metryki godzinowe `Zlecenia vs Praca`, `Podział przepracowanych godzin: BUG / reszta` i `Zyskowność projektu` nie przycinają już logów pracy do zakresu wykresu.
+  -- Dzięki temu sumy godzin w rozliczeniach są spójne z zakładką `Rejestr pracy` i raportem czasu YouTrack, a utrzymanie pozostaje widoczne jako osobny kontekst analityczny.
+- 2026-05-22 – Spójne osoby pracujące z rejestrem pracy
+  -- Sekcja `Osoby pracujące w projekcie` w zakładce `Rozliczenia` liczy teraz osoby tak samo jak sprawdzona statystyka `Rejestru pracy`: po nazwie autora z logów i na pełnym zestawie wpisów rejestru pracy projektu.
+  -- Udział procentowy osób w rozliczeniach jest liczony względem tej samej sumy godzin rejestru pracy, zamiast względem godzin po dodatkowym filtrze rozliczeniowym.
+- 2026-05-22 – Synchronizacja logów przez endpoint work itemów YouTrack
+  -- Pobieranie godzin z YouTrack przełączono z pośredniego schematu `issues -> timeTracking/workItems` na globalny endpoint `/api/workItems` z parametrami `query`, `startDate` i `endDate`.
+  -- Synchronizacja opiera się teraz bezpośrednio na poziomie work itemów raportu czasu, bez ograniczania do konkretnego typu zadania; obejmuje wpisy z tasków, user stories, epików, bugów i innych typów widocznych w zapytaniu projektu.
+  -- Dla nazw projektów ze spacjami automatycznie budowane jest zapytanie `project: {Nazwa Projektu}`, aby wynik był zgodny z raportem YouTrack dla projektu wybieranego po nazwie.
+- 2026-05-22 – Odporne czyszczenie logów przy synchronizacji YouTrack
+  -- Synchronizacja zakresu dat usuwa teraz stare lokalne wpisy `work_items` nie tylko dla dat zapisanych jako pełny ISO string, ale także dla starszych formatów daty i timestampów milisekundowych.
+  -- Dzięki temu wpisy usunięte w YouTrack nie pozostają w lokalnej bazie po ponownej synchronizacji i nie zawyżają zestawienia osób, udziałów oraz sum godzin w rozliczeniach.
 - 2026-05-06 – Pełna aktualizacja logowań z YouTrack
   -- Synchronizacja przyciskiem `Aktualizuj z YouTrack` zastępuje teraz lokalne wpisy `work_items` dla synchronizowanego projektu i zakresu dat pełnym wynikiem pobranym z YouTrack.
   -- Jeżeli logowanie czasu zostało usunięte w YouTrack, po ponownej synchronizacji znika także z lokalnego rejestru pracy, a suma godzin odzwierciedla aktualny stan YouTrack.

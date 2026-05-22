@@ -26,6 +26,8 @@ export const exportExecutiveSettlementReportToExcel = (
     ['Umowa', project.contractNo || 'brak'],
     ['Data raportu', report.reportDate],
     ['Okres projektu', report.projectPeriodLabel],
+    ['Stawka netto za roboczogodzinę', project.rateNetto],
+    ['Stawka brutto za roboczogodzinę', project.rateBrutto],
     ['Liczba zleceń', report.totalOrders],
     ['Rozliczone zlecenia', report.settledOrders],
     ['Podsumowanie', report.summaryText],
@@ -76,6 +78,56 @@ export const exportExecutiveSettlementReportToExcel = (
   ]);
   hoursSheet['!cols'] = [{ wch: 24 }, { wch: 40 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(workbook, hoursSheet, 'Godziny');
+
+  if (report.orderVsWork) {
+    const workedHours = report.orderVsWork.workedHours;
+    const pct = (value: number) => workedHours > 0 ? Number(((value / workedHours) * 100).toFixed(1)) : 0;
+    const orderVsWorkSheet = XLSX.utils.aoa_to_sheet([
+      ['Zlecenia vs Praca'],
+      ['Zakres', report.orderVsWork.rangeLabel],
+      ['Wykorzystane w zleceniach', report.orderVsWork.usedHours],
+      ['Przepracowane w zleceniach', report.orderVsWork.workedHours],
+      ['Różnica godzin', report.orderVsWork.differenceHours],
+      ['Różnica %', Number(report.orderVsWork.differencePct.toFixed(1))],
+      ['Status', report.orderVsWork.differenceLabel],
+      [],
+      ['Kategoria', 'Godziny', 'Udział %'],
+      ['Programistyczne', report.orderVsWork.categoryHours.development, pct(report.orderVsWork.categoryHours.development)],
+      ['Obsługa projektu', report.orderVsWork.categoryHours.management, pct(report.orderVsWork.categoryHours.management)],
+      ['Inne', report.orderVsWork.categoryHours.other, pct(report.orderVsWork.categoryHours.other)],
+      [],
+      ['BUG / reszta', 'Godziny', 'Udział %'],
+      ['BUG', report.orderVsWork.bugHours.bug, pct(report.orderVsWork.bugHours.bug)],
+      ['Reszta', report.orderVsWork.bugHours.other, pct(report.orderVsWork.bugHours.other)],
+    ]);
+    orderVsWorkSheet['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(workbook, orderVsWorkSheet, 'Zlecenia vs Praca');
+  }
+
+  if (report.burnUp) {
+    const burnUpRows: (string | number)[][] = [
+      ['Narastanie godzin'],
+      ['Zakres', report.burnUp.rangeLabel],
+      ['Plan godzin zleceń narastająco', report.burnUp.estimateHours],
+      ['Godziny zalogowane narastająco', report.burnUp.actualHours],
+      ['Różnica planu do logów', report.burnUp.deltaHours],
+      ['Relacja zleceń do logów', report.burnUp.trendRatio ?? 'brak'],
+      ['Trend 30 dni', report.burnUp.rollingTrendRatio ?? 'brak'],
+      [],
+      ['Data', 'Przyrost planu zleceń', 'Przyrost godzin zalogowanych', 'Plan godzin zleceń narastająco', 'Godziny zalogowane narastająco', 'Różnica planu do logów'],
+      ...report.burnUp.points.map((point) => [
+        point.date,
+        point.dailyEstimate,
+        point.dailyActual,
+        point.cumulativeEstimate,
+        point.cumulativeActual,
+        point.deltaHours,
+      ]),
+    ];
+    const burnUpSheet = XLSX.utils.aoa_to_sheet(burnUpRows);
+    burnUpSheet['!cols'] = [{ wch: 14 }, { wch: 24 }, { wch: 28 }, { wch: 28 }, { wch: 32 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(workbook, burnUpSheet, 'Narastanie godzin');
+  }
 
   if (includeFinancialData) {
     const valuesSheet = XLSX.utils.aoa_to_sheet([

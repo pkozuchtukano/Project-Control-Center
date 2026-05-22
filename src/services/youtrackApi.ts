@@ -107,6 +107,15 @@ export interface IssueWithHistory extends YouTrackIssue {
     timeline: ActivityItem[];
 }
 
+const buildProjectWorkItemsQuery = (projectQuery: string) => {
+    const trimmedQuery = projectQuery.trim();
+    if (!trimmedQuery) return '';
+    if (trimmedQuery.includes(':')) return trimmedQuery;
+
+    const projectValue = /\s/.test(trimmedQuery) ? `{${trimmedQuery}}` : trimmedQuery;
+    return `project: ${projectValue}`;
+};
+
 const getHeaders = (token: string) => ({
     'Authorization': `Bearer ${token}`,
     'Accept': 'application/json',
@@ -512,40 +521,25 @@ export const fetchProjectWorkLogs = async (
 ): Promise<WorkLogItem[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
     const apiBase = baseUrl.replace(/\/$/, '') + '/api';
-
-    // Poprawna forma filtru projektu – jeśli nie ma operatora ':' to dodaj prefix 'project:'
-    const safeProjectQuery = projectQuery.includes(':') 
-        ? projectQuery 
-        : `project: ${projectQuery}`;
-
-    const query = `${safeProjectQuery} work date: ${dateFrom} .. ${dateTo}`;
-
-    // --- Krok 1: Pobierz WSZYSTKIE pasujące zadania (z paginacją) ---
-    const allIssues: any[] = [];
+    const query = buildProjectWorkItemsQuery(projectQuery);
     const PAGE_SIZE = 100;
     let skip = 0;
+    const workLogs: WorkLogItem[] = [];
 
     while (true) {
-        const page: any[] = await makeRequest(`${apiBase}/issues`, token, {
+        const page: any[] = await makeRequest(`${apiBase}/workItems`, token, {
             query,
-            fields: 'id,idReadable,summary,customFields(name,value(name,presentation))',
+            startDate: dateFrom,
+            endDate: dateTo,
+            fields: 'id,date,duration(minutes,presentation),author(name,login),text,type(name),issue(id,idReadable,summary,customFields(name,value(name,presentation)))',
             $top: PAGE_SIZE,
             $skip: skip
         });
 
         if (!Array.isArray(page) || page.length === 0) break;
-        allIssues.push(...page);
-        if (page.length < PAGE_SIZE) break; // ostatnia strona
-        skip += PAGE_SIZE;
-    }
 
-    const workLogs: WorkLogItem[] = [];
-    const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
-    const toTime = new Date(`${dateTo}T23:59:59`).getTime();
-
-    // --- Krok 2: Dla każdego zadania pobierz WSZYSTKIE logi czasu (z paginacją) ---
-    const timePromises = allIssues.map(async (issue) => {
-        try {
+        page.forEach((wi: any) => {
+            const issue = wi.issue || {};
             let issueType = '';
             if (Array.isArray(issue.customFields)) {
                 const typeField = issue.customFields.find((field: any) => {
@@ -556,54 +550,26 @@ export const fetchProjectWorkLogs = async (
                 issueType = typeValue?.name || typeValue?.presentation || '';
             }
 
-            const allWorkItems: any[] = [];
-            let wiSkip = 0;
-
-            while (true) {
-                const page: any[] = await makeRequest(
-                    `${apiBase}/issues/${issue.id}/timeTracking/workItems`,
-                    token,
-                    {
-                        fields: 'id,date,duration(minutes,presentation),author(name,login),text,type(name)',
-                        $top: PAGE_SIZE,
-                        $skip: wiSkip
-                    }
-                );
-
-                if (!Array.isArray(page) || page.length === 0) break;
-                allWorkItems.push(...page);
-                if (page.length < PAGE_SIZE) break;
-                wiSkip += PAGE_SIZE;
-            }
-
-            allWorkItems.forEach((wi: any) => {
-                const logDate = wi.date;
-                // Filtrowanie po stronie klienta jako zabezpieczenie (API filtruje zadania, nie workItems)
-                if (logDate >= fromTime && logDate <= toTime) {
-                    workLogs.push({
-                        id: wi.id,
-                        issueId: issue.id,
-                        issueReadableId: issue.idReadable,
-                        issueSummary: issue.summary,
-                        issueType,
-                        date: wi.date,
-                        durationMinutes: wi.duration?.minutes || 0,
-                        durationPresentation: wi.duration?.presentation || '',
-                        authorName: wi.author?.name || 'System',
-                        authorLogin: wi.author?.login || 'system',
-                        text: wi.text || '',
-                        workType: wi.type?.name || ''
-                    });
-                }
+            workLogs.push({
+                id: wi.id,
+                issueId: issue.id || '',
+                issueReadableId: issue.idReadable || '',
+                issueSummary: issue.summary || '',
+                issueType,
+                date: wi.date,
+                durationMinutes: wi.duration?.minutes || 0,
+                durationPresentation: wi.duration?.presentation || '',
+                authorName: wi.author?.name || 'System',
+                authorLogin: wi.author?.login || 'system',
+                text: wi.text || '',
+                workType: wi.type?.name || ''
             });
-        } catch (err) {
-            console.error(`Błąd dociągania logów czasu dla zadania ${issue.idReadable}:`, err);
-        }
-    });
+        });
 
-    await Promise.all(timePromises);
+        if (page.length < PAGE_SIZE) break;
+        skip += PAGE_SIZE;
+    }
 
-    // Sortuj od najnowszego do najstarszego
     workLogs.sort((a, b) => b.date - a.date);
 
     return workLogs;

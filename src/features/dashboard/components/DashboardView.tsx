@@ -124,7 +124,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const [dashboardSyncDateTo, setDashboardSyncDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dashboardLastSyncDate, setDashboardLastSyncDate] = useState('');
   const [isDashboardSyncPanelOpen, setIsDashboardSyncPanelOpen] = useState(false);
-  const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('halfYear');
+  const [burnUpRangeMode, setBurnUpRangeMode] = useState<'halfYear' | 'full' | 'custom'>('full');
   const [burnUpVisibleRange, setBurnUpVisibleRange] = useState<{ start: string; end: string } | null>(null);
   const [burnUpSelectionStart, setBurnUpSelectionStart] = useState<string | null>(null);
   const [burnUpSelectionEnd, setBurnUpSelectionEnd] = useState<string | null>(null);
@@ -158,7 +158,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   useEffect(() => {
     const today = format(new Date(), 'yyyy-MM-dd');
     const lastSyncDate = selectedProject?.id ? readDashboardLastSyncDate(selectedProject.id) : '';
-    setBurnUpRangeMode('halfYear');
+    setBurnUpRangeMode('full');
     setBurnUpVisibleRange(null);
     setBurnUpSelectionStart(null);
     setBurnUpSelectionEnd(null);
@@ -606,7 +606,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   ];
   const burnUpTrendData = buildBurnUpTrendData({
     orders: orders.filter((order) => !isCancelledOrder(order)),
-    workItems: selectedProject.hasMaintenance ? nonMaintenanceWorkItems : workItems,
+    workItems,
   });
   const lastBurnUpDate = burnUpTrendData.length > 0 ? burnUpTrendData[burnUpTrendData.length - 1].date : null;
   const todayDateKey = getDateKey(new Date());
@@ -645,10 +645,9 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     : burnUpRangeMode === 'custom'
       ? burnUpVisibleRange
       : lastHalfYearRange;
-  const filteredWorkItems = workItems.filter((item) =>
-    doesDateOverlapRange(item.date.split('T')[0], effectiveBurnUpRange)
-  );
-  const filteredOrderWorkItems = filteredWorkItems.filter((item) => !item.isMaintenance);
+  const filteredWorkItems = workItems;
+  const filteredOrderWorkItems = filteredWorkItems;
+  const filteredOrderBugWorkItems = filteredWorkItems.filter((item) => !item.isMaintenance);
   const filteredMaintenanceWorkItems = filteredWorkItems.filter((item) => item.isMaintenance);
   const filteredMaintenanceEntries = maintenanceEntries.filter((entry) =>
     doesMaintenanceEntryOverlapRange(entry.month, effectiveBurnUpRange)
@@ -723,7 +722,42 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const filteredProfitabilityPct = filteredContractedTotalHours > 0
     ? (filteredProfitabilityHours / filteredContractedTotalHours) * 100
     : 0;
-  const filteredOrderTaskCount = new Set(filteredOrderWorkItems.map((item) => item.issueId).filter(Boolean)).size;
+  const filteredMaxScale = Math.max(1, filteredContractedTotalHours, filteredYoutrackTotal);
+  const filteredProgPct = filteredYoutrackTotal > 0 ? (filteredYoutrackHours['Programistyczne'] / filteredYoutrackTotal) * 100 : 0;
+  const filteredObsPct = filteredYoutrackTotal > 0 ? (filteredYoutrackHours['Obsługa projektu'] / filteredYoutrackTotal) * 100 : 0;
+  const filteredInPct = filteredYoutrackTotal > 0 ? (filteredYoutrackHours.Inne / filteredYoutrackTotal) * 100 : 0;
+  const filteredOrderBugHours = buildBugHoursBreakdown(filteredOrderBugWorkItems);
+  const filteredOrderVsWorkDifferencePct = filteredContractedTotalHours > 0
+    ? (filteredProfitabilityHours / filteredContractedTotalHours) * 100
+    : 0;
+  const filteredOrderVsWorkLabel = filteredProfitabilityHours > 0
+    ? 'Wykorzystane wyższe od przepracowanych'
+    : filteredProfitabilityHours < 0
+      ? 'Przepracowane wyższe od wykorzystanych'
+      : 'Wykorzystane równe przepracowanym';
+  const filteredOrderVsWorkTone = filteredProfitabilityHours > 0
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : filteredProfitabilityHours < 0
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  const orderVsWorkReportData = {
+    rangeLabel: effectiveBurnUpRange ? `${effectiveBurnUpRange.start} - ${effectiveBurnUpRange.end}` : 'Pełny dostępny zakres',
+    usedHours: filteredContractedTotalHours,
+    workedHours: filteredYoutrackTotal,
+    differenceHours: filteredProfitabilityHours,
+    differencePct: filteredOrderVsWorkDifferencePct,
+    differenceLabel: filteredOrderVsWorkLabel,
+    categoryHours: {
+      development: filteredYoutrackHours['Programistyczne'] || 0,
+      management: filteredYoutrackHours['Obsługa projektu'] || 0,
+      other: filteredYoutrackHours.Inne || 0,
+    },
+    bugHours: {
+      bug: filteredOrderBugHours.bug,
+      other: filteredOrderBugHours.other,
+    },
+  };
+  const filteredOrderTaskCount = new Set(filteredOrderBugWorkItems.map((item) => item.issueId).filter(Boolean)).size;
   const filteredMaintenanceTaskCount = new Set(filteredMaintenanceWorkItems.map((item) => item.issueId).filter(Boolean)).size;
   const filteredTotalTaskCount = new Set(filteredWorkItems.map((item) => item.issueId).filter(Boolean)).size;
   const filteredInProgressOrders = filteredPendingSettlementOrders.filter(isInProgressPendingOrder);
@@ -797,7 +831,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     {
       label: 'Przepracowane w zleceniach',
       value: formatOrderHours(filteredYoutrackTotal),
-      note: 'Logi YouTrack z wybranego zakresu dat, bez zadań oznaczonych jako utrzymanie.',
+      note: 'Logi YouTrack z wybranego zakresu dat, zgodne z rejestrem pracy projektu.',
       financialNote: `Netto ${formatCurrencyValue(filteredWorkedNetValue)} zł, brutto ${formatCurrencyValue(filteredWorkedGrossValue)} zł.`,
       tone: 'text-violet-700 dark:text-violet-300',
     },
@@ -946,8 +980,8 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       ],
     },
   ] : [];
-  const filteredAuthorHours = Object.entries(
-    filteredWorkItems.reduce<Record<string, number>>((acc, item) => {
+  const registryAuthorHours = Object.entries(
+    workItems.reduce<Record<string, number>>((acc, item) => {
       const authorName = item.authorName || 'Nieznana osoba';
       acc[authorName] = (acc[authorName] || 0) + ((item.minutes || 0) / 60);
       return acc;
@@ -955,11 +989,14 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   )
     .map(([name, hours]) => ({ name, hours }))
     .sort((a, b) => b.hours - a.hours);
+  const registryWorkedHours = workItems.reduce((sum, item) => sum + ((item.minutes || 0) / 60), 0);
   const visibleBurnUpTrendData = (() => {
     if (!effectiveBurnUpRange) return burnUpTrendData;
-    return alignBurnUpTrendDataToRange(
-      burnUpTrendData,
-      effectiveBurnUpRange,
+    return rebaseBurnUpTrendDataToRange(
+      alignBurnUpTrendDataToRange(
+        burnUpTrendData,
+        effectiveBurnUpRange,
+      ),
     );
   })();
   const burnUpSummary = summarizeBurnUpTrendData(visibleBurnUpTrendData);
@@ -985,9 +1022,11 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     : [];
   const visibleMaintenanceBurnUpTrendData = (() => {
     if (!effectiveBurnUpRange) return maintenanceBurnUpTrendData;
-    return alignBurnUpTrendDataToRange(
-      maintenanceBurnUpTrendData,
-      effectiveBurnUpRange,
+    return rebaseBurnUpTrendDataToRange(
+      alignBurnUpTrendDataToRange(
+        maintenanceBurnUpTrendData,
+        effectiveBurnUpRange,
+      ),
     );
   })();
   const maintenanceBurnUpSummary = summarizeBurnUpTrendData(visibleMaintenanceBurnUpTrendData);
@@ -1322,7 +1361,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
                     <div>
                       <div className="flex justify-between text-sm mb-1.5 font-medium">
-                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack bez utrzymania)</span>
+                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
                         <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
                       </div>
                       <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
@@ -1824,11 +1863,84 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       {formatOrderHours(contractedTotalHours)} h z {formatOrderHours(selectedProject.maxHours)} h
                     </p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                      <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 dark:border-sky-900/40 dark:bg-sky-900/20">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Stawka netto / rh</p>
+                        <p className="mt-1 text-lg font-black text-sky-700 dark:text-sky-300">{formatCurrencyValue(selectedProject.rateNetto)} zł</p>
+                      </div>
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 px-3 py-2 dark:border-indigo-900/40 dark:bg-indigo-900/20">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Stawka brutto / rh</p>
+                        <p className="mt-1 text-lg font-black text-indigo-700 dark:text-indigo-300">{formatCurrencyValue(selectedProject.rateBrutto)} zł</p>
+                      </div>
+                    </div>
                     <div className={`mt-3 rounded-xl border px-3 py-2 ${remainingInContract >= 0 ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/40 dark:bg-emerald-900/20' : 'border-red-200 bg-red-50/80 dark:border-red-900/40 dark:bg-red-900/20'}`}>
                       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Pozostało godzin</p>
                       <p className={`mt-1 text-xl font-black ${remainingInContract >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                         {formatOrderHours(remainingInContract)} h
                       </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+              <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+                  <Activity size={20} className="text-indigo-500" />
+                  <h3 className="font-bold sm:text-lg">Zlecenia vs Praca</h3>
+                </div>
+                <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${filteredOrderVsWorkTone}`}>
+                  {filteredProfitabilityHours > 0 ? '+' : ''}{filteredOrderVsWorkDifferencePct.toFixed(1)}% · {filteredProfitabilityHours > 0 ? '+' : ''}{filteredProfitabilityHours.toFixed(1)} h · {filteredOrderVsWorkLabel}
+                </div>
+              </div>
+              <div className="space-y-5">
+                <div>
+                  <div className="flex justify-between text-sm mb-1.5 font-medium">
+                    <span className="text-gray-600 dark:text-gray-400">Wykorzystane w zleceniach (Rozliczone + Zakontraktowane)</span>
+                    <span className="text-gray-900 dark:text-white font-bold">{formatOrderHours(filteredContractedTotalHours)} <span className="text-gray-500 font-normal">h</span></span>
+                  </div>
+                  <div className="h-3 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                    <div className="h-full bg-blue-500 transition-all duration-700" style={{ width: `${Math.min(100, (filteredContractedTotalHours / filteredMaxScale) * 100)}%` }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-sm mb-1.5 font-medium">
+                    <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
+                    <span className="text-gray-900 dark:text-white font-bold">{formatOrderHours(filteredYoutrackTotal)} <span className="text-gray-500 font-normal">h</span></span>
+                  </div>
+                  <div className="flex h-4 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                    <div className="h-full bg-violet-500 transition-all duration-700" style={{ width: `${(filteredYoutrackHours['Programistyczne'] / filteredMaxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(filteredYoutrackHours['Programistyczne'], filteredProgPct)}`} />
+                    <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${(filteredYoutrackHours['Obsługa projektu'] / filteredMaxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(filteredYoutrackHours['Obsługa projektu'], filteredObsPct)}`} />
+                    <div className="h-full bg-amber-500 transition-all duration-700" style={{ width: `${(filteredYoutrackHours.Inne / filteredMaxScale) * 100}%` }} title={`Inne: ${formatShareLabel(filteredYoutrackHours.Inne, filteredInPct)}`} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-gray-500">
+                    <div className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-violet-500" /> Programistyczne ({formatShareLabel(filteredYoutrackHours['Programistyczne'], filteredProgPct)})</div>
+                    <div className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Obsługa projektu ({formatShareLabel(filteredYoutrackHours['Obsługa projektu'], filteredObsPct)})</div>
+                    <div className="flex items-center gap-1.5"><div className="h-2.5 w-2.5 rounded-sm bg-amber-500" /> Inne ({formatShareLabel(filteredYoutrackHours.Inne, filteredInPct)})</div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/50 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                        <Bug size={16} className="text-rose-500" />
+                        <span>Podział przepracowanych godzin: BUG / reszta</span>
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(filteredYoutrackTotal)}</span>
+                    </div>
+                    <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                      <div className="h-full bg-rose-500 transition-all duration-700" style={{ width: `${filteredYoutrackTotal > 0 ? Math.min(100, (filteredOrderBugHours.bug / filteredYoutrackTotal) * 100) : 0}%` }} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                      <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                        <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" />BUG</span>
+                        <span>{formatBugHoursShare(filteredOrderBugHours.bug, filteredYoutrackTotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                        <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400" />Reszta</span>
+                        <span>{formatBugHoursShare(filteredOrderBugHours.other, filteredYoutrackTotal)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1984,7 +2096,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 <>
                   <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-4">
                     <div className="rounded-2xl bg-indigo-50 p-4 dark:bg-indigo-950/30">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Godziny zleceń narastająco</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Plan godzin zleceń narastająco</p>
                       <p className="mt-2 text-2xl font-black text-indigo-700 dark:text-indigo-200">{formatOrderHours(burnUpEstimateCeiling)} h</p>
                     </div>
                     <div className="rounded-2xl bg-emerald-50 p-4 dark:bg-emerald-950/30">
@@ -1992,7 +2104,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       <p className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-200">{formatOrderHours(burnUpActualCeiling)} h</p>
                     </div>
                     <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/60">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica godzin</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica planu do logów</p>
                       <p className={`mt-2 text-2xl font-black ${burnUpTrendTone}`}>{formatOrderHours(burnUpDeltaHours)} h</p>
                     </div>
                     <div className={`rounded-2xl p-4 ${burnUpTrendBadgeTone}`}>
@@ -2045,12 +2157,12 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           <YAxis yAxisId="increments" hide />
                           <Tooltip content={<BurnUpTrendTooltip />} />
                           <Legend verticalAlign="top" height={42} wrapperStyle={{ fontSize: '12px', fontWeight: 700 }} />
-                          <Bar yAxisId="increments" dataKey="dailyEstimate" name="Przyrost godzin zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
+                          <Bar yAxisId="increments" dataKey="dailyEstimate" name="Przyrost planu zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={10} isAnimationActive={false} />
                           <Area yAxisId="hours" dataKey="favorableBase" stackId="planBuffer" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
                           <Area yAxisId="hours" dataKey="favorableGap" stackId="planBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.22)" stroke="none" isAnimationActive={false} />
                           <Area yAxisId="hours" dataKey="overrunBase" stackId="actualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
                           <Area yAxisId="hours" dataKey="overrunGap" stackId="actualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.18)" stroke="none" isAnimationActive={false} />
-                          <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
+                          <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Plan godzin zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
                           <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
                           {burnUpSelectionRange && (
                             <ReferenceArea
@@ -2143,7 +2255,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             <Area yAxisId="hours" dataKey="favorableGap" stackId="trendPlanBuffer" name="Bufor względem logów" fill="rgba(16,185,129,0.18)" stroke="none" isAnimationActive={false} />
                             <Area yAxisId="hours" dataKey="overrunBase" stackId="trendActualOverrun" fill="transparent" stroke="none" isAnimationActive={false} legendType="none" />
                             <Area yAxisId="hours" dataKey="overrunGap" stackId="trendActualOverrun" name="Przekroczenie logów nad zleceniami" fill="rgba(239,68,68,0.16)" stroke="none" isAnimationActive={false} />
-                            <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Godziny zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
+                            <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Plan godzin zleceń narastająco" stroke="#4f46e5" strokeWidth={3} dot={false} isAnimationActive={false} />
                             <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={3} dot={false} isAnimationActive={false} />
                             {shouldShowBurnUpMarginZeroLine && (
                               <ReferenceLine yAxisId="margin" y={0} stroke="#94a3b8" strokeDasharray="4 4" />
@@ -2205,7 +2317,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           <p className="mt-2 text-2xl font-black text-emerald-700 dark:text-emerald-200">{formatOrderHours(maintenanceBurnUpActualCeiling)} h</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-900/60">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica godzin</p>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-300">Różnica planu do logów</p>
                           <p className={`mt-2 text-2xl font-black ${maintenanceBurnUpTrendTone}`}>{formatOrderHours(maintenanceBurnUpDeltaHours)} h</p>
                         </div>
                         <div className={`rounded-2xl p-4 ${maintenanceBurnUpTrendBadgeTone}`}>
@@ -2482,8 +2594,8 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                     <ChevronDown size={18} className={`text-gray-400 transition-transform ${isSettlementSectionCollapsed('settlement-authors') ? '-rotate-90' : 'rotate-0'}`} />
                   </button>
                   <div className={`mt-5 space-y-4 ${isSettlementSectionCollapsed('settlement-authors') ? 'hidden' : ''}`}>
-                    {filteredAuthorHours.length > 0 ? filteredAuthorHours.map((author) => {
-                      const sharePct = filteredYoutrackTotal > 0 ? (author.hours / filteredYoutrackTotal) * 100 : 0;
+                    {registryAuthorHours.length > 0 ? registryAuthorHours.map((author) => {
+                      const sharePct = registryWorkedHours > 0 ? (author.hours / registryWorkedHours) * 100 : 0;
                       return (
                         <div key={author.name} className="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900/40">
                           <div className="flex items-center justify-between gap-3">
@@ -2610,6 +2722,15 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         project={selectedProject}
         orders={orders}
         workItems={workItems}
+        burnUpTrendData={visibleBurnUpTrendData}
+        burnUpRange={effectiveBurnUpRange}
+        burnUpEstimateCeiling={burnUpEstimateCeiling}
+        burnUpActualCeiling={burnUpActualCeiling}
+        burnUpDeltaHours={burnUpDeltaHours}
+        burnUpTrendRatio={burnUpTrendRatio}
+        burnUpRollingTrendRatio={burnUpRollingTrendRatio}
+        burnUpHoursDomain={burnUpHoursDomain}
+        orderVsWork={orderVsWorkReportData}
         isFinancialDataVisible={isFinancialDataVisible}
         onToggleFinancialData={() => setIsFinancialDataVisible(!isFinancialDataVisible)}
       />
@@ -7078,13 +7199,6 @@ const getMaxDate = (dates: Date[]) =>
   dates.reduce((maxDate, currentDate) => (currentDate.getTime() > maxDate.getTime() ? currentDate : maxDate));
 const normalizeDateRange = (start: string, end: string) =>
   start <= end ? { start, end } : { start: end, end: start };
-const doesDateOverlapRange = (
-  date: string,
-  range: { start: string; end: string } | null,
-) => {
-  if (!range) return true;
-  return date >= range.start && date <= range.end;
-};
 const doesMaintenanceEntryOverlapRange = (
   month: string,
   range: { start: string; end: string } | null,
@@ -7398,6 +7512,34 @@ const alignBurnUpTrendDataToRange = (
   return normalizedPoints;
 };
 
+const rebaseBurnUpTrendDataToRange = (points: BurnUpTrendPoint[]) => {
+  const firstPoint = points[0];
+  if (!firstPoint) return points;
+
+  const estimateBaseline = firstPoint.cumulativeEstimate - firstPoint.dailyEstimate;
+  const actualBaseline = firstPoint.cumulativeActual - firstPoint.dailyActual;
+
+  return points.map((point) => {
+    const cumulativeEstimate = Math.max(0, point.cumulativeEstimate - estimateBaseline);
+    const cumulativeActual = Math.max(0, point.cumulativeActual - actualBaseline);
+    const deltaHours = cumulativeEstimate - cumulativeActual;
+    const minBandBase = Math.min(cumulativeEstimate, cumulativeActual);
+
+    return {
+      ...point,
+      cumulativeEstimate,
+      cumulativeActual,
+      deltaHours,
+      deltaPct: cumulativeActual > 0 ? (deltaHours / cumulativeActual) * 100 : null,
+      trendRatio: cumulativeActual > 0 ? cumulativeEstimate / cumulativeActual : null,
+      favorableBase: minBandBase,
+      favorableGap: Math.max(cumulativeEstimate - cumulativeActual, 0),
+      overrunBase: minBandBase,
+      overrunGap: Math.max(cumulativeActual - cumulativeEstimate, 0),
+    };
+  });
+};
+
 const summarizeBurnUpTrendData = (points: BurnUpTrendPoint[]) => {
   const firstPoint = points[0] || null;
   const latestPoint = points[points.length - 1] || null;
@@ -7636,9 +7778,9 @@ const BurnUpTrendTooltip = ({
   active,
   payload,
   label,
-  estimateLabel = 'Godziny zleceń narastająco',
+  estimateLabel = 'Plan godzin zleceń narastająco',
   actualLabel = 'Godziny zalogowane narastająco',
-  dailyEstimateLabel = 'Przyrost zleceń w dniu',
+  dailyEstimateLabel = 'Przyrost planu zleceń w dniu',
   dailyEstimateItemsLabel = 'Zlecenia w przyroście',
 }: {
   active?: boolean;
@@ -9430,6 +9572,15 @@ const ExecutiveSettlementReportModal = ({
   project,
   orders,
   workItems,
+  burnUpTrendData,
+  burnUpRange,
+  burnUpEstimateCeiling,
+  burnUpActualCeiling,
+  burnUpDeltaHours,
+  burnUpTrendRatio,
+  burnUpRollingTrendRatio,
+  burnUpHoursDomain,
+  orderVsWork,
   isFinancialDataVisible,
   onToggleFinancialData,
 }: {
@@ -9438,6 +9589,15 @@ const ExecutiveSettlementReportModal = ({
   project: Project;
   orders: Order[];
   workItems: ReturnType<typeof useWorkRegistry>['workItems'];
+  burnUpTrendData: BurnUpTrendPoint[];
+  burnUpRange: { start: string; end: string } | null;
+  burnUpEstimateCeiling: number;
+  burnUpActualCeiling: number;
+  burnUpDeltaHours: number;
+  burnUpTrendRatio: number | null;
+  burnUpRollingTrendRatio: number | null;
+  burnUpHoursDomain: [number, number];
+  orderVsWork: NonNullable<ReturnType<typeof buildExecutiveSettlementReportData>['orderVsWork']>;
   isFinancialDataVisible: boolean;
   onToggleFinancialData: () => void;
 }) => {
@@ -9457,12 +9617,36 @@ const ExecutiveSettlementReportModal = ({
 
   if (!isOpen) return null;
 
-  const reportData = buildExecutiveSettlementReportData({
-    project,
-    orders,
-    workItems,
-    reportDate,
-  });
+  const burnUpRangeLabel = burnUpRange
+    ? `${burnUpRange.start} - ${burnUpRange.end}`
+    : 'Pełny dostępny zakres';
+  const reportData = {
+    ...buildExecutiveSettlementReportData({
+      project,
+      orders,
+      workItems,
+      reportDate,
+    }),
+    burnUp: burnUpTrendData.length > 0
+      ? {
+          rangeLabel: burnUpRangeLabel,
+          estimateHours: burnUpEstimateCeiling,
+          actualHours: burnUpActualCeiling,
+          deltaHours: burnUpDeltaHours,
+          trendRatio: burnUpTrendRatio,
+          rollingTrendRatio: burnUpRollingTrendRatio,
+          points: burnUpTrendData.map((point) => ({
+            date: point.date,
+            dailyEstimate: point.dailyEstimate,
+            dailyActual: point.dailyActual,
+            cumulativeEstimate: point.cumulativeEstimate,
+            cumulativeActual: point.cumulativeActual,
+            deltaHours: point.deltaHours,
+          })),
+        }
+      : undefined,
+    orderVsWork,
+  };
 
   const toneClasses: Record<string, string> = {
     positive: 'border-emerald-200 bg-emerald-50 text-emerald-900',
@@ -9498,6 +9682,71 @@ const ExecutiveSettlementReportModal = ({
             <p className="text-right text-xs font-bold text-slate-500">{formatValue(item.value)}</p>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const renderPdfBurnUpChart = (burnUp: NonNullable<typeof reportData.burnUp>) => {
+    const width = 860;
+    const height = 190;
+    const padding = { top: 12, right: 22, bottom: 26, left: 58 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    const [domainMin, domainMax] = burnUpHoursDomain;
+    const safeDomainMin = Number.isFinite(domainMin) ? domainMin : 0;
+    const safeDomainMax = Number.isFinite(domainMax) && domainMax !== safeDomainMin ? domainMax : safeDomainMin + 1;
+    const points = burnUp.points;
+    const getX = (index: number) => padding.left + (points.length <= 1 ? 0 : (index / (points.length - 1)) * plotWidth);
+    const getY = (value: number) => padding.top + ((safeDomainMax - value) / (safeDomainMax - safeDomainMin)) * plotHeight;
+    const estimatePath = points.map((point, index) => `${getX(index).toFixed(1)},${getY(point.cumulativeEstimate).toFixed(1)}`).join(' ');
+    const actualPath = points.map((point, index) => `${getX(index).toFixed(1)},${getY(point.cumulativeActual).toFixed(1)}`).join(' ');
+    const maxDailyEstimate = Math.max(1, ...points.map((point) => point.dailyEstimate));
+    const barStep = points.length <= 1 ? plotWidth : plotWidth / (points.length - 1);
+    const barWidth = Math.max(1, Math.min(5, barStep * 0.55));
+    const tickIndexes = points.length <= 1
+      ? [0]
+      : Array.from(new Set([0, Math.floor(points.length * 0.25), Math.floor(points.length * 0.5), Math.floor(points.length * 0.75), points.length - 1]));
+
+    return (
+      <div className="rounded-[20px] border border-slate-200 bg-white p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-4 text-[10px] font-bold text-slate-500">
+          <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 bg-[#4f46e5]" />Plan godzin zleceń</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-5 bg-[#10b981]" />Godziny zalogowane</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-blue-200" />Przyrost planu zleceń</span>
+        </div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[190px] w-full" role="img" aria-label="Narastanie godzin">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = padding.top + (ratio * plotHeight);
+            const value = safeDomainMax - (ratio * (safeDomainMax - safeDomainMin));
+            return (
+              <g key={ratio}>
+                <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#e2e8f0" strokeDasharray="4 4" />
+                <text x={padding.left - 10} y={y + 4} textAnchor="end" fill="#64748b" fontSize="10" fontWeight="700">{Math.round(value)}h</text>
+              </g>
+            );
+          })}
+          {points.map((point, index) => {
+            if (point.dailyEstimate <= 0) return null;
+            const barHeight = Math.max(1, (point.dailyEstimate / maxDailyEstimate) * (plotHeight * 0.38));
+            const x = getX(index) - (barWidth / 2);
+            const y = padding.top + plotHeight - barHeight;
+            return <rect key={point.date} x={x} y={y} width={barWidth} height={barHeight} rx="1" fill="rgba(59,130,246,0.18)" />;
+          })}
+          <polyline points={estimatePath} fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+          <polyline points={actualPath} fill="none" stroke="#10b981" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+          <line x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight} y2={padding.top + plotHeight} stroke="#cbd5e1" />
+          {tickIndexes.map((index) => {
+            const point = points[index];
+            if (!point) return null;
+            const date = new Date(`${point.date}T00:00:00`);
+            const label = Number.isNaN(date.getTime()) ? point.date : format(date, 'dd.MM');
+            return (
+              <text key={`${point.date}-${index}`} x={getX(index)} y={height - 8} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="700">
+                {label}
+              </text>
+            );
+          })}
+        </svg>
       </div>
     );
   };
@@ -9829,7 +10078,7 @@ const ExecutiveSettlementReportModal = ({
                   Raport pokazuje bieżący stan kontraktu, formalne rozliczenia zleceń, rzeczywiste roboczogodziny z YouTrack oraz syntetyczny komentarz o tym, co aktualnie dzieje się w projekcie.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-sm text-slate-100 md:min-w-[400px]">
+              <div className="grid grid-cols-2 gap-4 text-sm text-slate-100 md:min-w-[520px]">
                 <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Kod projektu</p>
                   <p className="mt-3 break-words text-[1.9rem] font-black leading-none">{project.code}</p>
@@ -9845,6 +10094,14 @@ const ExecutiveSettlementReportModal = ({
                 <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Stan na dzień</p>
                   <p className="mt-3 break-words text-base font-semibold leading-6">{reportDate}</p>
+                </div>
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Stawka netto / rh</p>
+                  <p className="mt-3 break-words text-base font-semibold leading-6">{formatCurrencyValue(project.rateNetto)} zł</p>
+                </div>
+                <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 px-5 py-5">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-300">Stawka brutto / rh</p>
+                  <p className="mt-3 break-words text-base font-semibold leading-6">{formatCurrencyValue(project.rateBrutto)} zł</p>
                 </div>
               </div>
             </div>
@@ -9919,6 +10176,72 @@ const ExecutiveSettlementReportModal = ({
                 </div>
               ))}
             </div>
+
+            {reportData.orderVsWork && (
+              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Zlecenia vs Praca</p>
+                    <h3 className="mt-1 text-lg font-black text-slate-900">Wykorzystane godziny względem pracy z YouTrack</h3>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">Zakres: {reportData.orderVsWork.rangeLabel}</p>
+                  </div>
+                  <div className={`rounded-full px-3 py-1 text-xs font-bold ${reportData.orderVsWork.differenceHours >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {reportData.orderVsWork.differenceHours > 0 ? '+' : ''}{reportData.orderVsWork.differencePct.toFixed(1)}% · {reportData.orderVsWork.differenceHours > 0 ? '+' : ''}{formatOrderHours(reportData.orderVsWork.differenceHours)} h
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  {(() => {
+                    const maxValue = Math.max(1, reportData.orderVsWork.usedHours, reportData.orderVsWork.workedHours);
+                    const developmentPct = reportData.orderVsWork.workedHours > 0 ? (reportData.orderVsWork.categoryHours.development / reportData.orderVsWork.workedHours) * 100 : 0;
+                    const managementPct = reportData.orderVsWork.workedHours > 0 ? (reportData.orderVsWork.categoryHours.management / reportData.orderVsWork.workedHours) * 100 : 0;
+                    const otherPct = reportData.orderVsWork.workedHours > 0 ? (reportData.orderVsWork.categoryHours.other / reportData.orderVsWork.workedHours) * 100 : 0;
+                    const bugPct = reportData.orderVsWork.workedHours > 0 ? (reportData.orderVsWork.bugHours.bug / reportData.orderVsWork.workedHours) * 100 : 0;
+                    return (
+                      <>
+                        <div>
+                          <div className="mb-1 flex justify-between text-sm font-semibold text-slate-600">
+                            <span>Wykorzystane w zleceniach</span>
+                            <span>{formatOrderHours(reportData.orderVsWork.usedHours)} h</span>
+                          </div>
+                          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min(100, (reportData.orderVsWork.usedHours / maxValue) * 100)}%` }} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex justify-between text-sm font-semibold text-slate-600">
+                            <span>Przepracowane w zleceniach</span>
+                            <span>{formatOrderHours(reportData.orderVsWork.workedHours)} h</span>
+                          </div>
+                          <div className="flex h-4 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full bg-violet-500" style={{ width: `${(reportData.orderVsWork.categoryHours.development / maxValue) * 100}%` }} />
+                            <div className="h-full bg-emerald-500" style={{ width: `${(reportData.orderVsWork.categoryHours.management / maxValue) * 100}%` }} />
+                            <div className="h-full bg-amber-500" style={{ width: `${(reportData.orderVsWork.categoryHours.other / maxValue) * 100}%` }} />
+                          </div>
+                          <div className="mt-2 flex flex-wrap justify-center gap-4 text-[11px] font-semibold text-slate-500">
+                            <span>Programistyczne {developmentPct.toFixed(0)}%</span>
+                            <span>Obsługa projektu {managementPct.toFixed(0)}%</span>
+                            <span>Inne {otherPct.toFixed(0)}%</span>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
+                          <div className="mb-2 flex justify-between text-sm font-bold text-slate-900">
+                            <span>BUG / reszta</span>
+                            <span>{formatOrderHours(reportData.orderVsWork.workedHours)} h</span>
+                          </div>
+                          <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                            <div className="h-full bg-rose-500" style={{ width: `${Math.min(100, bugPct)}%` }} />
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-3 text-xs font-bold text-slate-700">
+                            <div className="rounded-xl bg-white px-3 py-2">BUG: {bugPct.toFixed(0)}% · {formatOrderHours(reportData.orderVsWork.bugHours.bug)} h</div>
+                            <div className="rounded-xl bg-white px-3 py-2">Reszta: {(100 - bugPct).toFixed(0)}% · {formatOrderHours(reportData.orderVsWork.bugHours.other)} h</div>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -9974,12 +10297,74 @@ const ExecutiveSettlementReportModal = ({
               </div>
             </div>
 
-            <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="mb-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres wartości</p>
-                <h3 className="mt-1 text-lg font-black text-slate-900">Wartość kontraktu i bieżącej zyskowności</h3>
+            {reportData.burnUp && (
+              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres zleceń, logów i trendu</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-900">Narastanie godzin</h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">Zakres: {reportData.burnUp.rangeLabel}</p>
+                </div>
+                <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <div className="rounded-2xl bg-indigo-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-500">Plan godzin zleceń narastająco</p>
+                    <p className="mt-2 text-xl font-black text-indigo-700">{formatOrderHours(reportData.burnUp.estimateHours)} h</p>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-500">Godziny zalogowane narastająco</p>
+                    <p className="mt-2 text-xl font-black text-emerald-700">{formatOrderHours(reportData.burnUp.actualHours)} h</p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Różnica planu do logów</p>
+                    <p className={`mt-2 text-xl font-black ${reportData.burnUp.deltaHours >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatOrderHours(reportData.burnUp.deltaHours)} h</p>
+                  </div>
+                  <div className={`rounded-2xl p-3 ${reportData.burnUp.trendRatio === null ? 'bg-slate-100 text-slate-600' : reportData.burnUp.trendRatio >= 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em]">Relacja zleceń do logów / trend 30 dni</p>
+                    <p className="mt-2 text-xl font-black">
+                      {reportData.burnUp.trendRatio !== null ? reportData.burnUp.trendRatio.toFixed(2) : 'brak'}
+                      <span className="ml-2 text-xs font-semibold opacity-80">
+                        {reportData.burnUp.rollingTrendRatio !== null ? `30d: ${reportData.burnUp.rollingTrendRatio.toFixed(2)}` : '30d: brak'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <div className={isExportingPdf ? 'h-auto' : 'print-chart h-[280px]'}>
+                  {isExportingPdf ? (
+                    renderPdfBurnUpChart(reportData.burnUp)
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={reportData.burnUp.points} margin={{ top: 10, right: 20, left: -10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" opacity={0.45} />
+                        <XAxis
+                          dataKey="date"
+                          minTickGap={28}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(value) => {
+                            const date = new Date(`${value}T00:00:00`);
+                            return Number.isNaN(date.getTime()) ? value : format(date, 'dd.MM');
+                          }}
+                          tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                        />
+                        <YAxis yAxisId="hours" axisLine={false} tickLine={false} domain={burnUpHoursDomain} tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(value) => `${Math.round(Number(value))}h`} />
+                        <YAxis yAxisId="increments" hide />
+                        <Tooltip formatter={(value: number | string | undefined, name?: string) => [`${formatOrderHours(Number(value || 0))} h`, name ?? 'Godziny']} />
+                        <Legend verticalAlign="top" height={38} wrapperStyle={{ fontSize: '11px', fontWeight: 700 }} />
+                        <Bar yAxisId="increments" dataKey="dailyEstimate" name="Przyrost planu zleceń" fill="rgba(59,130,246,0.18)" stroke="none" barSize={8} isAnimationActive={false} />
+                        <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeEstimate" name="Plan godzin zleceń narastająco" stroke="#4f46e5" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                        <Line yAxisId="hours" type="stepAfter" dataKey="cumulativeActual" name="Godziny zalogowane narastająco" stroke="#10b981" strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
               </div>
-              {isFinancialDataVisible ? (
+            )}
+
+            {isFinancialDataVisible && (
+              <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Wykres wartości</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-900">Wartość kontraktu i bieżącej zyskowności</h3>
+                </div>
                 <div className="print-chart h-[260px]">
                   {isExportingPdf ? (
                     renderPdfBars(reportData.valuesChartData, (value) => `${formatCurrencyValue(value)} zł`)
@@ -9999,12 +10384,8 @@ const ExecutiveSettlementReportModal = ({
                     </ResponsiveContainer>
                   )}
                 </div>
-              ) : (
-                <div className="flex h-[260px] items-center justify-center rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-8 text-center text-sm leading-7 text-slate-500">
-                  Dane kwotowe są ukryte. Kliknij ikonę dolara w nagłówku raportu, aby odsłonić wartości netto i wykres finansowy.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="avoid-break rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4">
