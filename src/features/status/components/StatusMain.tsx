@@ -145,13 +145,14 @@ export const StatusMain = ({ project }: StatusMainProps) => {
         const rawDraft = localStorage.getItem(getStatusDraftKey(project.id));
         if (rawDraft) {
           const draft = JSON.parse(rawDraft) as Partial<StatusDraft>;
+          const draftTitle = draft.title?.trim();
           const shouldRefreshDraftTitle =
-            !draft.title?.trim() ||
-            draft.title.trim() === buildDefaultTitle(project.code, draft.dateTo || fallbackDateTo);
+            !draftTitle ||
+            draftTitle === buildDefaultTitle(project.code, draft.dateTo || fallbackDateTo);
 
           setDateTo(fallbackDateTo);
           setDateFrom(fallbackDateFrom);
-          setTitle(shouldRefreshDraftTitle ? buildDefaultTitle(project.code, fallbackDateTo) : draft.title.trim());
+          setTitle(shouldRefreshDraftTitle ? buildDefaultTitle(project.code, fallbackDateTo) : draftTitle);
           setEditorContent(draft.editorContent || '');
           setRemovedSourceIds(draft.removedSourceIds || {});
           setIsDirty(!!draft.editorContent?.trim());
@@ -371,7 +372,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
 
     let current: Element | null = targetHeading;
     while (current) {
-      const next = current.nextElementSibling;
+      const next: Element | null = current.nextElementSibling;
       current.remove();
       if (!next || next.tagName.toLowerCase() === 'h2') {
         break;
@@ -523,7 +524,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             </button>
             <button
               type="button"
-              onClick={() => setActiveIssueDetailsId(story.issueId || story.issueReadableId)}
+              onClick={() => setActiveIssueDetailsId(story.id || story.issueReadableId)}
               className="text-left text-[12px] leading-4 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
               title={story.title}
             >

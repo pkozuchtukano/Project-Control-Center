@@ -76,45 +76,6 @@ const normalizeMeetingNotesFlow = (flow?: OrderProtocolFlow | null): OrderProtoc
   updatedAt: flow?.updatedAt,
 });
 
-const escapeHtml = (value: string) => value
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
-
-const buildMeetingNotesFlowHtml = (
-  flow: OrderProtocolFlow | undefined,
-  replaceVariables: (text: string) => string,
-) => {
-  const normalizedFlow = normalizeMeetingNotesFlow(flow);
-  const visibleSteps = normalizedFlow.steps
-    .map((step) => ({
-      ...step,
-      description: replaceVariables(step.description || '').trim(),
-      linkLabel: replaceVariables(step.linkLabel || '').trim(),
-      linkUrl: replaceVariables(step.linkUrl || '').trim(),
-    }))
-    .filter((step) => step.description || step.linkLabel || step.linkUrl);
-
-  if (visibleSteps.length === 0) {
-    return '';
-  }
-
-  const items = visibleSteps.map((step) => {
-    const descriptionHtml = step.description
-      ? `<div>${escapeHtml(step.description).replace(/\n/g, '<br/>')}</div>`
-      : '';
-    const linkHtml = step.linkUrl
-      ? `<div><a href="${escapeHtml(step.linkUrl)}">${escapeHtml(step.linkLabel || step.linkUrl)}</a></div>`
-      : '';
-
-    return `<li>${descriptionHtml}${linkHtml}</li>`;
-  });
-
-  return `<ol>${items.join('')}</ol>`;
-};
-
 const extractTemplateVariables = (meetingNoteData: MeetingNoteData, steps?: OrderProtocolStep[]) => {
   const emailTemplate = meetingNoteData.emailTemplate || { to: '', cc: '', subject: '', body: '' };
   const flowSteps = steps || meetingNoteData.flow?.steps || [];
@@ -606,6 +567,10 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     }
   };
 
+  void clearNote;
+  void createNewNote;
+  void handleCreateNewNote;
+
   const startNewNote = () => {
     setData(prev => {
       const currentFlow = normalizeMeetingNotesFlow(prev.flow);
@@ -658,7 +623,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <FileText className="text-indigo-500" size={24} />
@@ -716,7 +681,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* LEFT COLUMN: FLOW */}
         <div className="lg:col-span-3 flex flex-col gap-4">
           <div className="order-3 space-y-2">
@@ -1155,7 +1120,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
 
         {/* RIGHT COLUMN: STAKEHOLDERS & INFO */}
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2 mb-4">
               <Users className="text-indigo-500" size={18} />
               <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Lista obecności</h3>
@@ -1239,7 +1204,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
           </div>
 
           {/* GOOGLE DOCS LINK BOX */}
-          <div className={`rounded-2xl p-6 shadow-sm border ${project.googleDocLink ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-800' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30'}`}>
+          <div className={`rounded-2xl p-4 shadow-sm border ${project.googleDocLink ? 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-800' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30'}`}>
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Dokument Google</h4>
               <div className="flex gap-1">

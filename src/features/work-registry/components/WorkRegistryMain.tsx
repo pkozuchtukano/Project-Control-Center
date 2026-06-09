@@ -17,6 +17,19 @@ interface Props {
     settings: { youtrackBaseUrl: string; youtrackToken: string } | null;
 }
 
+const isWorkRegistrySyncStale = (date: string) => {
+    if (!date) return false;
+
+    const syncTime = new Date(`${date}T00:00:00`).getTime();
+    if (Number.isNaN(syncTime)) return false;
+
+    const today = new Date();
+    const todayTime = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const staleAfterMs = 3 * 24 * 60 * 60 * 1000;
+
+    return todayTime - syncTime > staleAfterMs;
+};
+
 export const WorkRegistryMain = ({ project, settings }: Props) => {
     const { updateProject } = useProjectContext();
     const { workItems, isLoading, error, setCategory, setMaintenance, setCategoriesBulk, refresh } = useWorkRegistry(project);
@@ -26,9 +39,32 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
     const [projectQuery, setProjectQuery] = useState(project.youtrackQuery || project.code || '');
     const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-01'));
     const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [lastSyncDate, setLastSyncDate] = useState('');
 
     useEffect(() => {
+        let isActive = true;
+
         setProjectQuery(project.youtrackQuery || project.code || '');
+
+        const loadLastSyncDate = async () => {
+            try {
+                const meta = await window.electron?.getWorkRegistrySyncMeta?.(project.id);
+                if (isActive) {
+                    setLastSyncDate(meta?.lastSyncDate || '');
+                }
+            } catch (error) {
+                console.error('Błąd pobierania daty synchronizacji rejestru pracy:', error);
+                if (isActive) {
+                    setLastSyncDate('');
+                }
+            }
+        };
+
+        void loadLastSyncDate();
+
+        return () => {
+            isActive = false;
+        };
     }, [project.id, project.youtrackQuery, project.code]);
 
     const openSyncModal = () => {
@@ -65,6 +101,14 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
             (progress) => {
                 setSyncProgress(progress);
                 if (progress.status === 'completed') {
+                    const completedDate = format(new Date(), 'yyyy-MM-dd');
+                    window.electron?.saveWorkRegistrySyncMeta?.({
+                        projectId: project.id,
+                        lastSyncDate: completedDate,
+                    }).catch((error: unknown) => {
+                        console.error('Błąd zapisu daty synchronizacji rejestru pracy:', error);
+                    });
+                    setLastSyncDate(completedDate);
                     refresh();
                     setTimeout(() => setSyncProgress(null), 3000);
                 }
@@ -121,14 +165,21 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
                             Zsynchronizowano
                         </div>
                     ) : (
-                        <button
-                            onClick={openSyncModal}
-                            disabled={isLoading}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl transition-all border border-indigo-100 dark:border-indigo-800"
-                        >
-                            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
-                            Aktualizuj z YouTrack
-                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            {lastSyncDate && (
+                                <span className={`text-xs font-bold ${isWorkRegistrySyncStale(lastSyncDate) ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    Ostatnia aktualizacja: {lastSyncDate}
+                                </span>
+                            )}
+                            <button
+                                onClick={openSyncModal}
+                                disabled={isLoading}
+                                className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-xl transition-all border border-indigo-100 dark:border-indigo-800"
+                            >
+                                <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                                Aktualizuj z YouTrack
+                            </button>
+                        </div>
                     )}
                 </div>
                 </div>

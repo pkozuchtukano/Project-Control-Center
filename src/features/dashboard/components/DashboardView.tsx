@@ -1098,8 +1098,8 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       : 'Synchronizacja';
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-5 xl:px-5 xl:py-6 bg-gray-50 dark:bg-gray-900/50">
-      <div className="max-w-[1500px] mx-auto space-y-5">
+    <div className="flex-1 overflow-y-auto px-2 py-3 xl:px-3 xl:py-4 bg-gray-50 dark:bg-gray-900/50">
+      <div className="w-full space-y-4">
 
         {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -1230,7 +1230,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             </div>
           </div>
         )}
-        <div className="flex items-center gap-8 border-b border-gray-200 dark:border-gray-800 mb-6 font-medium text-sm">
+        <div className="flex items-center gap-8 border-b border-gray-200 dark:border-gray-800 mb-4 font-medium text-sm">
           <button
             onClick={() => setActiveTab('dashboard')}
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'dashboard' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
@@ -4014,6 +4014,18 @@ const createOrderItemRow = (overrides?: Partial<OrderItem>): OrderItem => ({
   ...overrides,
 });
 
+const getOrderItemGrossRate = (item: OrderItem, project?: Project | null) =>
+  Number(item.rate ?? project?.personnelRoles?.find((role) =>
+    role.id === item.roleId ||
+    Boolean(item.roleName && role.name.trim().toLowerCase() === item.roleName.trim().toLowerCase())
+  )?.hourlyRate ?? project?.rateBrutto ?? 0) || 0;
+
+const getOrderItemNetRate = (item: OrderItem, project?: Project | null) => {
+  const grossRate = getOrderItemGrossRate(item, project);
+  const vatMultiplier = 1 + ((Number(project?.vatRate) || 0) / 100);
+  return vatMultiplier > 0 ? grossRate / vatMultiplier : grossRate;
+};
+
 const createOrderProtocolStep = (overrides?: {
   id?: string;
   description?: string;
@@ -5067,10 +5079,14 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateFilterField, setDateFilterField] = useState<'requestDate' | 'estimationDate' | 'acceptanceDate'>('requestDate');
+  const [dateFilterFrom, setDateFilterFrom] = useState('');
+  const [dateFilterTo, setDateFilterTo] = useState('');
   const [copiedExport, setCopiedExport] = useState(false);
   const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
   const [savingStatusEntryId, setSavingStatusEntryId] = useState<string | null>(null);
   const [selectedPendingSettlementIds, setSelectedPendingSettlementIds] = useState<Set<string>>(() => new Set());
+  const lastSelectedPendingSettlementIdRef = useRef<string | null>(null);
 
   const formatPendingSettlementRequester = (value: string) => {
     const parts = value.trim().split(/\s+/).filter(Boolean);
@@ -5089,6 +5105,53 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   };
 
   const formatPendingSettlementHoursForExport = (value: number) => String(Math.round(Number(value) || 0));
+
+  const pendingSettlementDateFilterOptions = [
+    { value: 'requestDate' as const, label: 'Zgłoszenia' },
+    { value: 'estimationDate' as const, label: 'Wyceny' },
+    { value: 'acceptanceDate' as const, label: 'Akceptacji' },
+  ];
+
+  const getPendingSettlementDateFilterValue = (entry: PendingSettlementEntry) => {
+    switch (dateFilterField) {
+      case 'estimationDate':
+        return entry.estimationDate || '';
+      case 'acceptanceDate':
+        return entry.acceptanceDate || '';
+      case 'requestDate':
+      default:
+        return entry.requestDate || '';
+    }
+  };
+
+  const matchesPendingSettlementDateFilter = (entry: PendingSettlementEntry) => {
+    if (!dateFilterFrom && !dateFilterTo) {
+      return true;
+    }
+
+    const entryDate = getPendingSettlementDateFilterValue(entry);
+    if (!entryDate) {
+      return false;
+    }
+
+    if (dateFilterFrom && entryDate < dateFilterFrom) {
+      return false;
+    }
+
+    if (dateFilterTo && entryDate > dateFilterTo) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const clearPendingSettlementFilters = () => {
+    setActiveFilter('all');
+    setSearchQuery('');
+    setDateFilterField('requestDate');
+    setDateFilterFrom('');
+    setDateFilterTo('');
+  };
 
   const escapeHtml = (value: string) =>
     value
@@ -5339,6 +5402,11 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   const inProgressCount = entries.filter((entry) => entry.isInProgress).length;
   const completedCount = entries.filter((entry) => entry.isCompleted).length;
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('pl-PL');
+  const hasActiveDateFilter = Boolean(dateFilterFrom || dateFilterTo);
+  const hasActivePendingSettlementFilters = activeFilter !== 'all'
+    || Boolean(normalizedSearchQuery)
+    || hasActiveDateFilter
+    || dateFilterField !== 'requestDate';
   const filteredEntries = entries.filter((entry) => {
     const matchesFilter = (() => {
       switch (activeFilter) {
@@ -5362,6 +5430,10 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     })();
 
     if (!matchesFilter) {
+      return false;
+    }
+
+    if (!matchesPendingSettlementDateFilter(entry)) {
       return false;
     }
 
@@ -5414,7 +5486,8 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
   };
 
   const handleCopyPendingSettlementTable = async () => {
-    const wasCopied = await copyPendingSettlementEntries(filteredEntries);
+    const itemsToCopy = selectedEntries.length > 0 ? selectedEntries : filteredEntries;
+    const wasCopied = await copyPendingSettlementEntries(itemsToCopy);
     if (!wasCopied) return;
     setCopiedExport(true);
     window.setTimeout(() => setCopiedExport(false), 1800);
@@ -5429,16 +5502,46 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     }, 1800);
   };
 
-  const togglePendingSettlementSelection = (entryId: string) => {
+  const togglePendingSettlementSelection = (
+    entryId: string,
+    event: React.MouseEvent<HTMLInputElement>,
+  ) => {
+    const shouldSelect = event.currentTarget.checked;
+    const isRangeSelection = event.shiftKey && lastSelectedPendingSettlementIdRef.current;
+
     setSelectedPendingSettlementIds((current) => {
       const nextSelectedIds = new Set(current);
-      if (nextSelectedIds.has(entryId)) {
-        nextSelectedIds.delete(entryId);
-      } else {
+
+      if (isRangeSelection) {
+        const currentIndex = filteredEntries.findIndex((entry) => entry.id === entryId);
+        const lastSelectedIndex = filteredEntries.findIndex((entry) => entry.id === lastSelectedPendingSettlementIdRef.current);
+
+        if (currentIndex >= 0 && lastSelectedIndex >= 0) {
+          const [fromIndex, toIndex] = currentIndex < lastSelectedIndex
+            ? [currentIndex, lastSelectedIndex]
+            : [lastSelectedIndex, currentIndex];
+
+          filteredEntries.slice(fromIndex, toIndex + 1).forEach((entry) => {
+            if (shouldSelect) {
+              nextSelectedIds.add(entry.id);
+            } else {
+              nextSelectedIds.delete(entry.id);
+            }
+          });
+
+          return nextSelectedIds;
+        }
+      }
+
+      if (shouldSelect) {
         nextSelectedIds.add(entryId);
+      } else {
+        nextSelectedIds.delete(entryId);
       }
       return nextSelectedIds;
     });
+
+    lastSelectedPendingSettlementIdRef.current = entryId;
   };
 
   const toggleAllFilteredPendingSettlementSelection = () => {
@@ -5451,6 +5554,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       }
       return nextSelectedIds;
     });
+    lastSelectedPendingSettlementIdRef.current = null;
   };
 
   return (
@@ -5524,8 +5628,8 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       </div>
 
       <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4 shadow-sm dark:border-indigo-900/30 dark:from-indigo-500/10 dark:via-gray-800 dark:to-sky-500/10">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Suma godzin</p>
               <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
@@ -5534,37 +5638,79 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
             </div>
             <div className="border-t border-indigo-100 pt-4 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0 dark:border-indigo-900/40">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">Zaznaczone</p>
-              <p className="mt-1 text-3xl font-black text-gray-900 dark:text-white">
-                {formatPendingSettlementHoursForExport(selectedEstimatedHoursTotal)} h
-              </p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedEntries.length} pozycji</p>
+              <div className="mt-1 flex items-baseline gap-3 whitespace-nowrap">
+                <span className="text-3xl font-black text-gray-900 dark:text-white">
+                  {formatPendingSettlementHoursForExport(selectedEstimatedHoursTotal)} h
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{selectedEntries.length} pozycji</span>
+              </div>
             </div>
           </div>
-          <div className="flex flex-col gap-3 xl:min-w-[420px] xl:max-w-[520px] xl:flex-1 xl:items-end">
-            <div className="w-full relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <div className="flex min-w-0 flex-1 flex-col gap-2 xl:items-end">
+            <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-[minmax(320px,1fr)_minmax(150px,0.38fr)_minmax(150px,0.34fr)_minmax(150px,0.34fr)_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Szukaj po tytule i szczegółach..."
+                  className="w-full rounded-xl border border-white/60 bg-white/90 py-2.5 pl-10 pr-10 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:focus:border-indigo-500 dark:focus:bg-gray-900"
+                />
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                    title="Wyczyść wyszukiwanie"
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+              <select
+                value={dateFilterField}
+                onChange={(event) => setDateFilterField(event.target.value as typeof dateFilterField)}
+                aria-label="Typ daty filtrowania"
+                title="Typ daty filtrowania"
+                className="rounded-xl border border-white/60 bg-white/90 px-3 py-2.5 text-sm font-medium text-gray-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:focus:border-indigo-500"
+              >
+                {pendingSettlementDateFilterOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
               <input
-                type="text"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Szukaj po tytule i szczegółach..."
-                className="w-full rounded-xl border border-white/60 bg-white/90 py-2.5 pl-10 pr-10 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:focus:border-indigo-500 dark:focus:bg-gray-900"
+                type="date"
+                value={dateFilterFrom}
+                onChange={(event) => setDateFilterFrom(event.target.value)}
+                aria-label="Data od"
+                title="Data od"
+                className="rounded-xl border border-white/60 bg-white/90 px-3 py-2.5 text-sm font-medium text-gray-900 outline-none transition [color-scheme:light] focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:[color-scheme:dark] dark:focus:border-indigo-500"
               />
-              {searchQuery.trim() && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                  title="Wyczyść wyszukiwanie"
-                >
-                  <X size={15} />
-                </button>
-              )}
+              <input
+                type="date"
+                value={dateFilterTo}
+                onChange={(event) => setDateFilterTo(event.target.value)}
+                aria-label="Data do"
+                title="Data do"
+                className="rounded-xl border border-white/60 bg-white/90 px-3 py-2.5 text-sm font-medium text-gray-900 outline-none transition [color-scheme:light] focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-900/70 dark:text-white dark:[color-scheme:dark] dark:focus:border-indigo-500"
+              />
+              <button
+                type="button"
+                onClick={clearPendingSettlementFilters}
+                disabled={!hasActivePendingSettlementFilters}
+                className="rounded-xl border border-white/60 bg-white/90 px-3 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-45 dark:border-gray-700 dark:bg-gray-900/70 dark:text-gray-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-300"
+              >
+                Wyczyść
+              </button>
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-300 xl:text-right">
               <span className="font-medium">Dla aktualnie widocznych pozycji:</span>{' '}
               <span>{filteredEntries.length}</span>
               <span>{' · Wycena zespołu: '}{formatPendingSettlementHoursForExport(filteredTeamEstimatedHoursTotal)} h</span>
+              {hasActiveDateFilter && (
+                <span>{' · Zakres dat: '}{dateFilterFrom || '...'}{' - '}{dateFilterTo || '...'}</span>
+              )}
             </div>
           </div>
         </div>
@@ -5630,7 +5776,8 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
                       <input
                         type="checkbox"
                         checked={selectedPendingSettlementIds.has(entry.id)}
-                        onChange={() => togglePendingSettlementSelection(entry.id)}
+                        onChange={() => undefined}
+                        onClick={(event) => togglePendingSettlementSelection(entry.id, event)}
                         aria-label={`Zaznacz pozycję ${entry.externalId || entry.title}`}
                         className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900"
                       />
@@ -7922,6 +8069,24 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
     }));
   };
 
+  const personnelRoles: NonNullable<Project['personnelRoles']> = project?.hasPersonnelRoles ? (project.personnelRoles || []) : [];
+  const shouldShowRoleColumn = personnelRoles.length > 0;
+
+  const handleItemRoleChange = (id: string, roleId: string) => {
+    const role = personnelRoles.find(item => item.id === roleId);
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => item.id === id
+        ? {
+          ...item,
+          roleId,
+          roleName: role?.name || '',
+          rate: role ? Number(role.hourlyRate) || 0 : undefined,
+        }
+        : item)
+    }));
+  };
+
   const addItemRow = () => {
     setFormData(prev => ({
       ...prev,
@@ -7955,8 +8120,10 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
   if (!isOpen) return null;
 
   const totalHours = formData.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-  const totalAmountNetto = totalHours * (project?.rateNetto || 0);
-  const totalAmountBrutto = totalHours * (project?.rateBrutto || 0);
+  const totalAmountNetto = formData.items.reduce((sum, item) => sum + ((Number(item.hours) || 0) * getOrderItemNetRate(item, project)), 0);
+  const totalAmountBrutto = formData.items.reduce((sum, item) => sum + ((Number(item.hours) || 0) * getOrderItemGrossRate(item, project)), 0);
+  const orderItemsEmptyColSpan = shouldShowRoleColumn ? 8 : 7;
+  const orderItemsTotalLabelColSpan = shouldShowRoleColumn ? 4 : 3;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -8053,6 +8220,9 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
                     <tr>
                       <th className="py-3 px-4 w-10 text-center">Lp.</th>
                       <th className="py-3 px-4">Produkty zlecenia</th>
+                      {shouldShowRoleColumn && (
+                        <th className="py-3 px-4 w-44">Rola</th>
+                      )}
                       <th className="py-3 px-4 w-36">Data wykonania</th>
                       <th className="py-3 px-4 w-28 text-center">L. godzin rob.</th>
                       <th className="py-3 px-4 w-32 text-right">Stawka za h <span className="block text-[10px] text-gray-400 font-normal">Brutto (Netto)</span></th>
@@ -8061,12 +8231,29 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {formData.items.map((item, idx) => (
-                      <tr key={item.id} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
+                    {formData.items.map((item, idx) => {
+                      const itemGrossRate = getOrderItemGrossRate(item, project);
+                      const itemNetRate = getOrderItemNetRate(item, project);
+                      return (
+                        <tr key={item.id} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors">
                         <td className="py-2 px-4 text-center text-gray-400">{idx + 1}.</td>
                         <td className="py-2 px-4">
                           <input value={item.name} onChange={e => handleItemChange(item.id, 'name', e.target.value)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition" placeholder="Wpisz nazwę..." />
                         </td>
+                        {shouldShowRoleColumn && (
+                          <td className="py-2 px-4">
+                            <select
+                              value={item.roleId || ''}
+                              onChange={e => handleItemRoleChange(item.id, e.target.value)}
+                              className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition"
+                            >
+                              <option value="">Wybierz rolę</option>
+                              {personnelRoles.map(role => (
+                                <option key={role.id} value={role.id}>{role.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
                         <td className="py-2 px-4">
                           <input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'date', e.target.value)} onKeyDown={handleDateInputTabNavigation} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 focus:ring-0 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                         </td>
@@ -8074,12 +8261,12 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
                           <input type="number" min="0" step="0.01" value={item.hours} onChange={e => handleItemChange(item.id, 'hours', parseFloat(e.target.value) || 0)} className="w-full rounded bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 dark:hover:border-gray-600 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 px-2 py-1.5 text-center focus:ring-0 outline-none transition" />
                         </td>
                         <td className="py-2 px-4 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap leading-tight">
-                          <div className="font-medium text-gray-900 dark:text-white">{project?.rateBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
-                          <div className="text-[11px] text-gray-400">({project?.rateNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
+                          <div className="font-medium text-gray-900 dark:text-white">{itemGrossRate.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                          <div className="text-[11px] text-gray-400">({itemNetRate.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
                         </td>
                         <td className="py-2 px-4 text-right whitespace-nowrap leading-tight">
-                          <div className="font-bold text-gray-900 dark:text-gray-200">{((item.hours || 0) * (project?.rateBrutto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
-                          <div className="text-[11px] text-gray-400">({((item.hours || 0) * (project?.rateNetto || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
+                          <div className="font-bold text-gray-900 dark:text-gray-200">{((item.hours || 0) * itemGrossRate).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł</div>
+                          <div className="text-[11px] text-gray-400">({((item.hours || 0) * itemNetRate).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)</div>
                         </td>
                         <td className="py-2 px-4 text-center">
                           <button type="button" onClick={() => removeItemRow(item.id)} className="text-gray-300 hover:text-red-500 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition focus:opacity-100">
@@ -8087,14 +8274,15 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {formData.items.length === 0 && (
-                      <tr><td colSpan={7} className="py-6 text-center text-gray-500 dark:text-gray-400">Tabela jest pusta. Dodaj przynajmniej jeden produkt zlecenia.</td></tr>
+                      <tr><td colSpan={orderItemsEmptyColSpan} className="py-6 text-center text-gray-500 dark:text-gray-400">Tabela jest pusta. Dodaj przynajmniej jeden produkt zlecenia.</td></tr>
                     )}
                   </tbody>
                   <tfoot className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80 font-bold">
                     <tr>
-                      <td colSpan={3} className="py-4 px-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
+                      <td colSpan={orderItemsTotalLabelColSpan} className="py-4 px-4 text-right uppercase text-xs tracking-wider text-gray-500">Razem</td>
                       <td className="py-4 px-4 text-center text-indigo-600 dark:text-indigo-400 text-lg">{formatOrderHours(totalHours)}</td>
                       <td></td>
                       <td className="py-4 px-4 text-right leading-tight whitespace-nowrap">

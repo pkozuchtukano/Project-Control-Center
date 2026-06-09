@@ -6,7 +6,7 @@ declare const window: any;
 
 const ISSUE_MAINTENANCE_STORAGE_KEY = 'pcc_issue_maintenance_flags';
 
-const readMaintenanceFlagsFromStorage = (): Record<string, boolean> => {
+const readLegacyMaintenanceFlagsFromStorage = (): Record<string, boolean> => {
     if (typeof window === 'undefined') return {};
 
     try {
@@ -19,13 +19,13 @@ const readMaintenanceFlagsFromStorage = (): Record<string, boolean> => {
     }
 };
 
-const writeMaintenanceFlagsToStorage = (flags: Record<string, boolean>) => {
+const clearLegacyMaintenanceFlagsFromStorage = () => {
     if (typeof window === 'undefined') return;
 
     try {
-        window.localStorage.setItem(ISSUE_MAINTENANCE_STORAGE_KEY, JSON.stringify(flags));
+        window.localStorage.removeItem(ISSUE_MAINTENANCE_STORAGE_KEY);
     } catch {
-        // ignore storage write failures
+        // ignore legacy storage cleanup failures
     }
 };
 
@@ -40,21 +40,33 @@ export const useWorkRegistry = (project: Project | null) => {
         if (!project) return;
         setIsLoading(true);
         try {
-            const storageFlags = readMaintenanceFlagsFromStorage();
-            const getMaintenanceFlags =
-                typeof window.electron.getIssueMaintenanceFlags === 'function'
-                    ? window.electron.getIssueMaintenanceFlags()
-                    : Promise.resolve(storageFlags);
+            if (typeof window.electron.getIssueMaintenanceFlags !== 'function') {
+                throw new Error('Brak dostępu do bazy flag utrzymania.');
+            }
 
-            const [items, cats, flags] = await Promise.all([
+            const [items, cats, dbFlags] = await Promise.all([
                 window.electron.getWorkItems(project.id),
                 window.electron.getIssueCategories(),
-                getMaintenanceFlags
+                window.electron.getIssueMaintenanceFlags()
             ]);
+            const legacyFlags = readLegacyMaintenanceFlagsFromStorage();
+            const legacyEntriesToMigrate = Object.entries(legacyFlags)
+                .filter(([issueId]) => dbFlags[issueId] === undefined);
+
+            if (legacyEntriesToMigrate.length > 0) {
+                if (typeof window.electron.setIssueMaintenanceFlag !== 'function') {
+                    throw new Error('Brak dostępu do zapisu flag utrzymania w bazie.');
+                }
+
+                await Promise.all(legacyEntriesToMigrate.map(([issueId, isMaintenance]) =>
+                    window.electron.setIssueMaintenanceFlag({ issueId, isMaintenance })
+                ));
+                clearLegacyMaintenanceFlagsFromStorage();
+            }
+
             setWorkItems(items);
             setCategories(cats);
-            setMaintenanceFlags(flags);
-            writeMaintenanceFlagsToStorage({ ...storageFlags, ...flags });
+            setMaintenanceFlags({ ...legacyFlags, ...dbFlags });
         } catch (err: any) {
             setError(err.message || 'Błąd ładowania danych');
         } finally {
@@ -91,10 +103,8 @@ export const useWorkRegistry = (project: Project | null) => {
     };
 
     const setMaintenance = async (issueId: string, isMaintenance: boolean) => {
-        const previousFlags = readMaintenanceFlagsFromStorage();
-        const nextFlags = { ...previousFlags, [issueId]: isMaintenance };
+        const nextFlags = { ...maintenanceFlags, [issueId]: isMaintenance };
         setMaintenanceFlags(nextFlags);
-        writeMaintenanceFlagsToStorage(nextFlags);
 
         if (typeof window.electron.setIssueMaintenanceFlag !== 'function') {
             console.warn('setIssueMaintenanceFlag is unavailable in the current preload context.');
@@ -105,9 +115,7 @@ export const useWorkRegistry = (project: Project | null) => {
             await window.electron.setIssueMaintenanceFlag({ issueId, isMaintenance });
         } catch (err: any) {
             console.error('Błąd zapisu flagi utrzymania:', err);
-            const rollbackFlags = { ...nextFlags, [issueId]: !isMaintenance };
-            setMaintenanceFlags(rollbackFlags);
-            writeMaintenanceFlagsToStorage(rollbackFlags);
+            setMaintenanceFlags(maintenanceFlags);
         }
     };
 

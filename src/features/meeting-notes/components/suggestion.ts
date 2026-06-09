@@ -1,21 +1,42 @@
 import { ReactRenderer } from '@tiptap/react';
+import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
 import tippy, { type Instance } from 'tippy.js';
-import { MentionList } from './MentionList';
+import { MentionList, type MentionListHandle } from './MentionList';
 
-export const getSuggestionParams = (stakeholders: { id: string, name: string }[]) => {
+export type MentionStakeholder = { id: string, name: string };
+export type MentionSuggestionItem = MentionStakeholder & { label: string };
+
+type MentionSuggestionProps = SuggestionProps<MentionSuggestionItem>;
+
+export const formatMentionLabel = (stakeholder: MentionStakeholder) => {
+  const name = stakeholder.name.trim();
+
+  return name ? `P. ${name}` : 'P.';
+};
+
+export const getSuggestionParams = (stakeholders: MentionStakeholder[]) => {
   return {
     items: ({ query }: { query: string }) => {
+      const normalizedQuery = query.toLowerCase();
+
       return stakeholders
-        .filter(item => item.name.toLowerCase().includes(query.toLowerCase()))
+        .map(item => ({
+          ...item,
+          label: formatMentionLabel(item),
+        }))
+        .filter(item => (
+          item.name.toLowerCase().includes(normalizedQuery)
+          || item.label.toLowerCase().includes(normalizedQuery)
+        ))
         .slice(0, 5);
     },
 
     render: () => {
-      let component: ReactRenderer<any>;
+      let component: ReactRenderer<MentionListHandle>;
       let popup: Instance[];
 
       return {
-        onStart: (props: any) => {
+        onStart: (props: MentionSuggestionProps) => {
           component = new ReactRenderer(MentionList, {
             props,
             editor: props.editor,
@@ -26,7 +47,7 @@ export const getSuggestionParams = (stakeholders: { id: string, name: string }[]
           }
 
           popup = tippy('body', {
-            getReferenceClientRect: props.clientRect,
+            getReferenceClientRect: () => props.clientRect?.() ?? new DOMRect(),
             appendTo: () => document.body,
             content: component.element,
             showOnCreate: true,
@@ -36,7 +57,7 @@ export const getSuggestionParams = (stakeholders: { id: string, name: string }[]
           });
         },
 
-        onUpdate(props: any) {
+        onUpdate(props: MentionSuggestionProps) {
           component.updateProps(props);
 
           if (!props.clientRect) {
@@ -44,17 +65,17 @@ export const getSuggestionParams = (stakeholders: { id: string, name: string }[]
           }
 
           popup[0].setProps({
-            getReferenceClientRect: props.clientRect,
+            getReferenceClientRect: () => props.clientRect?.() ?? new DOMRect(),
           });
         },
 
-        onKeyDown(props: any) {
+        onKeyDown(props: SuggestionKeyDownProps) {
           if (props.event.key === 'Escape') {
             popup[0].hide();
             return true;
           }
 
-          return component.ref?.onKeyDown(props);
+          return component.ref?.onKeyDown({ event: props.event }) ?? false;
         },
 
         onExit() {

@@ -23,6 +23,12 @@ import { SIDEBAR_COLLAPSED_STORAGE_KEY } from './utils/appCalculations';
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
 export type { Project, Stakeholder, Estimation, EstimationItem, MeetingNoteData, OrderItem, EmailTemplate };
 
+const FONT_SCALE_STORAGE_KEY = 'pcc_font_scale';
+const DEFAULT_FONT_SCALE = 100;
+const MIN_FONT_SCALE = 80;
+const MAX_FONT_SCALE = 140;
+const FONT_SCALE_STEP = 5;
+
 const DailyMain = lazy(() =>
   import('./features/daily/components/DailyMain').then((module) => ({ default: module.DailyMain })),
 );
@@ -64,6 +70,44 @@ const MainLayout = () => {
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    const applyFontScale = (scale: number) => {
+      document.documentElement.style.fontSize = `${scale}%`;
+    };
+
+    const getStoredFontScale = () => {
+      const storedValue = Number(window.localStorage.getItem(FONT_SCALE_STORAGE_KEY));
+      if (!Number.isFinite(storedValue)) return DEFAULT_FONT_SCALE;
+      return Math.min(MAX_FONT_SCALE, Math.max(MIN_FONT_SCALE, storedValue));
+    };
+
+    let fontScale = getStoredFontScale();
+    applyFontScale(fontScale);
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+
+      event.preventDefault();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const nextFontScale = Math.min(
+        MAX_FONT_SCALE,
+        Math.max(MIN_FONT_SCALE, fontScale + direction * FONT_SCALE_STEP),
+      );
+
+      if (nextFontScale === fontScale) return;
+
+      fontScale = nextFontScale;
+      applyFontScale(fontScale);
+      window.localStorage.setItem(FONT_SCALE_STORAGE_KEY, String(fontScale));
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   const handleOpenModal = () => {
     setEditingProject(null);

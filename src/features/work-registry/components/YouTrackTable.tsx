@@ -47,21 +47,26 @@ interface DayPersonLog {
     comments: string[];   // komentarze
 }
 
+type WorkItemRowWithWorkType = WorkItemRow & {
+    workType?: string | null;
+};
+
 const groupLogs = (rows: WorkItemRow[]): DayPersonLog[] => {
     const map = new Map<string, DayPersonLog>();
     rows.forEach(row => {
+        const rowWithWorkType = row as WorkItemRowWithWorkType;
         const dateStr = row.date.split('T')[0];
         const key = `${dateStr}__${row.authorName}`;
         if (map.has(key)) {
             const entry = map.get(key)!;
             entry.totalMinutes += row.minutes;
-            const wt: string = (row as any).workType || '';
+            const wt = rowWithWorkType.workType || '';
             if (wt && !entry.workTypes.includes(wt)) entry.workTypes.push(wt);
             if (row.description && !entry.comments.includes(row.description)) {
                 entry.comments.push(row.description);
             }
         } else {
-            const wt: string = (row as any).workType || '';
+            const wt = rowWithWorkType.workType || '';
             map.set(key, {
                 dateStr,
                 authorName: row.authorName,
@@ -299,6 +304,7 @@ const AccordionRow = ({ group, isSelected, onToggleSelect, onSetCategory, onSetM
 export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCategoriesBulk, showMaintenanceToggle = false, youtrackBaseUrl }: Props) => {
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<WorkCategory | 'all'>('all');
+    const [maintenanceFilter, setMaintenanceFilter] = useState<'all' | 'orders' | 'maintenance'>('all');
     const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
 
     // Grupuj WorkItemRow po issueId → IssueGroup
@@ -333,7 +339,12 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
                     g.issueSummary.toLowerCase().includes(search.toLowerCase()) ||
                     g.rows.some(r => r.authorName.toLowerCase().includes(search.toLowerCase()));
                 const matchesCategory = categoryFilter === 'all' || g.category === categoryFilter;
-                return matchesSearch && matchesCategory;
+                const matchesMaintenance =
+                    !showMaintenanceToggle ||
+                    maintenanceFilter === 'all' ||
+                    (maintenanceFilter === 'maintenance' && g.isMaintenance) ||
+                    (maintenanceFilter === 'orders' && !g.isMaintenance);
+                return matchesSearch && matchesCategory && matchesMaintenance;
             })
             // Posortuj wg daty ostatniego logu (najnowsze pierwsze)
             .sort((a, b) => {
@@ -341,7 +352,7 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
                 const lastB = Math.max(...b.rows.map(r => new Date(r.date).getTime()));
                 return lastB - lastA;
             });
-    }, [items, search, categoryFilter]);
+    }, [items, search, categoryFilter, maintenanceFilter, showMaintenanceToggle]);
 
     const toggleSelectIssue = (issueId: string) => {
         setSelectedIssueIds(prev => {
@@ -368,6 +379,11 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
             setSelectedIssueIds(new Set());
         }
     };
+
+    const filteredTotalMinutes = useMemo(
+        () => issueGroups.reduce((sum, group) => sum + group.totalMinutes, 0),
+        [issueGroups]
+    );
 
     const allSelected = issueGroups.length > 0 && selectedIssueIds.size === issueGroups.length;
 
@@ -402,7 +418,7 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
                     <select
                         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
                         value={categoryFilter}
-                        onChange={e => setCategoryFilter(e.target.value as any)}
+                        onChange={e => setCategoryFilter(e.target.value as WorkCategory | 'all')}
                     >
                         <option value="all" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Wszystkie grupy</option>
                         {CATEGORIES.map(c => (
@@ -413,8 +429,28 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
                     </select>
                 </div>
 
-                <div className="text-sm text-gray-500 dark:text-gray-400 ml-auto whitespace-nowrap">
-                    Zadań: <strong className="text-gray-700 dark:text-gray-300">{issueGroups.length}</strong>
+                {showMaintenanceToggle && (
+                    <div className="flex items-center gap-2">
+                        <select
+                            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            value={maintenanceFilter}
+                            onChange={e => setMaintenanceFilter(e.target.value as typeof maintenanceFilter)}
+                            aria-label="Filtr utrzymania"
+                        >
+                            <option value="all" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Zlecenia i utrzymanie</option>
+                            <option value="orders" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Tylko zlecenia</option>
+                            <option value="maintenance" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Tylko utrzymanie</option>
+                        </select>
+                    </div>
+                )}
+
+                <div className="text-sm text-gray-500 dark:text-gray-400 ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1 whitespace-nowrap">
+                    <span>
+                        Zadań: <strong className="text-gray-700 dark:text-gray-300">{issueGroups.length}</strong>
+                    </span>
+                    <span>
+                        Godzin: <strong className="text-gray-700 dark:text-gray-300">{formatMinutes(filteredTotalMinutes)}</strong>
+                    </span>
                 </div>
             </div>
 

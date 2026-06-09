@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import type { StatusStory } from '../../../types';
+import type { StatusStory, StatusStoryComment } from '../../../types';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
 import { formatMinutesToDuration } from '../../../services/youtrackApi';
 
@@ -220,17 +220,19 @@ export const buildStatusStories = (
   const toTime = new Date(`${dateTo}T23:59:59`).getTime();
   const baseStories = issues
     .map((issue) => {
-      const youTrackComments = (issue.timeline || [])
+      const youTrackComments: StatusStoryComment[] = [];
+      (issue.timeline || [])
         .filter(item => item.timestamp >= fromTime && item.timestamp <= toTime)
-        .flatMap((item) => {
+        .forEach((item) => {
           if (item.type === 'comment' && item.text?.trim()) {
-            return [{
+            youTrackComments.push({
               id: item.id,
               author: item.author?.name || item.author?.login || 'YouTrack',
               timestamp: item.timestamp,
               text: item.text.trim(),
               source: 'youtrack-comment' as const
-            }];
+            });
+            return;
           }
 
           if (item.type === 'work-item' && item.minutes) {
@@ -240,20 +242,18 @@ export const buildStatusStories = (
               item.workComments?.filter(Boolean).join('; ')
             ].filter(Boolean).join(' ');
 
-            return [{
+            youTrackComments.push({
               id: item.id,
               author: item.author?.name || item.author?.login || 'YouTrack',
               timestamp: item.timestamp,
               text: note,
               source: 'work-item' as const
-            }];
+            });
           }
-
-          return [];
         });
 
       const dailyNote = dailyComments[issue.idReadable]?.trim();
-      const dailyNoteComment = dailyNote ? [{
+      const dailyNoteComment: StatusStoryComment[] = dailyNote ? [{
         id: `daily-${issue.idReadable}`,
         author: 'Daily',
         timestamp: issue.updated || issue.created || Date.now(),

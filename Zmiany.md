@@ -41,6 +41,10 @@
   -- Stan sidebara jest zapisywany w `localStorage` pod kluczem `pcc_sidebar_collapsed`, dzieki czemu preferencja uzytkownika pozostaje po ponownym uruchomieniu aplikacji.
 
 ## Build i konfiguracja
+- 2026-06-09 - Naprawa błędów TypeScript w notatkach i statusie
+  -- Usunięto nieużywany helper eksportu flow w notatkach oraz oznaczono stare, niepodpięte akcje resetowania notatki tak, aby nie blokowały kompilacji `tsc`.
+  -- W module Status doprecyzowano obsługę tytułu draftu, typowanie usuwania fragmentu HTML oraz identyfikator otwierany w szczegółach źródła.
+  -- W budowaniu historii statusu komentarze YouTrack, logi pracy i notatki Daily są składane do jawnie typowanej tablicy `StatusStoryComment[]`, co usuwa błędy inferencji TypeScript bez zmiany danych.
 - 2026-05-12 - Systemowe certyfikaty CA w Electronie
   -- Proces główny Electron dołącza teraz systemowe certyfikaty CA do domyślnego zestawu Node TLS przy starcie aplikacji.
   -- Integracje wykonywane z procesu głównego, w tym Google OAuth/Drive oraz proxy YouTrack, mogą korzystać z lokalnie zaufanych certyfikatów Windows bez wyłączania walidacji TLS.
@@ -635,6 +639,33 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
+- 2026-06-09 - Role w pozycjach formularza zlecenia
+  -- W projektach z włączonymi i zdefiniowanymi rolami personelu formularz dodawania i edycji zlecenia pokazuje kolumnę `Rola` zaraz po kolumnie `Produkty zlecenia`.
+  -- Wybór roli przy pozycji zlecenia zapisuje `roleId`, `roleName` oraz stawkę roli w pozycji i od razu przelicza stawkę za godzinę oraz kwotę w wierszu.
+  -- Stare pozycje zleceń bez roli pozostają zgodne z dotychczasowym modelem, bo nowe pola są opcjonalne i mają fallback do stawki projektu.
+- 2026-06-09 - Data ostatniej aktualizacji YouTrack
+  -- Obok przycisku `Aktualizuj z YouTrack` w rejestrze pracy dodano datę ostatniej udanej synchronizacji zapisywaną per projekt w tabeli SQLite `work_registry_sync_meta`.
+  -- Frontend odczytuje i zapisuje datę przez IPC Electron, więc informacja nie jest już przechowywana w `localStorage`.
+  -- Jeżeli ostatnia aktualizacja jest starsza niż 3 dni, data jest wyróżniana kolorem czerwonym, aby szybciej zauważyć nieaktualne dane.
+- 2026-06-09 - Zapis flag utrzymania w bazie
+  -- Hook rejestru pracy przestał zapisywać flagi utrzymania zgłoszeń w `localStorage` i korzysta teraz z istniejącej tabeli SQLite `issue_maintenance_flags` przez IPC Electron.
+  -- Dodano jednorazową, bezstratną migrację dawnych wartości z klucza `pcc_issue_maintenance_flags` do bazy; stary klucz jest czyszczony dopiero po udanym zapisie brakujących flag.
+- 2026-06-09 - Wielozaznaczanie pozycji `Do rozliczenia`
+  -- Checkboxy w tabeli zakładki `Do rozliczenia` obsługują teraz zaznaczanie zakresu z użyciem `Shift` między ostatnio klikniętą i bieżącą pozycją.
+  -- Zakres działa w klasycznym trybie: zaznaczenie pierwszej pozycji, przytrzymanie `Shift` i kliknięcie ostatniej pozycji zaznacza cały przedział od pierwszej do ostatniej.
+  -- Pojedyncze zaznaczanie z `Ctrl` oraz zwykłe kliknięcie zachowują dotychczasowe przełączanie pojedynczej pozycji bez modyfikowania danych w bazie.
+  -- Przycisk `Kopiuj` kopiuje teraz zaznaczone pozycje, jeśli istnieje aktywne zaznaczenie; przy braku zaznaczeń nadal kopiuje wszystkie widoczne pozycje po filtrach.
+- 2026-06-09 - Filtr dat w zakładce `Do rozliczenia`
+  -- Do panelu filtrów dodano wybór typu daty: `Data zgłoszenia`, `Data wyceny` albo `Data akceptacji`.
+  -- Użytkownik może ustawić zakres `Od` i `Do`, a lista, sumy godzin, zaznaczanie oraz kopiowanie widocznych pozycji respektują wybrany zakres bez zmiany danych w bazie.
+  -- Kontrolki filtra dat przeniesiono do jednego rzędu z wyszukiwarką, aby panel filtrów zajmował mniej miejsca w pionie.
+  -- Poszerzono wspólny pasek wyszukiwania i filtrów oraz skrócono widoczne etykiety typu daty, aby pola dat mieściły się czytelnie w maksymalnie dwóch liniach panelu.
+  -- W podsumowaniu `Zaznaczone` liczba pozycji jest teraz pokazywana w jednej linii obok liczby godzin, aby sekcja była niższa.
+  -- Przycisk `Wyczyść` resetuje teraz cały zestaw filtrów zakładki: kafelek statusu, wyszukiwanie, typ daty oraz zakres `Od`/`Do`.
+- 2026-06-08 - Filtr utrzymania w tabeli YouTrack
+  -- W pasku filtrow tabeli YouTrack dodano filtr zakresu wpisow utrzymaniowych, widoczny dla projektow z aktywnym utrzymaniem.
+  -- Uzytkownik moze pokazac wszystkie zadania, tylko zlecenia albo tylko zadania oznaczone jako utrzymanie bez zmiany zapisanych flag i bez modyfikacji bazy danych.
+  -- Obok liczby przefiltrowanych zadan dodano sume godzin liczona z tego samego zestawu wynikow.
 - 2026-05-22 – Godziny rozliczeń zgodne z rejestrem pracy
   -- W zakładce `Rozliczenia` wartości `Przepracowane w zleceniach` i `Godziny zalogowane narastająco` korzystają teraz z pełnych wpisów `Rejestru pracy` dla projektu, zamiast odejmować pozycje oznaczone jako utrzymanie.
   -- Domyślny zakres wykresu narastania ustawiono na pełny zakres danych, a metryki godzinowe `Zlecenia vs Praca`, `Podział przepracowanych godzin: BUG / reszta` i `Zyskowność projektu` nie przycinają już logów pracy do zakresu wykresu.
@@ -746,6 +777,9 @@
   -- Szablon HTML wstawianych źródeł został uproszczony: zmniejszono odstępy, paddingi i marginesy nagłówków, sekcji, komentarzy oraz cytatów.
   -- Poprawiono także uszkodzone literały tekstowe, dzięki czemu w treści statusu wyświetlają się poprawnie napisy `Powiązania` i `Powiązane podzadania`.
 ## Notatki ze spotkań
+- 2026-06-09 - Format podpowiedzi osób w notatkach
+  -- Podpowiedzi osób wywoływane w edytorze notatek znakiem `@` pokazują teraz etykiety w formacie `P. Imię Nazwisko`.
+  -- Wybranie osoby z listy wstawia do treści notatki ten sam format etykiety, bez zmiany zapisanych danych interesariuszy projektu ani schematu bazy.
 - 2026-03-26 – Odświeżanie parametrów daty przy wejściu do notatek
   -- W module notatek dodano odświeżanie zmiennych szablonu rozpoznawanych jako daty, takich jak `{{data}}`, `{{data+3d}}` i `{{data-1w}}`, już podczas otwierania widoku projektu.
   -- Po wejściu do zakładki `Notatki` pola dat nie zachowują już poprzednio zapisanej wartości z wcześniejszego dnia, tylko ustawiają się na bieżącą datę wynikającą z tokenu.
@@ -1043,3 +1077,12 @@
 
 
 
+## Dostepnosc UI
+- 2026-06-02 - Szerszy obszar roboczy zakladek
+  -- W glownym widoku projektu usunieto limit szerokosci `max-w-[1500px]` oraz centrowanie kontenera, aby zakladki wykorzystywaly pelna szerokosc ekranu.
+  -- Zmniejszono zewnetrzne paddingi dashboardu oraz odstepy i paddingi glownych paneli zakladki `Notatki`.
+  -- Zmiana nie modyfikuje danych ani schematu bazy.
+- 2026-06-02 - Globalne powiekszanie czcionki
+  -- W glownym layoucie aplikacji dodano obsluge skrotu `Ctrl` + kolko myszy do zmiany bazowego rozmiaru czcionki.
+  -- Ustawienie dziala globalnie we wszystkich zakladkach, jest ograniczone do zakresu od 80% do 140% i zapisuje sie w `localStorage` pod kluczem `pcc_font_scale`.
+  -- Zmiana nie modyfikuje danych ani schematu bazy.

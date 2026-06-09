@@ -478,6 +478,11 @@ db.exec(`
         lastModified TEXT,
         projectId TEXT
     );
+    CREATE TABLE IF NOT EXISTS work_registry_sync_meta (
+        projectId TEXT PRIMARY KEY,
+        lastSyncDate TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS estimations (
         projectId TEXT PRIMARY KEY,
         data TEXT NOT NULL
@@ -748,6 +753,11 @@ const initializeDatabase = () => {
             description TEXT,
             lastModified TEXT,
             projectId TEXT
+        );
+        CREATE TABLE IF NOT EXISTS work_registry_sync_meta (
+            projectId TEXT PRIMARY KEY,
+            lastSyncDate TEXT NOT NULL,
+            updatedAt TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS estimations (
             projectId TEXT PRIMARY KEY,
@@ -1460,6 +1470,32 @@ ipcMain.handle('get-work-items', async (_, projectId: string) => {
         return rows;
     } catch (error) {
         console.error('BĹ‚Ä…d pobierania work_items:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-work-registry-sync-meta', async (_, projectId: string) => {
+    try {
+        return db.prepare('SELECT projectId, lastSyncDate, updatedAt FROM work_registry_sync_meta WHERE projectId = ?').get(projectId) || null;
+    } catch (error) {
+        console.error('Błąd pobierania metadanych synchronizacji rejestru pracy:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-work-registry-sync-meta', async (_, { projectId, lastSyncDate }: { projectId: string; lastSyncDate: string }) => {
+    try {
+        const updatedAt = new Date().toISOString();
+        db.prepare(`
+            INSERT INTO work_registry_sync_meta (projectId, lastSyncDate, updatedAt)
+            VALUES (?, ?, ?)
+            ON CONFLICT(projectId) DO UPDATE SET
+                lastSyncDate = excluded.lastSyncDate,
+                updatedAt = excluded.updatedAt
+        `).run(projectId, lastSyncDate, updatedAt);
+        return { success: true };
+    } catch (error) {
+        console.error('Błąd zapisu metadanych synchronizacji rejestru pracy:', error);
         throw error;
     }
 });

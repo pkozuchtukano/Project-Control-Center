@@ -144,8 +144,11 @@ export type ServiceEvent = {
 export type OrderItem = {
   id: string;
   name: string;
+  roleId?: string;
+  roleName?: string;
   date: string;
   hours: number;
+  rate?: number;
 };
 
 export type OrderProtocolStep = {
