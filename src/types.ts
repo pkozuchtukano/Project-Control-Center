@@ -185,6 +185,7 @@ export type Order = {
   createdAt: string;
   ppFlow?: OrderProtocolFlow;
   poFlow?: OrderProtocolFlow;
+  fvFlow?: OrderProtocolFlow;
 };
 
 export type EstimationItem = {
@@ -266,7 +267,19 @@ export type OrderAcceptanceEmailTemplateData = {
   lastModified: string;
 };
 
+export type OrderInvoiceEmailTemplateData = {
+  projectId: string;
+  emailTemplate: EmailTemplate;
+  lastModified: string;
+};
+
 export type MaintenanceSettlementEmailTemplateData = {
+  projectId: string;
+  emailTemplate: EmailTemplate;
+  lastModified: string;
+};
+
+export type MaintenanceInvoiceEmailTemplateData = {
   projectId: string;
   emailTemplate: EmailTemplate;
   lastModified: string;
@@ -421,6 +434,7 @@ export type MaintenanceEntry = {
   grossAmount: number;
   notes?: string;
   settlementFlow?: OrderProtocolFlow;
+  invoiceFlow?: OrderProtocolFlow;
   createdAt: string;
   updatedAt: string;
 };

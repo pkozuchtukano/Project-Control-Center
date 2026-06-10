@@ -58,9 +58,11 @@ import type {
   EmailTemplate,
   GlobalScheduleType,
   MaintenanceEntry,
+  MaintenanceInvoiceEmailTemplateData,
   MaintenanceSettlementEmailTemplateData,
   Order,
   OrderAcceptanceEmailTemplateData,
+  OrderInvoiceEmailTemplateData,
   OrderItem,
   OrderProtocolEmailTemplateData,
   OrderProtocolFlow,
@@ -2752,11 +2754,13 @@ const OrdersRegistryView = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [ppOrderId, setPpOrderId] = useState<string | null>(null);
   const [poOrderId, setPoOrderId] = useState<string | null>(null);
+  const [fvOrderId, setFvOrderId] = useState<string | null>(null);
 
   if (!selectedProject) return null;
 
   const ppOrder = ppOrderId ? orders.find(order => order.id === ppOrderId) || null : null;
   const poOrder = poOrderId ? orders.find(order => order.id === poOrderId) || null : null;
+  const fvOrder = fvOrderId ? orders.find(order => order.id === fvOrderId) || null : null;
 
   const handleOpenModal = () => {
     setEditingOrder(null);
@@ -2833,6 +2837,12 @@ const OrdersRegistryView = () => {
   const handleApplyPoAcceptanceDate = async (orderId: string, acceptanceDate: string) => {
     await updateOrder(orderId, { acceptanceDate });
   };
+
+  const handleSaveFvFlow = async (orderId: string, flow: NonNullable<Order['fvFlow']>) => {
+    await updateOrder(orderId, { fvFlow: flow });
+  };
+
+  const handleApplyFvDate = async () => {};
 
   const handleListSortChange = (column: 'orderNumber' | 'scheduleTo') => {
     setListSort((current) => (
@@ -3081,6 +3091,15 @@ const OrdersRegistryView = () => {
                         >
                           PO
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setFvOrderId(order.id)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 dark:text-violet-300 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 rounded-lg transition mr-1 border border-violet-100 dark:border-violet-800/60"
+                          title="Faktura FV"
+                          aria-label={`Faktura FV dla zlecenia ${order.orderNumber}`}
+                        >
+                          FV
+                        </button>
                         <button onClick={() => handleEdit(order)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition mr-1">
                           <Edit2 size={16} />
                         </button>
@@ -3132,6 +3151,14 @@ const OrdersRegistryView = () => {
         onApplyProtocolDate={handleApplyPoAcceptanceDate}
         protocolType="PO"
       />
+      <OrderProtocolFlowModal
+        isOpen={Boolean(fvOrder)}
+        order={fvOrder}
+        onClose={() => setFvOrderId(null)}
+        onSave={handleSaveFvFlow}
+        onApplyProtocolDate={handleApplyFvDate}
+        protocolType="FV"
+      />
     </div>
   );
 };
@@ -3151,7 +3178,7 @@ const OrderProtocolFlowModal = ({
   onClose: () => void;
   onSave: (orderId: string, flow: OrderProtocolFlow) => Promise<void>;
   onApplyProtocolDate: (orderId: string, protocolDate: string) => Promise<void>;
-  protocolType: 'PP' | 'PO';
+  protocolType: OrderProtocolType;
 }) => {
   const { projects } = useProjectContext();
   const [isEditMode, setIsEditMode] = useState(false);
@@ -3160,7 +3187,7 @@ const OrderProtocolFlowModal = ({
   const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
   const [protocolDate, setProtocolDate] = useState('');
   const [isApplyingProtocolDate, setIsApplyingProtocolDate] = useState(false);
-  const [emailTemplateData, setEmailTemplateData] = useState<OrderProtocolEmailTemplateData | OrderAcceptanceEmailTemplateData | null>(null);
+  const [emailTemplateData, setEmailTemplateData] = useState<OrderProtocolEmailTemplateData | OrderAcceptanceEmailTemplateData | OrderInvoiceEmailTemplateData | null>(null);
   const [isEmailTemplateLoading, setIsEmailTemplateLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [customVariableDrafts, setCustomVariableDrafts] = useState<Record<string, string>>({});
@@ -3207,7 +3234,9 @@ const OrderProtocolFlowModal = ({
 
         const savedTemplate = protocolType === 'PP'
           ? await window.electron.getOrderProtocolEmailTemplate?.(order.projectId)
-          : await window.electron.getOrderAcceptanceEmailTemplate?.(order.projectId);
+          : protocolType === 'PO'
+            ? await window.electron.getOrderAcceptanceEmailTemplate?.(order.projectId)
+            : await window.electron.getOrderInvoiceEmailTemplate?.(order.projectId);
         if (!isCancelled) {
           const loadedTemplateData = createOrderEmailTemplateData(order.projectId, protocolType, savedTemplate);
           setEmailTemplateData(loadedTemplateData);
@@ -3239,7 +3268,9 @@ const OrderProtocolFlowModal = ({
     const electronApi = window.electron;
     const saveTemplate = protocolType === 'PP'
       ? electronApi?.saveOrderProtocolEmailTemplate
-      : electronApi?.saveOrderAcceptanceEmailTemplate;
+      : protocolType === 'PO'
+        ? electronApi?.saveOrderAcceptanceEmailTemplate
+        : electronApi?.saveOrderInvoiceEmailTemplate;
     if (!saveTemplate) return;
 
     const timer = setTimeout(() => {
@@ -3906,6 +3937,7 @@ const OrderProtocolFlowModal = ({
             )}
           </section>
 
+          {protocolLabels.hasDateApplyStep && (
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20 p-5">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
@@ -3925,6 +3957,7 @@ const OrderProtocolFlowModal = ({
               </button>
             </div>
           </section>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 shrink-0 bg-gray-50/70 dark:bg-gray-900/70 rounded-b-3xl">
@@ -4038,8 +4071,13 @@ const createOrderProtocolStep = (overrides?: {
   linkLabel: overrides?.linkLabel || '',
 });
 
-const getOrderFlowByType = (order: Order | null | undefined, protocolType: 'PP' | 'PO') =>
-  protocolType === 'PP' ? order?.ppFlow : order?.poFlow;
+type OrderProtocolType = 'PP' | 'PO' | 'FV';
+
+const getOrderFlowByType = (order: Order | null | undefined, protocolType: OrderProtocolType) => {
+  if (protocolType === 'PP') return order?.ppFlow;
+  if (protocolType === 'PO') return order?.poFlow;
+  return order?.fvFlow;
+};
 
 const hasOrderProtocolFlowState = (flow?: OrderProtocolFlow | null) =>
   Boolean(flow?.updatedAt)
@@ -4048,20 +4086,30 @@ const hasOrderProtocolFlowState = (flow?: OrderProtocolFlow | null) =>
 
 const getOrderProtocolFlowSource = (
   order: Order | null | undefined,
-  protocolType: 'PP' | 'PO',
+  protocolType: OrderProtocolType,
   projectFlow?: OrderProtocolFlow,
 ) => {
-  if (hasOrderProtocolFlowState(projectFlow)) {
+  if (protocolType !== 'FV' && hasOrderProtocolFlowState(projectFlow)) {
     return projectFlow;
   }
 
   return getOrderFlowByType(order, protocolType);
 };
 
-const getOrderProtocolDateValue = (order: Order, protocolType: 'PP' | 'PO') =>
+const getOrderProtocolDateValue = (order: Order, protocolType: OrderProtocolType) =>
   protocolType === 'PP' ? order.handoverDate || '' : order.acceptanceDate || '';
 
-const getOrderProtocolLabels = (protocolType: 'PP' | 'PO') => (
+const getOrderProtocolLabels = (protocolType: OrderProtocolType) => (
+  protocolType === 'FV'
+    ? {
+        protocolNameLower: 'faktury FV',
+        applySectionTitle: '',
+        orderDateFieldLabel: '',
+        applyDateCta: '',
+        currentDateCta: '',
+        hasDateApplyStep: false,
+      }
+    :
   protocolType === 'PP'
     ? {
         protocolNameLower: 'protokołu przekazania',
@@ -4129,20 +4177,54 @@ const createOrderAcceptanceEmailTemplateData = (
   lastModified: template?.lastModified || new Date().toISOString(),
 });
 
+const createOrderInvoiceEmailTemplateData = (
+  projectId: string,
+  template?: Partial<OrderInvoiceEmailTemplateData> | null,
+): OrderInvoiceEmailTemplateData => ({
+  projectId,
+  emailTemplate: {
+    ...createEmptyEmailTemplate(),
+    ...(template?.emailTemplate || {}),
+    variables: {
+      ...createEmptyEmailTemplate().variables,
+      ...(template?.emailTemplate?.variables || {}),
+    },
+  },
+  lastModified: template?.lastModified || new Date().toISOString(),
+});
+
 const createOrderEmailTemplateData = (
   projectId: string,
-  protocolType: 'PP' | 'PO',
-  template?: Partial<OrderProtocolEmailTemplateData> | Partial<OrderAcceptanceEmailTemplateData> | null,
+  protocolType: OrderProtocolType,
+  template?: Partial<OrderProtocolEmailTemplateData> | Partial<OrderAcceptanceEmailTemplateData> | Partial<OrderInvoiceEmailTemplateData> | null,
 ) => (
   protocolType === 'PP'
     ? createOrderProtocolEmailTemplateData(projectId, template as Partial<OrderProtocolEmailTemplateData> | null)
-    : createOrderAcceptanceEmailTemplateData(projectId, template as Partial<OrderAcceptanceEmailTemplateData> | null)
+    : protocolType === 'PO'
+      ? createOrderAcceptanceEmailTemplateData(projectId, template as Partial<OrderAcceptanceEmailTemplateData> | null)
+      : createOrderInvoiceEmailTemplateData(projectId, template as Partial<OrderInvoiceEmailTemplateData> | null)
 );
 
 const createMaintenanceSettlementEmailTemplateData = (
   projectId: string,
   template?: Partial<MaintenanceSettlementEmailTemplateData> | null,
 ): MaintenanceSettlementEmailTemplateData => ({
+  projectId,
+  emailTemplate: {
+    ...createEmptyEmailTemplate(),
+    ...(template?.emailTemplate || {}),
+    variables: {
+      ...createEmptyEmailTemplate().variables,
+      ...(template?.emailTemplate?.variables || {}),
+    },
+  },
+  lastModified: template?.lastModified || new Date().toISOString(),
+});
+
+const createMaintenanceInvoiceEmailTemplateData = (
+  projectId: string,
+  template?: Partial<MaintenanceInvoiceEmailTemplateData> | null,
+): MaintenanceInvoiceEmailTemplateData => ({
   projectId,
   emailTemplate: {
     ...createEmptyEmailTemplate(),
@@ -4189,13 +4271,13 @@ const formatProtocolTemplateDateValue = (value?: string) => {
   return parseDateVariable('data', value) || value;
 };
 
-const suggestOrderProtocolDate = (_order: Order, _protocolType: 'PP' | 'PO' = 'PP') =>
+const suggestOrderProtocolDate = (_order: Order, _protocolType: OrderProtocolType = 'PP') =>
   format(new Date(), 'yyyy-MM-dd');
 
 const getOrderProtocolVariableDefinitions = (
   order: Order,
   project: Project | null | undefined,
-  protocolType: 'PP' | 'PO' = 'PP',
+  protocolType: OrderProtocolType = 'PP',
   overrides?: Partial<Record<string, string>>,
 ) => {
   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
@@ -4299,7 +4381,7 @@ const getMaintenanceSettlementVariableDefinitions = (
 const buildOrderProtocolVariableMap = (
   order: Order,
   project: Project | null | undefined,
-  protocolType: 'PP' | 'PO' = 'PP',
+  protocolType: OrderProtocolType = 'PP',
   overrides?: Partial<Record<string, string>>,
 ) => {
   const map: Record<string, string> = {};
@@ -4513,7 +4595,7 @@ const resolveOrderProtocolTemplate = (
   template: string,
   order: Order,
   project: Project | null | undefined,
-  protocolType: 'PP' | 'PO' = 'PP',
+  protocolType: OrderProtocolType = 'PP',
   overrides?: Partial<Record<string, string>>,
 ) => {
   const variableMap = buildOrderProtocolVariableMap(order, project, protocolType, overrides);
@@ -4586,7 +4668,7 @@ const renderResolvedTemplateWithHighlightedValues = (
   template: string,
   order: Order,
   project: Project | null | undefined,
-  protocolType: 'PP' | 'PO' = 'PP',
+  protocolType: OrderProtocolType = 'PP',
   overrides?: Partial<Record<string, string>>,
 ) => {
   const variableMap = buildOrderProtocolVariableMap(order, project, protocolType, overrides);
@@ -4615,6 +4697,8 @@ const normalizeMaintenanceSettlementFlow = (flow?: MaintenanceEntry['settlementF
     : [],
   updatedAt: flow?.updatedAt,
 });
+
+const normalizeMaintenanceInvoiceFlow = (flow?: MaintenanceEntry['invoiceFlow'] | null): OrderProtocolFlow => normalizeMaintenanceSettlementFlow(flow);
 
 const resolveMaintenanceSettlementTemplate = (
   template: string,
@@ -4668,6 +4752,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<MaintenanceEntry | null>(null);
   const [settlementEntryId, setSettlementEntryId] = useState<string | null>(null);
+  const [invoiceEntryId, setInvoiceEntryId] = useState<string | null>(null);
 
   const loadEntries = async () => {
     if (!window.electron) {
@@ -4738,9 +4823,23 @@ const MaintenanceView = ({ project }: { project: Project }) => {
     await loadEntries();
   };
 
+  const handleSaveInvoiceFlow = async (entryId: string, flow: OrderProtocolFlow) => {
+    const entry = entries.find((item) => item.id === entryId);
+    if (!window.electron || !entry) return;
+
+    await window.electron.saveMaintenanceEntry({
+      ...entry,
+      invoiceFlow: flow,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await loadEntries();
+  };
+
   const totalNet = entries.reduce((sum, entry) => sum + entry.netAmount, 0);
   const totalGross = entries.reduce((sum, entry) => sum + entry.grossAmount, 0);
   const settlementEntry = entries.find((entry) => entry.id === settlementEntryId) || null;
+  const invoiceEntry = entries.find((entry) => entry.id === invoiceEntryId) || null;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -4837,6 +4936,15 @@ const MaintenanceView = ({ project }: { project: Project }) => {
                         >
                           <FileText size={16} />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceEntryId(entry.id)}
+                          className="px-2.5 py-1.5 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 dark:text-violet-300 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 rounded-lg transition border border-violet-100 dark:border-violet-800/60"
+                          title="Faktura FV utrzymania"
+                          aria-label={`Faktura FV utrzymania za ${formatMaintenanceMonth(entry.month)}`}
+                        >
+                          FV
+                        </button>
                         <button onClick={() => openEditModal(entry)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition">
                           <Edit2 size={16} />
                         </button>
@@ -4870,6 +4978,15 @@ const MaintenanceView = ({ project }: { project: Project }) => {
         project={project}
         onClose={() => setSettlementEntryId(null)}
         onSave={handleSaveSettlementFlow}
+        mode="settlement"
+      />
+      <MaintenanceSettlementFlowModal
+        isOpen={Boolean(invoiceEntry)}
+        entry={invoiceEntry}
+        project={project}
+        onClose={() => setInvoiceEntryId(null)}
+        onSave={handleSaveInvoiceFlow}
+        mode="invoice"
       />
     </div>
   );
@@ -6664,18 +6781,24 @@ const MaintenanceSettlementFlowModal = ({
   project,
   onClose,
   onSave,
+  mode = 'settlement',
 }: {
   isOpen: boolean;
   entry: MaintenanceEntry | null;
   project: Project;
   onClose: () => void;
   onSave: (entryId: string, flow: OrderProtocolFlow) => Promise<void>;
+  mode?: 'settlement' | 'invoice';
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
-  const [draftSteps, setDraftSteps] = useState(() => normalizeMaintenanceSettlementFlow(entry?.settlementFlow).steps);
+  const [draftSteps, setDraftSteps] = useState(() => (
+    mode === 'invoice'
+      ? normalizeMaintenanceInvoiceFlow(entry?.invoiceFlow).steps
+      : normalizeMaintenanceSettlementFlow(entry?.settlementFlow).steps
+  ));
   const [isSaving, setIsSaving] = useState(false);
   const [isVariablesSectionExpanded, setIsVariablesSectionExpanded] = useState(false);
-  const [emailTemplateData, setEmailTemplateData] = useState<MaintenanceSettlementEmailTemplateData | null>(null);
+  const [emailTemplateData, setEmailTemplateData] = useState<MaintenanceSettlementEmailTemplateData | MaintenanceInvoiceEmailTemplateData | null>(null);
   const [isEmailTemplateLoading, setIsEmailTemplateLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -6692,11 +6815,13 @@ const MaintenanceSettlementFlowModal = ({
     }
 
     setIsEditMode(false);
-    setDraftSteps(normalizeMaintenanceSettlementFlow(entry.settlementFlow).steps);
+    setDraftSteps(mode === 'invoice'
+      ? normalizeMaintenanceInvoiceFlow(entry.invoiceFlow).steps
+      : normalizeMaintenanceSettlementFlow(entry.settlementFlow).steps);
     setIsSaving(false);
     setIsVariablesSectionExpanded(false);
     setCopiedField(null);
-  }, [entry, isOpen]);
+  }, [entry, isOpen, mode]);
 
   useEffect(() => {
     if (!isOpen || !entry) return;
@@ -6706,21 +6831,30 @@ const MaintenanceSettlementFlowModal = ({
     const loadEmailTemplate = async () => {
       setIsEmailTemplateLoading(true);
       try {
-        if (!window.electron?.getMaintenanceSettlementEmailTemplate) {
+        const getTemplate = mode === 'invoice'
+          ? window.electron?.getMaintenanceInvoiceEmailTemplate
+          : window.electron?.getMaintenanceSettlementEmailTemplate;
+        if (!getTemplate) {
           if (!isCancelled) {
-            setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id));
+            setEmailTemplateData(mode === 'invoice'
+              ? createMaintenanceInvoiceEmailTemplateData(project.id)
+              : createMaintenanceSettlementEmailTemplateData(project.id));
           }
           return;
         }
 
-        const savedTemplate = await window.electron.getMaintenanceSettlementEmailTemplate(project.id);
+        const savedTemplate = await getTemplate(project.id);
         if (!isCancelled) {
-          setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id, savedTemplate));
+          setEmailTemplateData(mode === 'invoice'
+            ? createMaintenanceInvoiceEmailTemplateData(project.id, savedTemplate as Partial<MaintenanceInvoiceEmailTemplateData> | null)
+            : createMaintenanceSettlementEmailTemplateData(project.id, savedTemplate as Partial<MaintenanceSettlementEmailTemplateData> | null));
         }
       } catch (error) {
         console.error('Błąd pobierania szablonu e-mail rozliczenia miesiąca:', error);
         if (!isCancelled) {
-          setEmailTemplateData(createMaintenanceSettlementEmailTemplateData(project.id));
+          setEmailTemplateData(mode === 'invoice'
+            ? createMaintenanceInvoiceEmailTemplateData(project.id)
+            : createMaintenanceSettlementEmailTemplateData(project.id));
         }
       } finally {
         if (!isCancelled) {
@@ -6734,15 +6868,18 @@ const MaintenanceSettlementFlowModal = ({
     return () => {
       isCancelled = true;
     };
-  }, [entry, isOpen, project.id]);
+  }, [entry, isOpen, mode, project.id]);
 
   useEffect(() => {
     if (!isOpen || !entry || !emailTemplateData || isEmailTemplateLoading) return;
     const electronApi = window.electron;
-    if (!electronApi?.saveMaintenanceSettlementEmailTemplate) return;
+    const saveTemplate = mode === 'invoice'
+      ? electronApi?.saveMaintenanceInvoiceEmailTemplate
+      : electronApi?.saveMaintenanceSettlementEmailTemplate;
+    if (!saveTemplate) return;
 
     const timer = setTimeout(() => {
-      void electronApi.saveMaintenanceSettlementEmailTemplate({
+      void saveTemplate({
         projectId: project.id,
         data: {
           ...emailTemplateData,
@@ -6753,16 +6890,37 @@ const MaintenanceSettlementFlowModal = ({
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [emailTemplateData, entry, isEmailTemplateLoading, isOpen, project.id]);
+  }, [emailTemplateData, entry, isEmailTemplateLoading, isOpen, mode, project.id]);
 
   if (!isOpen || !entry) return null;
 
-  const normalizedFlow = normalizeMaintenanceSettlementFlow(entry.settlementFlow);
+  const normalizedFlow = mode === 'invoice'
+    ? normalizeMaintenanceInvoiceFlow(entry.invoiceFlow)
+    : normalizeMaintenanceSettlementFlow(entry.settlementFlow);
   const persistedSteps = normalizedFlow.steps || [];
   const completedStepIds = normalizedFlow.completedStepIds || [];
   const stepsToRender = isEditMode ? draftSteps : persistedSteps;
   const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
   const availableVariables = getMaintenanceSettlementVariableDefinitions(entry, project);
+  const modalLabels = mode === 'invoice'
+    ? {
+        title: `Faktura FV utrzymania ${formatMaintenanceMonth(entry.month)}`,
+        flowStepLabel: 'Krok faktury FV',
+        emptyTitle: 'Brak zdefiniowanego flow faktury FV',
+        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki faktury FV dla wybranego miesiąca utrzymania.',
+        editTitle: 'Edycja flow faktury FV',
+        closeLabel: 'Zamknij modal faktury FV utrzymania',
+        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania dla faktury FV.',
+      }
+    : {
+        title: `Rozliczenie miesiąca ${formatMaintenanceMonth(entry.month)}`,
+        flowStepLabel: 'Krok rozliczenia',
+        emptyTitle: 'Brak zdefiniowanego flow rozliczenia miesiąca',
+        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla wybranego miesiąca utrzymania.',
+        editTitle: 'Edycja flow rozliczenia miesiąca',
+        closeLabel: 'Zamknij modal rozliczenia miesiąca',
+        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania.',
+      };
 
   const handleOpenEditMode = () => {
     setDraftSteps((current) => {
@@ -6861,7 +7019,10 @@ const MaintenanceSettlementFlowModal = ({
   };
 
   const updateProjectEmailTemplate = (updates: Partial<EmailTemplate>) => {
-    setEmailTemplateData(prev => createMaintenanceSettlementEmailTemplateData(project.id, {
+    const createTemplateData = mode === 'invoice'
+      ? createMaintenanceInvoiceEmailTemplateData
+      : createMaintenanceSettlementEmailTemplateData;
+    setEmailTemplateData(prev => createTemplateData(project.id, {
       ...(prev || {}),
       emailTemplate: {
         ...(prev?.emailTemplate || createEmptyEmailTemplate()),
@@ -6889,7 +7050,7 @@ const MaintenanceSettlementFlowModal = ({
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <FileText className="text-indigo-500" size={20} />
-              Rozliczenie miesiąca {formatMaintenanceMonth(entry.month)}
+              {modalLabels.title}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {project.code} · {project.name}
@@ -6904,8 +7065,8 @@ const MaintenanceSettlementFlowModal = ({
                   ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
                   : 'border-gray-200 bg-white text-gray-500 hover:text-indigo-600 hover:border-indigo-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-indigo-300 dark:hover:border-indigo-700'
               }`}
-              title="Edycja flow rozliczenia miesiąca"
-              aria-label="Edytuj flow rozliczenia miesiąca"
+              title={modalLabels.editTitle}
+              aria-label={modalLabels.editTitle}
             >
               <Edit2 size={18} />
             </button>
@@ -6913,7 +7074,7 @@ const MaintenanceSettlementFlowModal = ({
               type="button"
               onClick={onClose}
               className="p-2.5 rounded-xl border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-white"
-              aria-label="Zamknij modal rozliczenia miesiąca"
+              aria-label={modalLabels.closeLabel}
             >
               <X size={18} />
             </button>
@@ -6978,7 +7139,7 @@ const MaintenanceSettlementFlowModal = ({
                       <div className="w-9 h-9 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
                         {index + 1}
                       </div>
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Krok rozliczenia</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{modalLabels.flowStepLabel}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -7062,9 +7223,9 @@ const MaintenanceSettlementFlowModal = ({
             <section className="space-y-4">
               {stepsToRender.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">Brak zdefiniowanego flow rozliczenia miesiąca</h3>
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">{modalLabels.emptyTitle}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla wybranego miesiąca utrzymania.
+                    {modalLabels.emptyDescription}
                   </p>
                 </div>
               ) : (
@@ -7150,7 +7311,7 @@ const MaintenanceSettlementFlowModal = ({
               <Mail className="text-indigo-500" size={18} />
               <div>
                 <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Szablon wiadomości E-mail</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{modalLabels.emailDescription}</p>
               </div>
             </div>
 

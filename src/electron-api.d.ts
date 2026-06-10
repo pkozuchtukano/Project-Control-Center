@@ -6,9 +6,11 @@ import type {
   GeminiGenerateRequest,
   GeminiGenerateResponse,
   MaintenanceEntry,
+  MaintenanceInvoiceEmailTemplateData,
   MaintenanceSettlementEmailTemplateData,
   Order,
   OrderAcceptanceEmailTemplateData,
+  OrderInvoiceEmailTemplateData,
   OrderProtocolEmailTemplateData,
   PendingSettlementEntry,
   Project,
@@ -55,8 +57,12 @@ declare global {
       saveOrderProtocolEmailTemplate: (data: { projectId: string, data: OrderProtocolEmailTemplateData }) => Promise<{ success: boolean }>;
       getOrderAcceptanceEmailTemplate: (projectId: string) => Promise<OrderAcceptanceEmailTemplateData | null>;
       saveOrderAcceptanceEmailTemplate: (data: { projectId: string, data: OrderAcceptanceEmailTemplateData }) => Promise<{ success: boolean }>;
+      getOrderInvoiceEmailTemplate: (projectId: string) => Promise<OrderInvoiceEmailTemplateData | null>;
+      saveOrderInvoiceEmailTemplate: (data: { projectId: string, data: OrderInvoiceEmailTemplateData }) => Promise<{ success: boolean }>;
       getMaintenanceSettlementEmailTemplate: (projectId: string) => Promise<MaintenanceSettlementEmailTemplateData | null>;
       saveMaintenanceSettlementEmailTemplate: (data: { projectId: string, data: MaintenanceSettlementEmailTemplateData }) => Promise<{ success: boolean }>;
+      getMaintenanceInvoiceEmailTemplate: (projectId: string) => Promise<MaintenanceInvoiceEmailTemplateData | null>;
+      saveMaintenanceInvoiceEmailTemplate: (data: { projectId: string, data: MaintenanceInvoiceEmailTemplateData }) => Promise<{ success: boolean }>;
       getScheduledTasks: () => Promise<ScheduledTask[]>;
       saveScheduledTask: (data: ScheduledTask) => Promise<{ success: boolean }>;
       deleteScheduledTask: (id: string) => Promise<{ success: boolean }>;

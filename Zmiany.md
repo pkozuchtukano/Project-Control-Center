@@ -368,6 +368,11 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-06-10 – Flow faktury FV przy zleceniu
+  -- Przy akcjach zlecenia dodano przycisk `FV`, który otwiera modal flow faktury analogiczny do istniejących modalów `PP` i `PO`.
+  -- Flow faktury FV obsługuje kroki, linki, oznaczanie wykonania, panel dostępnych zmiennych i funkcji oraz szablon wiadomości e-mail z podstawianiem zmiennych z bieżącego projektu i zlecenia.
+  -- Konfiguracja FV jest zapisywana bezstratnie w opcjonalnym polu `fvFlow` konkretnego zlecenia, aby nie nadpisywać projektowego flow używanego przez protokoły `PP` i `PO`.
+  -- Dodano osobny magazyn SQLite `order_invoice_email_templates` oraz kanały IPC dla szablonu e-mail FV, dzięki czemu treść faktury nie miesza się z szablonami PP/PO.
 - 2026-05-08 – Zaznaczanie pozycji w `Do rozliczenia`
   -- W tabeli zakładki `Do rozliczenia` dodano checkboxy pozwalające zaznaczać pojedyncze widoczne wiersze oraz wszystkie aktualnie widoczne pozycje z nagłówka tabeli.
   -- Obok `Suma godzin` dodano podsumowanie `Zaznaczone`, które pokazuje liczbę zaznaczonych pozycji i sumę ich godzin wyceny.
@@ -816,6 +821,12 @@
   -- Formularz przelicza kwoty w czasie rzeczywistym: w trybie domyślnym liczy `brutto` z `netto`, a po odblokowaniu pozwala utrzymać stałą kwotę `brutto` i wylicza `netto` w dół według aktualnej stawki VAT.
 
 ## Utrzymanie
+- 2026-06-10 – Flow faktury FV dla miesięcy utrzymania
+  -- W zakładce `Utrzymanie` przy każdej pozycji miesiąca dodano akcję `FV`, która otwiera modal flow faktury dla tego konkretnego wpisu utrzymania.
+  -- Flow faktury FV utrzymania zapisuje kroki, linki i stany wykonania w osobnym polu `invoiceFlow`, dzięki czemu jego definicje mogą być inne niż FV w zleceniach oraz inne niż flow rozliczenia miesiąca.
+  -- Tabela `maintenance_entries` została bezstratnie rozszerzona o kolumnę `invoiceFlow`, bez kasowania istniejących danych utrzymania i bez zmiany zapisanych `settlementFlow`.
+  -- Dodano osobny magazyn SQLite `maintenance_invoice_email_templates` oraz kanały IPC dla szablonu e-mail FV utrzymania, aby treść faktury nie mieszała się z szablonem rozliczenia miesiąca.
+  -- Dodano dodatkowe zabezpieczenie migracji kolumn flow utrzymania bezpośrednio przed odczytem i zapisem wpisów, aby istniejące bazy bez kolumny `invoiceFlow` nie zgłaszały błędu `no such column`.
 - 2026-04-01 – Zakładka miesięcznych wpisów utrzymania projektu
   -- Dodano nową tabelę SQLite `maintenance_entries` z bezstratną inicjalizacją oraz IPC do pobierania, zapisu i usuwania miesięcznych wpisów utrzymania per projekt.
   -- Projekt z aktywną opcją utrzymania pokazuje teraz dodatkową zakładkę `Utrzymanie`, w której dostępna jest lista miesięcy rozliczeniowych z podsumowaniem netto i brutto.
