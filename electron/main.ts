@@ -1204,14 +1204,14 @@ const ensureTray = () => {
     appTray.setToolTip('PCC');
     appTray.setContextMenu(Menu.buildFromTemplate([
         {
-            label: 'PokaĹĽ',
+            label: 'Poka\u017c',
             click: () => showMainWindow(),
         },
         {
             type: 'separator',
         },
         {
-            label: 'WyjdĹş',
+            label: 'Wyjd\u017a',
             click: () => {
                 if (!mainWindow) {
                     app.quit();

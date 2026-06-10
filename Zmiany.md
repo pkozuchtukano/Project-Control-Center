@@ -348,6 +348,9 @@
   -- Ikona w trayu została zastąpiona wyraźniejszym znakiem aplikacji z kontrastowym monogramem i akcentem statusowym, aby łatwiej było rozpoznać PCC wśród innych ikon systemowych.
   -- Po testowym użyciu uproszczono znak traya do geometrycznej, wysokokontrastowej wersji bez gradientów i bez drobnego tekstu, żeby pozostawał czytelny także w małym rozmiarze zasobnika Windows.
   -- Docelowo tray został przepięty na wskazany plik `electron/tray-icon.png`, ładowany jako realny asset PNG z fallbackiem do wewnętrznego SVG, dzięki czemu aplikacja może używać przekazanej grafiki zamiast generowanej ikony zastępczej.
+- 2026-06-10 – Poprawione polskie etykiety w menu traya
+  -- Poprawiono uszkodzone etykiety menu kontekstowego traya na poprawne napisy `Pokaż` oraz `Wyjdź`.
+  -- Menu traya powinno teraz wyświetlać poprawne polskie znaki zamiast zniekształconych liter w zasobniku Windows.
 
 ## Ustawienia główne
 - 2026-04-21 – Zapis przed ręcznym uruchomieniem zadania harmonogramu
