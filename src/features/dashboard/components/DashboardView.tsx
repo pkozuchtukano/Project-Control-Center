@@ -8769,7 +8769,15 @@ const ReportPmsModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean,
   );
 };
 
-const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clientSecret: string }) => {
+const GoogleAuthSection = ({
+  clientId,
+  clientSecret,
+  autoAuthorizeNonce = 0,
+}: {
+  clientId: string;
+  clientSecret: string;
+  autoAuthorizeNonce?: number;
+}) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [authCode, setAuthCode] = useState('');
@@ -8823,6 +8831,25 @@ const GoogleAuthSection = ({ clientId, clientSecret }: { clientId: string; clien
     setAuthCode('');
     setAuthError('');
   };
+
+  useEffect(() => {
+    if (!autoAuthorizeNonce || !hasCredentials) return;
+
+    const forceReauthorize = async () => {
+      setAuthError('');
+      setIsAuthenticated(false);
+      setShowCodeInput(false);
+      setAuthCode('');
+      try {
+        await (window as any).electron?.logoutGoogle?.();
+      } catch {
+        // Stary token moze byc juz niewazny; mimo tego przechodzimy do nowej autoryzacji.
+      }
+      await handleAuthorize();
+    };
+
+    void forceReauthorize();
+  }, [autoAuthorizeNonce, hasCredentials]);
 
   if (!hasCredentials) {
     return (
@@ -10868,7 +10895,15 @@ const ExecutiveSettlementReportModal = ({
   );
 };
 
-export const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+export const SettingsModal = ({
+  isOpen,
+  onClose,
+  googleAuthPromptNonce = 0,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  googleAuthPromptNonce?: number;
+}) => {
   const { settings } = useProjectContext();
 
   if (!isOpen) return null;
@@ -10891,7 +10926,11 @@ export const SettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Cloud (Docs API)</h3>
               <div className="space-y-4">
-                <GoogleAuthSection clientId={settings?.googleClientId || ''} clientSecret={settings?.googleClientSecret || ''} />
+                <GoogleAuthSection
+                  clientId={settings?.googleClientId || ''}
+                  clientSecret={settings?.googleClientSecret || ''}
+                  autoAuthorizeNonce={googleAuthPromptNonce}
+                />
               </div>
             </div>
 

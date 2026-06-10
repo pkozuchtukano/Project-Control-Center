@@ -337,6 +337,11 @@
 - 2026-03-20 – Wersjonowane kopie bazy danych i import najnowszego backupu
   -- Zmieniono nazewnictwo ręcznego i automatycznego eksportu bazy do Google Drive: każda kopia jest teraz zapisywana jako osobny plik z datą i godziną w nazwie, np. `pcc-baza_danych_2026-03-20_14-30-00.db`.
   -- Import bazy oraz sprawdzanie nowszej kopii przy starcie aplikacji wyszukują teraz najnowszy backup w folderze Google Drive według daty modyfikacji, z zachowaniem zgodności ze starszym pojedynczym plikiem `pcc-baza_danych.db`, jeśli nadal istnieje.
+- 2026-06-10 – Szybkie ponowne logowanie Google po błędzie eksportu bazy
+  -- Przy eksporcie i imporcie bazy danych z Google Drive aplikacja rozpoznaje błędy wygasłej lub cofniętej autoryzacji Google, m.in. `invalid_grant`.
+  -- Zamiast kończyć na zwykłym komunikacie `OK`, aplikacja pyta, czy od razu otworzyć `Ustawienia Główne` i ponownie zalogować Google.
+  -- Po potwierdzeniu otwierany jest ten sam mechanizm autoryzacji Google, który działa w ustawieniach całej aplikacji: przeglądarka z URL autoryzacji i pole do wklejenia kodu.
+  -- Ponowne logowanie po takim błędzie wymusza usunięcie starego tokenu i pokazuje pole wklejenia kodu autoryzacji nawet wtedy, gdy poprzedni token nadal był zapisany lokalnie.
 - 2026-04-10 – Dodatkowa opcja `Do Tray` przy zamykaniu aplikacji
   -- Przy przechwyceniu zamykania głównego okna dodano nowe okno wyboru z dwoma akcjami: `Zamknij i eksport bazy` oraz `Do Tray`.
   -- Wybranie `Do Tray` nie zamyka już aplikacji, tylko ukrywa główne okno do zasobnika systemowego; z traya można ją ponownie pokazać albo całkowicie zakończyć przez menu kontekstowe.

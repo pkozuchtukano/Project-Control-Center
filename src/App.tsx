@@ -47,6 +47,14 @@ const ViewLoadingFallback = () => (
   </div>
 );
 
+const isGoogleAuthRefreshError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message.includes('invalid_grant')
+    || message.includes('Brak aktywnej autoryzacji Google')
+    || message.includes('Aktualny token Google nie ma uprawnień')
+    || message.includes('Zaloguj się ponownie');
+};
+
 export default function App() {
   return (
     <ProjectProvider>
@@ -59,6 +67,7 @@ const MainLayout = () => {
   useDarkMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [googleAuthPromptNonce, setGoogleAuthPromptNonce] = useState(0);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
   const [isDatabaseTransferPending, setIsDatabaseTransferPending] = useState(false);
@@ -128,7 +137,18 @@ const MainLayout = () => {
       if (result.canceled || !result.success) return;
       alert(`Baza danych została wyeksportowana do Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}`);
     } catch (error: any) {
-      alert(`Nie udało się wyeksportować bazy danych do Google Drive.\n${error?.message || 'Nieznany błąd.'}`);
+      const message = error?.message || 'Nieznany błąd.';
+      if (isGoogleAuthRefreshError(error)) {
+        const shouldLogin = window.confirm(
+          `Nie udało się wyeksportować bazy danych do Google Drive.\n${message}\n\nCzy chcesz teraz zalogować się ponownie do Google?`
+        );
+        if (shouldLogin) {
+          setIsSettingsOpen(true);
+          setGoogleAuthPromptNonce((current) => current + 1);
+        }
+        return;
+      }
+      alert(`Nie udało się wyeksportować bazy danych do Google Drive.\n${message}`);
     } finally {
       setIsDatabaseTransferPending(false);
     }
@@ -147,7 +167,18 @@ const MainLayout = () => {
       alert(`Baza danych została pobrana z Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}\nAplikacja zostanie odświeżona.`);
       window.location.reload();
     } catch (error: any) {
-      alert(`Nie udało się pobrać bazy danych z Google Drive.\n${error?.message || 'Nieznany błąd.'}`);
+      const message = error?.message || 'Nieznany błąd.';
+      if (isGoogleAuthRefreshError(error)) {
+        const shouldLogin = window.confirm(
+          `Nie udało się pobrać bazy danych z Google Drive.\n${message}\n\nCzy chcesz teraz zalogować się ponownie do Google?`
+        );
+        if (shouldLogin) {
+          setIsSettingsOpen(true);
+          setGoogleAuthPromptNonce((current) => current + 1);
+        }
+        return;
+      }
+      alert(`Nie udało się pobrać bazy danych z Google Drive.\n${message}`);
     } finally {
       setIsDatabaseTransferPending(false);
     }
@@ -188,6 +219,7 @@ const MainLayout = () => {
           <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
+            googleAuthPromptNonce={googleAuthPromptNonce}
           />
         </Suspense>
       )}
