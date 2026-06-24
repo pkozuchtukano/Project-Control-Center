@@ -37,6 +37,7 @@ const normalizeProject = (project: Project): Project => {
     maintenanceVatRate,
     maintenanceGrossAmount,
     clickupDailyUrl: project.clickupDailyUrl ?? '',
+    isHiddenInSidebar: project.isHiddenInSidebar ?? false,
     hasPersonnelRoles,
     personnelRoles: (project.personnelRoles || []).map(normalizePersonnelRole),
   };

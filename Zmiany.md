@@ -8,6 +8,14 @@
   -- Istniejące projekty dostają domyślnie wyłączony parametr i pustą listę ról bez migracji tabel, ponieważ projekty są zapisywane jako JSON w tabeli `projects`.
 
 ## Wycena
+- 2026-06-24 - Zapamietywanie rol przy pozycjach zlecenia
+  -- Szablon pozycji nowego zlecenia zapisuje teraz nazwe produktu oraz identyfikator i nazwe przypisanej roli personelu.
+  -- Przy kolejnym dodawaniu zlecenia role sa automatycznie przywracane do odpowiednich produktow; starsze szablony z samymi nazwami nadal dzialaja bez migracji danych.
+- 2026-06-24 - Kwoty zlecen z rolami personelu na liscie
+  -- Lista zlecen wylicza kwoty brutto i netto z kazdej pozycji zlecenia, z uwzglednieniem stawki przypisanej roli personelu.
+  -- Projekty ze stawka ogolna ustawiona na 0 pokazuja teraz prawidlowa wartosc zlecenia, gdy pozycje maja przypisane role i godziny.
+  -- Historyczne pozycje z przypisana rola i zapisana stawka 0 pobieraja teraz aktualna stawke tej roli, bez zmiany zapisanych danych zlecenia.
+  -- Wiersz `RAZEM` na liscie zlecen sumuje teraz kwoty pozycji, zamiast mnozyc laczne godziny przez stawke ogolna projektu.
 - 2026-05-20 - Netto pod kwotą brutto w podsumowaniu wyceny
   -- W stopce tabeli wyceny dodano kwotę netto w nawiasie pod kwotą brutto, gdy widok pokazuje wartości brutto.
   -- W wycenach projektów z rolami personelu kwota netto w podsumowaniu jest wyliczana z sumy brutto według stawki VAT projektu.
@@ -262,6 +270,22 @@
   -- W konfiguracji sekcji dodano przełącznik "Uwzględniaj daty" (domyślnie wyłączony); kolumny z aktywną opcją filtrują zadania po dacie, a zgłoszenia widoczne w "Aktywnościach" pozostają tam rozwinięte (z ręcznym zwijaniem) i automatycznie pokazują się jako zwinięte/przyciemnione w pozostałych kolumnach.
 
 ## Raport CBCP
+
+- 2026-06-23 - Liczbowa prezentacja czasu realizacji zlecenia
+  -- W podgladzie raportu CBCP, wydruku PDF oraz eksportach Word i Excel usunieto jednostke `h` z kolumny `Czas realizacji zlecenia`.
+  -- Czas realizacji pozostaje wartoscia liczbowa z precyzja do dwoch miejsc po przecinku; w Excelu komorka zachowuje typ liczbowy, co umozliwia dalsze obliczenia.
+- 2026-06-23 - Wielostronicowy wydruk raportu koncowego
+  -- Usunieto w trybie druku ograniczenie modalnego kontenera raportu CBCP, ktore moglo obcinac tabele do jednej strony PDF.
+  -- Tabela raportu dzieli sie teraz na kolejne strony wraz z powtarzanym naglowkiem kolumn.
+- 2026-06-23 - Zgodny uklad PDF z widokiem raportu
+  -- Eksport PDF zachowuje teraz ekranowe marginesy, szerokosc, rozmiary czcionek i odstepy tabeli raportu CBCP.
+  -- Reguly druku nie upraszczaja juz ukladu raportu; pozostawiono tylko techniczna obsluge wielostronicowej tabeli.
+- 2026-06-23 - Wzor zalacznika nr 14 w eksporcie PDF
+  -- Eksport PDF raportu CBCP korzysta z osobnego ukladu A4 poziomo, zgodnego z trescia i kolejnoscia sekcji eksportu Word.
+  -- Wydruk zawiera wzor raportu koncowego z naglowkiem zalacznika nr 14, podsumowaniem tekstowym oraz tabela zlecen dzielona na kolejne strony.
+- 2026-06-23 - Izolacja raportu CBCP podczas druku
+  -- Modal raportu CBCP jest renderowany bezposrednio w `document.body`, poza drzewem glownego interfejsu aplikacji.
+  -- W trybie drukowania ukrywany jest kontener `#root`, dzieki czemu PDF zawiera wyłącznie wzor zalacznika nr 14 zamiast dashboardu aplikacji.
 - 2026-03-17 – Poprawa polskich znaków w eksporcie
   -- Poprawiono uszkodzone literały tekstowe w eksporcie raportu CBCP do plików Word i Excel.
   -- Wygenerowane raporty Word i Excel pokazują poprawne polskie znaki w nagłówkach, opisach oraz komunikacie o braku zleceń.
@@ -1097,6 +1121,12 @@
 
 
 ## Dostepnosc UI
+- 2026-06-24 - Pelnoekranowy formularz zlecenia
+  -- Modal dodawania i edycji zlecenia wykorzystuje teraz cala dostepna przestrzen ekranu.
+  -- Usunieto ograniczenia szerokosci, wysokosci i zewnetrzne marginesy modala; naglowek i stopka pozostaja stale widoczne, a formularz przewija sie w srodkowej czesci.
+- 2026-06-23 - Ukrywanie projektow w sidebarze
+  -- W ustawieniach projektu dodano trwale ustawienie ukrywajace go na liscie w lewym panelu, bez usuwania projektu ani jego danych.
+  -- Przycisk z ikona oka pozwala tymczasowo pokazac wszystkie projekty, aby mozna bylo otworzyc i ponownie wlaczyc ukryty projekt.
 - 2026-06-02 - Szerszy obszar roboczy zakladek
   -- W glownym widoku projektu usunieto limit szerokosci `max-w-[1500px]` oraz centrowanie kontenera, aby zakladki wykorzystywaly pelna szerokosc ekranu.
   -- Zmniejszono zewnetrzne paddingi dashboardu oraz odstepy i paddingi glownych paneli zakladki `Notatki`.

@@ -45,6 +45,7 @@ export type Project = {
   googleDocLink?: string;
   pendingSettlementYoutrackUrl?: string;
   clickupDailyUrl?: string;
+  isHiddenInSidebar?: boolean;
   hasPersonnelRoles?: boolean;
   personnelRoles?: ProjectPersonnelRole[];
   orderProtocolFlow?: OrderProtocolFlow;

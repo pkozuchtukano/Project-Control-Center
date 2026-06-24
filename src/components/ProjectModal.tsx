@@ -38,6 +38,7 @@ export const ProjectModal = ({
     googleDocLink: '',
     pendingSettlementYoutrackUrl: '',
     clickupDailyUrl: '',
+    isHiddenInSidebar: false,
     hasPersonnelRoles: false,
     personnelRoles: [],
     stakeholders: []
@@ -73,6 +74,7 @@ export const ProjectModal = ({
         googleDocLink: projectToEdit.googleDocLink || '',
         pendingSettlementYoutrackUrl: projectToEdit.pendingSettlementYoutrackUrl || '',
         clickupDailyUrl: projectToEdit.clickupDailyUrl || '',
+        isHiddenInSidebar: projectToEdit.isHiddenInSidebar ?? false,
         hasPersonnelRoles: projectToEdit.hasPersonnelRoles ?? false,
         personnelRoles: projectToEdit.personnelRoles || [],
         stakeholders: projectToEdit.stakeholders || []
@@ -91,6 +93,7 @@ export const ProjectModal = ({
         googleDocLink: '',
         pendingSettlementYoutrackUrl: '',
         clickupDailyUrl: '',
+        isHiddenInSidebar: false,
         hasPersonnelRoles: false,
         personnelRoles: [],
         stakeholders: []
@@ -329,6 +332,19 @@ export const ProjectModal = ({
                     <input name="contractSubject" value={formData.contractSubject} onChange={handleChange}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition" />
                   </div>
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      name="isHiddenInSidebar"
+                      checked={formData.isHiddenInSidebar ?? false}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <span className="block text-sm font-medium text-gray-900 dark:text-white">{'Ukryj projekt w panelu bocznym'}</span>
+                      <span className="block text-xs text-gray-500 dark:text-gray-400">{'Projekt pozostaje dost\u0119pny w danych i mo\u017ce zosta\u0107 pokazany przyciskiem oka.'}</span>
+                    </div>
+                  </label>
                 </div>
 
                 <div className="space-y-4">

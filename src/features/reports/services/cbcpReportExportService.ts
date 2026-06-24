@@ -122,7 +122,7 @@ export const exportCbcpReportToExcel = (project: Project, report: CbcpReportData
   for (let rowIndex = dataStartRow; rowIndex < dataStartRow + report.rows.length; rowIndex += 1) {
     const cell = worksheet[`H${rowIndex}`];
     if (cell) {
-      cell.z = '0.00" h"';
+      cell.z = '0.00';
     }
   }
 
@@ -158,7 +158,7 @@ export const exportCbcpReportToWord = async (project: Project, report: CbcpRepor
         row.orderDate,
         row.handoverDate,
         row.acceptanceDate,
-        `${formatHours(row.totalHours)}h`,
+        formatHours(row.totalHours),
       ].map((text, index) => new TableCell({
         children: [new Paragraph({
           children: [new TextRun({ text: text || '', size: 20 })],

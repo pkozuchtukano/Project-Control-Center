@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Activity,
   Briefcase,
@@ -5,6 +6,8 @@ import {
   ChevronRight,
   FileDown,
   FileUp,
+  Eye,
+  EyeOff,
   LayoutDashboard,
   Loader2,
   Plus,
@@ -26,6 +29,11 @@ export const Sidebar = ({ onOpenModal, onOpenSettings, onExportDatabase, onImpor
   onToggleCollapsed: () => void
 }) => {
   const { projects, selectedProject, setSelectedProject, isLoading } = useProjectContext();
+  const [areHiddenProjectsVisible, setAreHiddenProjectsVisible] = useState(false);
+  const sidebarProjects = areHiddenProjectsVisible
+    ? projects
+    : projects.filter((project) => !project.isHiddenInSidebar);
+  const hiddenProjectsCount = projects.filter((project) => project.isHiddenInSidebar).length;
 
   const handleProjectClick = (p: Project) => {
     onViewChange('dashboard');
@@ -67,20 +75,32 @@ export const Sidebar = ({ onOpenModal, onOpenSettings, onExportDatabase, onImpor
       <div className={`${isCollapsed ? 'p-3' : 'p-4'} flex-1 overflow-y-auto`}>
         <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} mb-4`}>
           {!isCollapsed && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Projekty</h2>}
-          <button
-            onClick={onOpenModal}
-            className="p-1 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors"
-            title="Dodaj projekt"
-          >
-            <Plus size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {hiddenProjectsCount > 0 && (
+              <button
+                onClick={() => setAreHiddenProjectsVisible((visible) => !visible)}
+                className="p-1 rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                title={areHiddenProjectsVisible ? 'Ukryj wyl\u0105czone projekty' : 'Poka\u017c wszystkie projekty'}
+                aria-label={areHiddenProjectsVisible ? 'Ukryj wyl\u0105czone projekty' : 'Poka\u017c wszystkie projekty'}
+              >
+                {areHiddenProjectsVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            )}
+            <button
+              onClick={onOpenModal}
+              className="p-1 rounded-md bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors"
+              title="Dodaj projekt"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center p-4"><Loader2 className="animate-spin text-gray-400" size={20} /></div>
         ) : (
           <div className="space-y-1">
-            {projects.map(p => (
+            {sidebarProjects.map(p => (
               <button
                 key={p.id}
                 onClick={() => handleProjectClick(p)}
@@ -94,8 +114,10 @@ export const Sidebar = ({ onOpenModal, onOpenSettings, onExportDatabase, onImpor
                 {!isCollapsed && <span className="truncate">{p.code}</span>}
               </button>
             ))}
-            {projects.length === 0 && (
-              <p className={`text-sm text-gray-400 text-center py-4 ${isCollapsed ? 'hidden' : ''}`}>Brak projektów</p>
+            {sidebarProjects.length === 0 && (
+              <p className={`text-sm text-gray-400 text-center py-4 ${isCollapsed ? 'hidden' : ''}`}>
+                {projects.length === 0 ? 'Brak projekt\u00f3w' : 'Wszystkie projekty s\u0105 ukryte'}
+              </p>
             )}
           </div>
         )}

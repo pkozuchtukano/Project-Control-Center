@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import {
   Bar,
@@ -3041,7 +3042,8 @@ const OrdersRegistryView = () => {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {sortedOrders.map(order => {
                   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-                  const total = totalHours * selectedProject.rateNetto;
+                  const totalAmountBrutto = getOrderGrossTotal(order, selectedProject);
+                  const totalAmountNetto = getOrderNetTotal(order, selectedProject);
                   return (
                     <tr key={order.id} className={`${getOrderRegistryRowClassName(order)} transition`}>
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">{order.orderNumber}</td>
@@ -3066,10 +3068,10 @@ const OrdersRegistryView = () => {
                       <td className="px-6 py-4 text-right text-gray-500 whitespace-nowrap">{formatOrderHours(totalHours)}h</td>
                       <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                         <div className="text-indigo-600 dark:text-indigo-400 font-medium">
-                          {(totalHours * selectedProject.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                          {totalAmountBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </div>
                         <div className="text-[13px] text-gray-400 dark:text-gray-500 mt-0.5">
-                          ({total.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                          ({totalAmountNetto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -3116,10 +3118,10 @@ const OrdersRegistryView = () => {
                   </td>
                   <td className="px-6 py-4 text-right leading-tight whitespace-nowrap">
                     <div className="text-indigo-600 dark:text-indigo-400 text-base">
-                      {(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * selectedProject.rateBrutto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                      {orders.reduce((sum, order) => sum + getOrderGrossTotal(order, selectedProject), 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                     </div>
                     <div className="text-sm text-gray-400 font-normal uppercase tracking-wider mt-0.5">
-                      ({(orders.reduce((sum, order) => sum + order.items.reduce((s, item) => s + (Number(item.hours) || 0), 0), 0) * selectedProject.rateNetto).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
+                      ({orders.reduce((sum, order) => sum + getOrderNetTotal(order, selectedProject), 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł)
                     </div>
                   </td>
                   <td></td>
@@ -4024,6 +4026,10 @@ const handleDateInputTabNavigation = (event: React.KeyboardEvent<HTMLInputElemen
 const hasOrderDateValue = (value?: string) => Boolean(value && value.trim());
 const getOrderHoursTotal = (order: Order) =>
   order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+const getOrderGrossTotal = (order: Order, project?: Project | null) =>
+  order.items.reduce((sum, item) => sum + ((Number(item.hours) || 0) * getOrderItemGrossRate(item, project)), 0);
+const getOrderNetTotal = (order: Order, project?: Project | null) =>
+  order.items.reduce((sum, item) => sum + ((Number(item.hours) || 0) * getOrderItemNetRate(item, project)), 0);
 const isCancelledOrder = (order: Order) =>
   !hasOrderDateValue(order.scheduleFrom)
   && !hasOrderDateValue(order.scheduleTo)
@@ -4047,11 +4053,19 @@ const createOrderItemRow = (overrides?: Partial<OrderItem>): OrderItem => ({
   ...overrides,
 });
 
-const getOrderItemGrossRate = (item: OrderItem, project?: Project | null) =>
-  Number(item.rate ?? project?.personnelRoles?.find((role) =>
-    role.id === item.roleId ||
-    Boolean(item.roleName && role.name.trim().toLowerCase() === item.roleName.trim().toLowerCase())
-  )?.hourlyRate ?? project?.rateBrutto ?? 0) || 0;
+const getOrderItemGrossRate = (item: OrderItem, project?: Project | null) => {
+  const role = project?.personnelRoles?.find((candidate) =>
+    candidate.id === item.roleId ||
+    Boolean(item.roleName && candidate.name.trim().toLowerCase() === item.roleName.trim().toLowerCase())
+  );
+  const storedRate = Number(item.rate) || 0;
+
+  if (storedRate > 0 || !role) {
+    return storedRate || Number(project?.rateBrutto) || 0;
+  }
+
+  return Number(role.hourlyRate) || 0;
+};
 
 const getOrderItemNetRate = (item: OrderItem, project?: Project | null) => {
   const grossRate = getOrderItemGrossRate(item, project);
@@ -4237,7 +4251,29 @@ const createMaintenanceInvoiceEmailTemplateData = (
   lastModified: template?.lastModified || new Date().toISOString(),
 });
 
-const buildOrderItemsFromTemplate = (template?: { names?: string[]; lastDate?: string } | null): OrderItem[] => {
+type OrderItemTemplateData = {
+  names?: string[];
+  items?: Array<Pick<OrderItem, 'name' | 'roleId' | 'roleName'>>;
+  lastDate?: string;
+};
+
+const buildOrderItemsFromTemplate = (template?: OrderItemTemplateData | null): OrderItem[] => {
+  const templateItems = (template?.items || [])
+    .map((item) => ({
+      name: item.name.trim(),
+      roleId: item.roleId,
+      roleName: item.roleName,
+    }))
+    .filter((item) => Boolean(item.name));
+
+  if (templateItems.length > 0) {
+    return templateItems.map((item) => createOrderItemRow({
+      ...item,
+      date: template?.lastDate || '',
+      hours: 0,
+    }));
+  }
+
   const names = (template?.names || []).map(name => name.trim()).filter(Boolean);
   if (names.length === 0) {
     return [createOrderItemRow(template?.lastDate ? { date: template.lastDate } : undefined)];
@@ -8266,11 +8302,19 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
     e.preventDefault();
     if (project?.id && window.electron?.saveOrderItemTemplate) {
       const names = formData.items.map(item => item.name.trim()).filter(Boolean);
+      const items = formData.items
+        .map((item) => ({
+          name: item.name.trim(),
+          roleId: item.roleId,
+          roleName: item.roleName,
+        }))
+        .filter((item) => Boolean(item.name));
       const lastDatedItem = [...formData.items].reverse().find(item => item.date);
       await window.electron.saveOrderItemTemplate({
         projectId: project.id,
         data: {
           names,
+          items,
           lastDate: lastDatedItem?.date || '',
         },
       });
@@ -8287,11 +8331,11 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
   const orderItemsTotalLabelColSpan = shouldShowRoleColumn ? 4 : 3;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex bg-black/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-800 shadow-xl w-full h-full flex flex-col animate-in fade-in zoom-in-95 duration-200">
 
         {/* MODAL HEADER */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-t-2xl">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0 bg-gray-50 dark:bg-gray-800/80">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Briefcase className="text-indigo-500" />
             {orderToEdit ? 'Edytuj Formularz Zlecenia' : 'Nowy Formularz Zlecenia'}
@@ -8480,7 +8524,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
         </div>
 
         {/* MODAL FOOTER STATIC */}
-        <div className="px-6 py-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-gray-50 dark:bg-gray-800/80 rounded-b-2xl">
+        <div className="px-6 py-4 flex items-center justify-between gap-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-gray-50 dark:bg-gray-800/80">
           <div>
             {orderToEdit && (
               <button
@@ -8516,15 +8560,18 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
 
   const reportData = buildCbcpReportData(orders, periodFrom, periodTo, reportDate);
 
-  return (
-    <div className="fixed inset-0 z-[100] bg-white text-black overflow-y-auto">
+  return createPortal(
+    <div className="cbcp-report-root fixed inset-0 z-[100] bg-white text-black overflow-y-auto">
       <style>{`
         @media print {
-          @page { size: landscape; margin: 15mm; }
-          body { background: white; }
+          @page { size: A4 landscape; margin: 15mm; }
+          body { margin: 0; background: white; }
+          body > #root { display: none !important; }
           .no-print { display: none !important; }
-          .print-section { display: block !important; padding: 0 !important; }
-          .print-table th, .print-table td { border: 1px solid black !important; padding: 6px !important; font-size: 11px !important; }
+          .cbcp-report-root { position: static !important; inset: auto !important; height: auto !important; overflow: visible !important; }
+          .cbcp-screen-report { display: none !important; }
+          .cbcp-pdf-report { display: block !important; }
+          .cbcp-pdf-report .print-table thead { display: table-header-group; }
         }
       `}</style>
 
@@ -8559,7 +8606,7 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
         </div>
       </div>
 
-      <div className="print-section max-w-[297mm] mx-auto p-12 bg-white min-h-screen font-serif text-[12px] leading-relaxed text-black">
+      <div className="cbcp-screen-report max-w-[297mm] mx-auto p-12 bg-white min-h-screen font-serif text-[12px] leading-relaxed text-black">
         <div className="text-right font-bold mb-6">
           Załącznik nr 14. Wzór raportu końcowego z realizacji usług.
         </div>
@@ -8613,7 +8660,7 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.orderDate}</td>
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.handoverDate}</td>
                 <td className="border border-black p-2 text-center whitespace-nowrap">{row.acceptanceDate}</td>
-                <td className="border border-black p-2 text-center whitespace-nowrap">{formatOrderHours(row.totalHours)}h</td>
+                <td className="border border-black p-2 text-center whitespace-nowrap">{formatOrderHours(row.totalHours)}</td>
               </tr>
             ))}
             {reportData.rows.length === 0 && (
@@ -8626,7 +8673,63 @@ const ReportCbcpModal = ({ isOpen, onClose, project, orders }: { isOpen: boolean
           </tbody>
         </table>
       </div>
-    </div>
+
+      <div className="cbcp-pdf-report hidden font-serif text-[10pt] leading-normal text-black">
+        <div className="mb-6 text-right font-bold">
+          {'Za\u0142\u0105cznik nr 14. Wz\u00f3r raportu ko\u0144cowego z realizacji us\u0142ug.'}
+        </div>
+
+        <h1 className="mb-8 text-center text-[14pt]">
+          <span className="font-bold">{'Raport Ko\u0144cowy '}</span>
+          {`realizacji us\u0142ug w ramach Umowy ${project.contractNo}`}
+        </h1>
+
+        <div className="mb-6 space-y-3 text-[11pt]">
+          <p>{`Data sporz\u0105dzenia raportu: ${reportDate}`}</p>
+          <p>{`Raport za okres od ${periodFrom} do ${periodTo}`}</p>
+          <p>{`Liczba zg\u0142osze\u0144 w raportowanym okresie: ${reportData.totalOrders}`}</p>
+          <p>{`Liczba zg\u0142osze\u0144 zrealizowanych w raportowanym okresie: ${reportData.realizedOrders}`}</p>
+          <p>{`Liczba zg\u0142osze\u0144 pozostaj\u0105cych w realizacji: ${reportData.remainingOrders}`}</p>
+        </div>
+
+        <table className="print-table w-full border-collapse text-[10pt]">
+          <thead>
+            <tr className="font-bold">
+              <th className="border border-black p-2 text-center">{'Nr zg\u0142.'}</th>
+              <th className="border border-black p-2 text-center">Nazwa zlecenia</th>
+              <th className="border border-black p-2 text-center">Produkty</th>
+              <th className="border border-black p-2 text-center">{'System / Modu\u0142'}</th>
+              <th className="border border-black p-2 text-center">Data zlecenia</th>
+              <th className="border border-black p-2 text-center">Data przekazania</th>
+              <th className="border border-black p-2 text-center">Data odbioru zlecenia</th>
+              <th className="border border-black p-2 text-center">Czas realizacji zlecenia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reportData.rows.map((row) => (
+              <tr key={`pdf-${row.orderNumber}-${row.title}`}>
+                <td className="border border-black p-2 text-center">{row.orderNumber}</td>
+                <td className="border border-black p-2">{row.title}</td>
+                <td className="border border-black p-2">{row.products}</td>
+                <td className="border border-black p-2">{row.systemModule}</td>
+                <td className="border border-black p-2 text-center">{row.orderDate}</td>
+                <td className="border border-black p-2 text-center">{row.handoverDate}</td>
+                <td className="border border-black p-2 text-center">{row.acceptanceDate}</td>
+                <td className="border border-black p-2 text-center">{formatOrderHours(row.totalHours)}</td>
+              </tr>
+            ))}
+            {reportData.rows.length === 0 && (
+              <tr>
+                <td colSpan={8} className="border border-black p-2 text-center italic">
+                  {'Brak zlece\u0144 w wybranym okresie.'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>,
+    document.body,
   );
 };
 
