@@ -72,6 +72,14 @@
   -- Produkcyjny build rozdziela główny pakiet frontendu na mniejszy shell oraz osobne chunki widoków, co skraca odpowiedzialność modułu startowego bez zmiany danych w bazie.
 
 ## Dashboard projektu
+- 2026-06-24 - Oddzielne karty rozliczen i BUG-ow
+  -- Zbiorczy panel porownania godzin podzielono na karty: `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie`.
+  -- Kazda karta zawiera wlasny podzial BUG/reszta dla odpowiadajacego jej zakresu danych, co ulatwia porownanie zlecen, utrzymania i calosci projektu.
+  -- Karty maja osobne tla, cienie i kolorystycznie rozroznione obramowania, aby byly wyraznie oddzielone w ciemnym i jasnym motywie.
+- 2026-06-24 - Rozliczenie godzin wedlug rol personelu
+  -- Na dashboardzie projektow z rolami dodano karte z rola, minimalna i maksymalna liczba godzin oraz udzialem procentowym z ustawien projektu.
+  -- Karta pokazuje aktualny udzial kazdej roli w godzinach zlecen rozliczonych i oczekujacych na rozliczenie, razem z liczba godzin zrodlowych.
+  -- Godziny pozycji bez przypisanej roli pozostaja w lacznej puli zlecen, dzieki czemu aktualne udzialy rol nie sa sztucznie zawyzane.
 - 2026-04-27 - Sekcja ClickUp w ustawieniach projektu
   -- W formularzu dodawania i edycji projektu dodano sekcje `ClickUp` z polem `Url do daily`.
   -- Wartosc jest zapisywana w danych projektu jako `clickupDailyUrl` i bedzie mogla sluzyc jako adres dokumentu ClickUp do eksportu daily opracowanego przez AI.

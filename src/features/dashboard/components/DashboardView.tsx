@@ -297,6 +297,21 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const settledHours = settledOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const contractedHours = pendingSettlementOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const totalHoursUsed = settledHours + contractedHours;
+  const personnelRoles = selectedProject.hasPersonnelRoles ? (selectedProject.personnelRoles || []) : [];
+  const roleSettlementOrders = [...settledOrders, ...pendingSettlementOrders];
+  const roleSettlementRows = personnelRoles.map((role) => {
+    const orderHours = roleSettlementOrders.reduce((orderSum, order) => orderSum + order.items.reduce((itemSum, item) => {
+      const hasAssignedRole = item.roleId === role.id
+        || Boolean(item.roleName && role.name.trim().toLowerCase() === item.roleName.trim().toLowerCase());
+      return itemSum + (hasAssignedRole ? Number(item.hours) || 0 : 0);
+    }, 0), 0);
+
+    return {
+      role,
+      orderHours,
+      currentParticipationPct: totalHoursUsed > 0 ? (orderHours / totalHoursUsed) * 100 : 0,
+    };
+  });
   const remainingToMax = Math.max(0, selectedProject.maxHours - totalHoursUsed);
 
   const chartData = [
@@ -1339,13 +1354,12 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                 </div>
 
                 {/* HOURS COMPARISON PROGRESS */}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+                <div className="space-y-8">
+                  <div className="rounded-3xl border border-indigo-200 bg-white p-6 shadow-lg shadow-indigo-950/10 dark:border-indigo-500/40 dark:bg-slate-800">
                   <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                       <Activity size={20} className="text-indigo-500" />
-                      <h3 className="font-bold sm:text-lg">
-                        {selectedProject.hasMaintenance ? 'Utrzymanie, Zlecenia vs Praca' : 'Zlecenia vs Praca'}
-                      </h3>
+                      <h3 className="font-bold sm:text-lg">Zlecenia vs Praca</h3>
                     </div>
                     <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
                       {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifference > 0 ? '+' : ''}{hoursDifference.toFixed(1)} h · {hoursDifferenceLabel}
@@ -1383,7 +1397,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
                             <Bug size={16} className="text-rose-500" />
-                            <span>Podział przepracowanych godzin: BUG / reszta</span>
+                            <span>{'BUGi ze zlece\u0144 / reszta'}</span>
                           </div>
                           <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
                             {formatHoursWithUnit(youtrackTotal)}
@@ -1409,9 +1423,11 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       </div>
                     </div>
 
+                  </div>
+
                     {selectedProject.hasMaintenance && (
                       <>
-                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <div className="rounded-3xl border border-fuchsia-200 bg-white p-6 shadow-lg shadow-fuchsia-950/10 dark:border-fuchsia-500/40 dark:bg-slate-800">
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">Rozliczenie utrzymania</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${maintenanceDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
@@ -1448,7 +1464,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               </div>
                               <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
                                 <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
-                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" /> BUG / reszta</span>
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" />{'BUGi z utrzymania / reszta'}</span>
                                   <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(maintenanceWorkedHours)}</span>
                                 </div>
                                 <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -1473,7 +1489,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                           </div>
                         </div>
 
-                        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                        <div className="rounded-3xl border border-sky-200 bg-white p-6 shadow-lg shadow-sky-950/10 dark:border-sky-500/40 dark:bg-slate-800">
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">Cały projekt: zlecenia + utrzymanie</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${totalProjectDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
@@ -1510,7 +1526,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               </div>
                               <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
                                 <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
-                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" /> BUG / reszta</span>
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" />{'BUGi ca\u0142ego projektu / reszta'}</span>
                                   <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(totalProjectWorkedHours)}</span>
                                 </div>
                                 <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -1533,9 +1549,10 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </>
-                    )}
+              </div>
+
+            </>
+          )}
                   </div>
                 </div>
               </div>
@@ -1748,6 +1765,59 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
               </div>
 
             </div>
+
+            {roleSettlementRows.length > 0 && (
+              <section className="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm dark:border-indigo-900/50 dark:bg-gray-800">
+                <div className="flex flex-col gap-2 border-b border-indigo-100 bg-indigo-50/60 px-6 py-5 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
+                      <Briefcase size={20} className="text-indigo-500" />
+                      {'Rozliczenie r\u00f3l personelu'}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {'Udzia\u0142 aktualny jest liczony z godzin w zleceniach rozliczonych i oczekuj\u0105cych na rozliczenie.'}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                    {formatOrderHours(totalHoursUsed)} h
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
+                      <tr>
+                        <th className="px-6 py-3">Rola</th>
+                        <th className="px-6 py-3 text-right">{'Min. liczba godzin'}</th>
+                        <th className="px-6 py-3 text-right">{'Max. liczba godzin'}</th>
+                        <th className="px-6 py-3 text-right">{'Udzia\u0142 z ustawie\u0144'}</th>
+                        <th className="px-6 py-3 text-right">{'Aktualny udzia\u0142 ze zlece\u0144'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {roleSettlementRows.map(({ role, orderHours, currentParticipationPct }) => {
+                        const exceedsConfiguredShare = currentParticipationPct > Number(role.participationPct);
+                        return (
+                          <tr key={role.id} className="text-gray-700 dark:text-gray-200">
+                            <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white">{role.name}</td>
+                            <td className="px-6 py-4 text-right tabular-nums">{formatOrderHours(Number(role.minHours) || 0)} h</td>
+                            <td className="px-6 py-4 text-right tabular-nums">{formatOrderHours(Number(role.maxHours) || 0)} h</td>
+                            <td className="px-6 py-4 text-right tabular-nums">{Number(role.participationPct || 0).toFixed(1)}%</td>
+                            <td className="px-6 py-4 text-right tabular-nums">
+                              <div className={`font-bold ${exceedsConfiguredShare ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                {currentParticipationPct.toFixed(1)}%
+                              </div>
+                              <div className="mt-0.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                {formatOrderHours(orderHours)} h
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </>
         )}
 
