@@ -2909,8 +2909,8 @@ const OrdersRegistryView = () => {
     await updateOrder(orderId, { acceptanceDate });
   };
 
-  const handleSaveFvFlow = async (orderId: string, flow: NonNullable<Order['fvFlow']>) => {
-    await updateOrder(orderId, { fvFlow: flow });
+  const handleSaveFvFlow = async (_orderId: string, flow: OrderProtocolFlow) => {
+    await updateProject(selectedProject.id, { orderInvoiceFlow: flow });
   };
 
   const handleApplyFvDate = async () => {};
@@ -3226,6 +3226,7 @@ const OrdersRegistryView = () => {
       <OrderProtocolFlowModal
         isOpen={Boolean(fvOrder)}
         order={fvOrder}
+        projectFlow={selectedProject.orderInvoiceFlow}
         onClose={() => setFvOrderId(null)}
         onSave={handleSaveFvFlow}
         onApplyProtocolDate={handleApplyFvDate}
@@ -4173,7 +4174,7 @@ const getOrderProtocolFlowSource = (
   protocolType: OrderProtocolType,
   projectFlow?: OrderProtocolFlow,
 ) => {
-  if (protocolType !== 'FV' && hasOrderProtocolFlowState(projectFlow)) {
+  if (hasOrderProtocolFlowState(projectFlow)) {
     return projectFlow;
   }
 

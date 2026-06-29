@@ -49,6 +49,7 @@ export type Project = {
   hasPersonnelRoles?: boolean;
   personnelRoles?: ProjectPersonnelRole[];
   orderProtocolFlow?: OrderProtocolFlow;
+  orderInvoiceFlow?: OrderProtocolFlow;
   stakeholders?: Stakeholder[];
 };
 

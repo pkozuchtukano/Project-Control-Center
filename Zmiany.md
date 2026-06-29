@@ -408,6 +408,9 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-06-29 - Projektowe flow faktury FV
+  -- Edycja flow `FV` zapisuje teraz kroki w polu projektu `orderInvoiceFlow`, zamiast w polu `fvFlow` pojedynczego zlecenia.
+  -- Modal `FV` w kazdym zleceniu tego samego projektu odczytuje wspolne flow projektu, a przy braku nowego zapisu nadal korzysta ze starszego `fvFlow` zlecenia, bez utraty istniejacych danych.
 - 2026-06-10 – Flow faktury FV przy zleceniu
   -- Przy akcjach zlecenia dodano przycisk `FV`, który otwiera modal flow faktury analogiczny do istniejących modalów `PP` i `PO`.
   -- Flow faktury FV obsługuje kroki, linki, oznaczanie wykonania, panel dostępnych zmiennych i funkcji oraz szablon wiadomości e-mail z podstawianiem zmiennych z bieżącego projektu i zlecenia.
