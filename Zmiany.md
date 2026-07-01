@@ -8,6 +8,9 @@
   -- Istniejące projekty dostają domyślnie wyłączony parametr i pustą listę ról bez migracji tabel, ponieważ projekty są zapisywane jako JSON w tabeli `projects`.
 
 ## Wycena
+- 2026-07-01 - Aliasowanie zmiennych z kropka w szablonach wyceny
+  -- Resolver zmiennych wyceny rozpoznaje teraz aliasy z kropka dla danych projektu, wyceny, harmonogramu i zgodnych nazw zlecenia, np. `{{project.code}}`, `{{estimation.totalHours}}`, `{{order.orderNumber}}`.
+  -- Zmienne z kropka nie sa juz traktowane jako dodatkowe pola wlasne, gdy odpowiadaja znanym tokenom wyceny; dzialaja w flow wyceny, linkach oraz szablonie e-mail.
 - 2026-06-24 - Zapamietywanie rol przy pozycjach zlecenia
   -- Szablon pozycji nowego zlecenia zapisuje teraz nazwe produktu oraz identyfikator i nazwe przypisanej roli personelu.
   -- Przy kolejnym dodawaniu zlecenia role sa automatycznie przywracane do odpowiednich produktow; starsze szablony z samymi nazwami nadal dzialaja bez migracji danych.
