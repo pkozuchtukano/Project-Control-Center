@@ -63,6 +63,69 @@ export type ProjectLink = {
   updatedAt: string;
 };
 
+export type ProcedureParameterKey = 'handoverProtocol' | 'acceptanceProtocol' | 'invoice' | 'custom';
+
+export type ProcedureParameter = {
+  id: string;
+  key: ProcedureParameterKey;
+  name: string;
+  required: boolean;
+  defaultValue?: string;
+};
+
+export type ProcedureFlowNodeType = 'start' | 'action' | 'condition' | 'success' | 'failure' | 'end' | 'text';
+
+export type ProcedureFlowNode = {
+  id: string;
+  type: ProcedureFlowNodeType;
+  title: string;
+  description?: string;
+  parameterIds?: string[];
+  position: {
+    x: number;
+    y: number;
+  };
+  size?: {
+    width: number;
+    height: number;
+  };
+};
+
+export type ProcedureFlowEdgeOutcome = 'next' | 'success' | 'failure';
+
+export type ProcedureFlowAnchor = 'top' | 'right' | 'bottom' | 'left';
+
+export type ProcedureFlowEdge = {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  outcome: ProcedureFlowEdgeOutcome;
+  label?: string;
+  labelSize?: {
+    width: number;
+    height: number;
+  };
+  labelPosition?: {
+    x: number;
+    y: number;
+  };
+  labelHidden?: boolean;
+  fromAnchor?: ProcedureFlowAnchor;
+  toAnchor?: ProcedureFlowAnchor;
+};
+
+export type Procedure = {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string;
+  parameters: ProcedureParameter[];
+  nodes: ProcedureFlowNode[];
+  edges: ProcedureFlowEdge[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ServiceObligationKind = 'continuous' | 'recurring' | 'event';
 
 export type ServiceScheduleType =

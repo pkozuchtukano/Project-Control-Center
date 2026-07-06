@@ -15,6 +15,7 @@ import type {
   PendingSettlementEntry,
   Project,
   ProjectLink,
+  Procedure,
   ScheduledTask,
   ServiceEvent,
   ServiceObligation,
@@ -70,6 +71,9 @@ declare global {
       getProjectLinks: (projectId: string) => Promise<ProjectLink[]>;
       saveProjectLink: (data: ProjectLink) => Promise<{ success: boolean }>;
       deleteProjectLink: (id: string) => Promise<{ success: boolean }>;
+      getProcedures: (projectId: string) => Promise<Procedure[]>;
+      saveProcedure: (data: { projectId: string, data: Procedure }) => Promise<{ success: boolean }>;
+      deleteProcedure: (id: string) => Promise<{ success: boolean }>;
       getStatusReports: (projectId: string) => Promise<StatusReport[]>;
       saveStatusReport: (data: { projectId: string, data: StatusReport }) => Promise<{ success: boolean }>;
       deleteStatusReport: (id: string) => Promise<{ success: boolean }>;

@@ -46,10 +46,57 @@
   -- Kopiowanie tabeli oraz eksport do Excela używają tego samego układu i stawek brutto dla projektów z rolami personelu.
 
 ## Sidebar i nawigacja
+- 2026-07-06 - Zakladka Procedury w projekcie
+  -- Do paska zakladek karty projektu dodano zakladke `Procedury`.
+  -- Klikniecie zakladki otwiera procedury przypisane do aktualnie wybranego projektu i zapamietuje aktywna zakladke w ramach tego projektu.
 - 2026-04-28 - Minimalizowanie sidebara
   -- W `src/App.tsx` dodano przycisk zwijania i rozwijania lewego sidebara w glownym layoucie aplikacji.
   -- Zminimalizowany sidebar zachowuje dostep do projektow, widoku `DAILY` oraz importu i eksportu bazy przez widok ikon z podpowiedziami, a z pelnego widoku usunieto rowniez nieuzywany przelacznik motywu.
   -- Stan sidebara jest zapisywany w `localStorage` pod kluczem `pcc_sidebar_collapsed`, dzieki czemu preferencja uzytkownika pozostaje po ponownym uruchomieniu aplikacji.
+
+## Procedury
+- 2026-07-06 - Zoom canvasa przez Ctrl i kolko myszy
+  -- Zoom canvasa procedury dziala teraz tylko po przytrzymaniu `Ctrl` i uzyciu kolka myszy, aby zwykle przewijanie nie zmienialo przypadkowo skali diagramu.
+- 2026-07-06 - Dowolny tekst na canvasie procedury
+  -- Do paska narzedzi edytora procedury dodano narzedzie dowolnego tekstu z ikona `T`, pozwalajace dodac niezalezna etykiete tekstowa na canvas.
+  -- Etykiete tekstowa mozna przeciagac, edytowac bezposrednio na diagramie i rozszerzac tak jak inne elementy, bez tworzenia powiazania ze strzalka.
+- 2026-07-06 - Uproszczenie listy procedur
+  -- Lista procedur pokazuje teraz tylko tytul i opis procedury, bez licznikow klockow, strzalek i zmiennych.
+  -- Klikniecie tytulu lub opisu procedury otwiera jej widok, a ikona olowka pozostaje jawna akcja edycji tej procedury.
+- 2026-07-06 - Przesuwanie etykiet i poprawa pionowych strzalek
+  -- Etykiety powiazan na strzalkach dostaly uchwyt reki do przesuwania po canvasie oraz opcje ukrycia etykiety bez usuwania samej strzalki.
+  -- Panel zaznaczonego powiazania pozwala ponownie pokazac ukryta etykiete, dzieki czemu operacja jest odwracalna i nie usuwa danych strzalki.
+  -- Sposob rysowania strzalek uwzglednia kierunek krawedzi startowej i docelowej, co poprawia grot oraz przebieg strzalki przy polaczeniach pionowych.
+- 2026-07-06 - Uchwyty tworzenia i usuwanie strzalek
+  -- Po zaznaczeniu kafelka procedury na srodku jego czterech krawedzi pojawiaja sie male uchwyty do tworzenia strzalek przez przeciagniecie do docelowego kafelka.
+  -- Nowe strzalki zapamietuja krawedz startowa i docelowa, dzieki czemu grot konczy sie przy wybranej krawedzi docelowego kafelka.
+  -- Klikniecie strzalki zaznacza ja szerszym niewidocznym obszarem trafienia, a zaznaczona strzalke mozna usunac przyciskiem kosza z paska narzedzi albo przyciskiem `Usun strzalke` w panelu powiazania.
+- 2026-07-06 - Lista procedur i zmienne z tekstu
+  -- Po wejściu w zakładkę `Procedury` widoczna jest lista procedur projektu z akcjami edycji, usuwania oraz przyciskiem dodania nowej procedury.
+  -- Dodanie nowej procedury otwiera czysty canvas z pojedynczym kafelkiem `Start`, bez domyślnych parametrów i przykładowych kroków.
+  -- Zmienne własne są wykrywane automatycznie z tekstu wpisanego w procedurze w składni `{{nazwa_zmiennej}}`, analogicznie do flow protokołów.
+  -- Panel boczny pokazuje wykryte zmienne własne oraz listę dostępnych zmiennych projektu i dat, które można skopiować do treści procedury.
+- 2026-07-06 - Poprawka puszczania reki i uchwytow canvasa
+  -- Dodano globalne zakonczenie interakcji `pointerup`, `pointercancel` i `blur`, aby narzedzie reki, przesuwanie klocka i rozszerzanie krawedzi zawsze puszczaly element po zwolnieniu przycisku myszy.
+  -- Poprawiono puszczanie narzedzia reki rozpoczetego na klocku procedury, ktore wczesniej moglo zostawac aktywne po puszczeniu myszy.
+- 2026-07-06 - Przesuwanie i zoom canvasa procedur
+  -- Do paska narzedzi edytora procedury dodano narzedzie reki do przesuwania widoku canvasa.
+  -- `Ctrl` + kolko myszy nad canvasem powieksza i pomniejsza widok wzgledem pozycji kursora, bez zmiany zapisanych pozycji klockow.
+  -- Strzalki powiazan sa rysowane od krawedzi klocka zrodlowego do krawedzi klocka docelowego, zamiast od srodka do srodka.
+- 2026-07-06 - Przebudowa edytora procedury na canvas drag and drop
+  -- Widok konkretnej procedury przebudowano na edytor diagramu z lewym paskiem narzedzi: zaznaczanie, klocek kroku, romb warunku oraz linia ze strzalka do tworzenia powiazan.
+  -- Klocki kroku i warunku mozna dodawac przez klikniecie narzedzia albo przeciagniecie go na canvas, a istniejace elementy mozna przesuwac metoda drag and drop.
+  -- Powiazania miedzy klockami tworzy sie narzedziem strzalki przez przeciaganie z elementu zrodlowego na element docelowy.
+  -- Tytul i opis klockow oraz etykiety powiazan sa edytowane bezposrednio na diagramie, bez przechodzenia przez osobna liste pol formularza.
+- 2026-07-06 - Rozszerzanie klockow i etykiet w procedurach
+  -- Klocki procedury dostaly uchwyt zmiany rozmiaru, dzieki czemu dluzszy tytul i opis moga byc pokazane w calosci po powiekszeniu kafelka.
+  -- Etykiety powiazan sa teraz wielowierszowymi polami z osobnym uchwytem zmiany rozmiaru, wiec dlugie opisy przejsc nie sa ograniczone do sztywnej szerokosci.
+  -- Rozmiary klockow i etykiet sa zapisywane w definicji procedury jako czesc JSON, bez zmiany istniejacych danych poza aktualizowana procedura.
+- 2026-07-06 - CRUD procedur i edytor flow
+  -- Dodano model procedury z tytulem, opisem, parametrami, klockami flow oraz strzalkami opisujacymi przejscia `dalej`, `powodzenie` i `niepowodzenie`.
+  -- Widok `Procedury` pozwala tworzyc, edytowac, usuwac i zapisywac procedury oraz przypisywac parametry, takie jak protokol przekazania i protokol odbioru, do wybranych krokow flow.
+  -- Flow jest prezentowany jako schemat blokowy z klockami typu start, krok, warunek, sukces, blad i koniec oraz strzalkami SVG miedzy nimi.
+  -- Dane procedur sa zapisywane w nowej tabeli SQLite `procedures` z polem `projectId`, tworzonej bezstratnie przez `CREATE TABLE IF NOT EXISTS` i uzupelnianej migracja `ALTER TABLE` dla wczesniejszej wersji tabeli.
 
 ## Build i konfiguracja
 - 2026-06-09 - Naprawa błędów TypeScript w notatkach i statusie

@@ -10,7 +10,7 @@ import Database from 'better-sqlite3';
 import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
-import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis, PendingSettlementEntry } from '../src/types.js';
+import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis, PendingSettlementEntry, Procedure } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
 // we use app.getAppPath() to reliably locate resources instead of __dirname
@@ -535,6 +535,13 @@ db.exec(`
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS procedures (
+        id TEXT PRIMARY KEY,
+        projectId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        data TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS status_reports (
         id TEXT PRIMARY KEY,
         projectId TEXT NOT NULL,
@@ -649,6 +656,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent R
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch (e) { }
+try { db.exec('ALTER TABLE procedures ADD COLUMN projectId TEXT'); } catch (e) { }
 try { db.exec(`ALTER TABLE daily_ai_analyses ADD COLUMN issueTitles TEXT NOT NULL DEFAULT '{}'`); } catch (e) { }
 try {
     const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
@@ -820,6 +828,13 @@ const initializeDatabase = () => {
             createdAt TEXT NOT NULL,
             updatedAt TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS procedures (
+            id TEXT PRIMARY KEY,
+            projectId TEXT NOT NULL,
+            title TEXT NOT NULL,
+            updatedAt TEXT NOT NULL,
+            data TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS status_reports (
             id TEXT PRIMARY KEY,
             projectId TEXT NOT NULL,
@@ -943,6 +958,7 @@ try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN marginPercent R
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN acceptedBy TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageDataUrl TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN evidenceImageName TEXT'); } catch { }
+try { db.exec('ALTER TABLE procedures ADD COLUMN projectId TEXT'); } catch { }
 try { db.exec(`ALTER TABLE daily_ai_analyses ADD COLUMN issueTitles TEXT NOT NULL DEFAULT '{}'`); } catch { }
 try {
         const columns = db.prepare('PRAGMA table_info(daily_sections)').all() as { name: string }[];
@@ -4884,6 +4900,55 @@ ipcMain.handle('delete-project-link', async (_, id: string) => {
         return { success: true };
     } catch (error) {
         console.error('BĹ‚Ä…d usuwania linku projektu:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('get-procedures', async (_, projectId: string) => {
+    try {
+        const rows = db.prepare(`
+            SELECT data
+            FROM procedures
+            WHERE projectId = ?
+            ORDER BY updatedAt DESC, title COLLATE NOCASE ASC
+        `).all(projectId) as { data: string }[];
+        return rows.map(row => JSON.parse(row.data));
+    } catch (error) {
+        console.error('Blad pobierania procedur:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('save-procedure', async (_, { projectId, data }: { projectId: string, data: Procedure }) => {
+    try {
+        db.prepare(`
+            INSERT INTO procedures (id, projectId, title, updatedAt, data)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                projectId = excluded.projectId,
+                title = excluded.title,
+                updatedAt = excluded.updatedAt,
+                data = excluded.data
+        `).run(
+            data.id,
+            projectId,
+            data.title,
+            data.updatedAt,
+            JSON.stringify({ ...data, projectId })
+        );
+        return { success: true };
+    } catch (error) {
+        console.error('Blad zapisu procedury:', error);
+        throw error;
+    }
+});
+
+ipcMain.handle('delete-procedure', async (_, id: string) => {
+    try {
+        db.prepare('DELETE FROM procedures WHERE id = ?').run(id);
+        return { success: true };
+    } catch (error) {
+        console.error('Blad usuwania procedury:', error);
         throw error;
     }
 });

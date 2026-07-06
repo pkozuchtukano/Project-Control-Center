@@ -99,6 +99,7 @@ import { MeetingNotesMain } from '../../meeting-notes/components/MeetingNotesMai
 import { DailyMain } from '../../daily/components/DailyMain';
 import { ProjectLinksDropdown, ProjectLinksMain } from '../../project-links/components/ProjectLinksMain';
 import { StatusMain } from '../../status/components/StatusMain';
+import { ProceduresMain } from '../../procedures/components/ProceduresMain';
 import { ServiceView } from '../../service/components/ServiceView';
 import {
   buildCbcpReportData,
@@ -119,7 +120,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const calculations = useProjectCalculations(selectedProject);
   const { workItems, refresh: refreshWorkItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'procedures' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
   const [dashboardSyncProgress, setDashboardSyncProgress] = useState<SyncProgress | null>(null);
@@ -144,7 +145,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
       return;
     }
 
-    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'service', 'status', 'daily', 'youtrack', 'estimation', 'notes'];
+    const allowedTabs = ['dashboard', 'orders', 'pendingSettlement', 'work', 'settlements', 'maintenance', 'service', 'status', 'daily', 'procedures', 'youtrack', 'estimation', 'notes'];
     if (allowedTabs.includes(storedTab)) {
       setActiveTab(storedTab as typeof activeTab);
       return;
@@ -1304,6 +1305,12 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
             className={`pb-3 border-b-2 transition-colors ${activeTab === 'daily' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             Daily
+          </button>
+          <button
+            onClick={() => setActiveTab('procedures')}
+            className={`pb-3 border-b-2 transition-colors ${activeTab === 'procedures' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            Procedury
           </button>
           <button
             onClick={() => setActiveTab('youtrack')}
@@ -2751,6 +2758,10 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
         {activeTab === 'daily' && (
           <DailyMain project={selectedProject} />
+        )}
+
+        {activeTab === 'procedures' && (
+          <ProceduresMain project={selectedProject} />
         )}
 
         {activeTab === 'maintenance' && selectedProject.hasMaintenance && (
