@@ -55,6 +55,9 @@
   -- Stan sidebara jest zapisywany w `localStorage` pod kluczem `pcc_sidebar_collapsed`, dzieki czemu preferencja uzytkownika pozostaje po ponownym uruchomieniu aplikacji.
 
 ## Procedury
+- 2026-07-07 - Jeden przycisk dodawania procedury
+  -- Z listy procedur usunieto drugi przycisk `Dodaj procedure`, pozostawiajac pojedyncza akcje dodawania w gornym pasku widoku.
+  -- Zmiana porzadkuje interfejs bez zmiany zapisu procedur ani danych projektu.
 - 2026-07-06 - Zoom canvasa przez Ctrl i kolko myszy
   -- Zoom canvasa procedury dziala teraz tylko po przytrzymaniu `Ctrl` i uzyciu kolka myszy, aby zwykle przewijanie nie zmienialo przypadkowo skali diagramu.
 - 2026-07-06 - Dowolny tekst na canvasie procedury

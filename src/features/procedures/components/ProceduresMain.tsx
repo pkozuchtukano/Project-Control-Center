@@ -931,10 +931,6 @@ export const ProceduresMain = ({ project }: ProceduresMainProps) => {
           <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black text-gray-900 dark:text-white">Lista procedur</h2>
-              <button type="button" onClick={handleNewProcedure} className="inline-flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700">
-                <Plus size={16} />
-                Dodaj procedure
-              </button>
             </div>
             {isLoading ? (
               <div className="flex items-center justify-center py-16 text-sm text-gray-500">
