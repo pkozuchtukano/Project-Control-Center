@@ -4401,8 +4401,8 @@ const getOrderProtocolVariableDefinitions = (
   const totalHours = order.items.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
   const productNames = order.items.map(item => item.name.trim()).filter(Boolean);
   const resolvedDate = formatProtocolTemplateDateValue(overrides?.data || suggestOrderProtocolDate(order, protocolType));
-  const totalNetValue = totalHours * (project?.rateNetto || 0);
-  const totalGrossValue = totalHours * (project?.rateBrutto || 0);
+  const totalNetValue = getOrderNetTotal(order, project);
+  const totalGrossValue = getOrderGrossTotal(order, project);
   const totalNetValueWords = formatCurrencyAmountInWords(formatCurrencyValue(totalNetValue));
   const totalGrossValueWords = formatCurrencyAmountInWords(formatCurrencyValue(totalGrossValue));
   const taskTypeNames = (project?.taskTypes || []).map(taskType => taskType.name.trim()).filter(Boolean);
@@ -4455,8 +4455,10 @@ const getOrderProtocolVariableDefinitions = (
     { token: 'produkty', aliases: ['items'], value: productNames.join(', ') },
     { token: 'liczba_pozycji', aliases: ['itemsCount'], value: String(order.items.length) },
     { token: 'suma_godzin', aliases: ['totalHours'], value: formatOrderHours(totalHours) },
-    { token: 'wartosc_netto', aliases: ['netValue', 'orderNetValue'], value: formatCurrencyValue(totalNetValue) },
-    { token: 'wartosc_brutto', aliases: ['grossValue', 'orderGrossValue'], value: formatCurrencyValue(totalGrossValue) },
+    { token: 'wartosc_netto', aliases: ['netValue', 'orderNetValue', 'kwota_netto_zlecenia'], value: formatCurrencyValue(totalNetValue) },
+    { token: 'wartosc_brutto', aliases: ['grossValue', 'orderGrossValue', 'kwota_brutto_zlecenia'], value: formatCurrencyValue(totalGrossValue) },
+    { token: 'kwota_netto_zlecenia', aliases: ['orderNetAmount', 'zlecenie_kwota_netto', 'wartosc_netto'], value: formatCurrencyValue(totalNetValue) },
+    { token: 'kwota_brutto_zlecenia', aliases: ['orderGrossAmount', 'zlecenie_kwota_brutto', 'wartosc_brutto'], value: formatCurrencyValue(totalGrossValue) },
     { token: 'wartosc_netto_slownie', aliases: ['netValueWords', 'orderNetValueWords'], value: totalNetValueWords },
     { token: 'wartosc_brutto_slownie', aliases: ['grossValueWords', 'orderGrossValueWords'], value: totalGrossValueWords },
   ];

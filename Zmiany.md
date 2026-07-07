@@ -458,6 +458,10 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-07-07 - Kwoty netto i brutto zlecenia w zmiennych protokolu odbioru
+  -- Do listy zmiennych protokolow PP/PO dodano jawne tokeny `{{kwota_netto_zlecenia}}` i `{{kwota_brutto_zlecenia}}` korzystajace z tych samych wyliczen co dotychczasowe `{{wartosc_netto}}` i `{{wartosc_brutto}}`.
+  -- Tokeny sa widoczne w panelu dostepnych zmiennych i moga byc uzywane w krokach flow, linkach oraz szablonie e-mail protokolu odbioru bez zmiany zapisanych danych.
+  -- Wyliczenie kwot w zmiennych protokolow korzysta teraz ze stawek pozycji i rol personelu, tak jak formularz oraz lista zlecen, wiec projekty ze stawka ogolna `0` nie zwracaja juz kwoty `0,00` dla zlecen z rolami.
 - 2026-06-29 - Projektowe flow faktury FV
   -- Edycja flow `FV` zapisuje teraz kroki w polu projektu `orderInvoiceFlow`, zamiast w polu `fvFlow` pojedynczego zlecenia.
   -- Modal `FV` w kazdym zleceniu tego samego projektu odczytuje wspolne flow projektu, a przy braku nowego zapisu nadal korzysta ze starszego `fvFlow` zlecenia, bez utraty istniejacych danych.
