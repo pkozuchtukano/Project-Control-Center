@@ -115,11 +115,35 @@ import { buildExecutiveSettlementReportData } from '../../reports/services/settl
 import { exportExecutiveSettlementReportToExcel } from '../../reports/services/settlementExecutiveExcelExportService';
 import { exportExecutiveSettlementReportToWord } from '../../reports/services/settlementExecutiveWordExportService';
 
-export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
+type PendingGoogleAction = {
+  title: string;
+  run: () => Promise<void>;
+};
+
+type GoogleAuthorizationRetryHandler = (action: PendingGoogleAction) => void;
+
+const isGoogleAuthRefreshError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message.includes('invalid_grant')
+    || message.includes('Brak aktywnej autoryzacji Google')
+    || message.includes('Aktualny token Google nie ma uprawnień')
+    || message.includes('insufficient authentication scopes')
+    || message.includes('Request had insufficient authentication scopes')
+    || message.includes('Zaloguj się ponownie');
+};
+
+export const DashboardView = ({
+  onEdit,
+  onGoogleAuthorizationRequired,
+}: {
+  onEdit: (p: Project) => void;
+  onGoogleAuthorizationRequired?: GoogleAuthorizationRetryHandler;
+}) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
   const { workItems, refresh: refreshWorkItems } = useWorkRegistry(selectedProject);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
+  const [pendingSettlementEntries, setPendingSettlementEntries] = useState<PendingSettlementEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'procedures' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');
   const [isExecutiveSettlementReportOpen, setIsExecutiveSettlementReportOpen] = useState(false);
   const [isFinancialDataVisible, setIsFinancialDataVisible] = useState(false);
@@ -276,6 +300,24 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
     };
   }, [selectedProject?.id, selectedProject?.hasMaintenance]);
 
+  const refreshPendingSettlementEntries = async () => {
+    if (!selectedProject?.id || typeof window === 'undefined' || !window.electron?.getPendingSettlementEntries) {
+      setPendingSettlementEntries([]);
+      return;
+    }
+
+    try {
+      const result = await window.electron.getPendingSettlementEntries(selectedProject.id);
+      setPendingSettlementEntries(result || []);
+    } catch {
+      setPendingSettlementEntries([]);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPendingSettlementEntries();
+  }, [selectedProject?.id]);
+
   if (!selectedProject || !calculations) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/50 dark:bg-gray-900/50">
@@ -359,6 +401,19 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
   const youtrackTotal = youtrackHours['Programistyczne'] + youtrackHours['Obsługa projektu'] + youtrackHours['Inne'];
   const maintenanceWorkedHours = maintenanceWorkItems.reduce((sum, item) => sum + (item.minutes || 0) / 60, 0);
+  const acceptedPendingSettlementHours = pendingSettlementEntries
+    .filter((entry) => entry.isAccepted)
+    .reduce((sum, entry) => sum + (Number(entry.estimatedHours) || 0), 0);
+  const orderWorkBalanceHours = totalHoursUsed + acceptedPendingSettlementHours - youtrackTotal;
+  const orderWorkBalancePct = totalHoursUsed + acceptedPendingSettlementHours > 0
+    ? (orderWorkBalanceHours / (totalHoursUsed + acceptedPendingSettlementHours)) * 100
+    : 0;
+  const orderWorkBalanceTone = orderWorkBalanceHours >= 0
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-red-200 bg-red-50 text-red-900 dark:border-red-500/40 dark:bg-red-950/30 dark:text-red-100';
+  const orderWorkBalanceBadgeTone = orderWorkBalanceHours >= 0
+    ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+    : 'bg-red-600 text-white dark:bg-red-500';
   const orderBugHours = buildBugHoursBreakdown(nonMaintenanceWorkItems);
   const maintenanceBugHours = buildBugHoursBreakdown(maintenanceWorkItems);
   const totalProjectBugHours = {
@@ -379,6 +434,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const maxScale = Math.max(
     selectedProject.maxHours || 1,
     totalHoursUsed,
+    totalHoursUsed + acceptedPendingSettlementHours,
     youtrackTotal,
     maintenanceAvailableHours,
     maintenanceWorkedHours,
@@ -402,7 +458,27 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
   const hoursDifferenceNet = hoursDifference * selectedProject.rateNetto;
   const hoursDifferenceGross = hoursDifference * selectedProject.rateBrutto;
   const maintenanceDifferenceHours = maintenanceAvailableHours - maintenanceWorkedHours;
+  const maintenanceBalancePct = maintenanceAvailableHours > 0
+    ? (maintenanceDifferenceHours / maintenanceAvailableHours) * 100
+    : 0;
+  const maintenanceBalanceTone = maintenanceDifferenceHours >= 0
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-red-200 bg-red-50 text-red-900 dark:border-red-500/40 dark:bg-red-950/30 dark:text-red-100';
+  const maintenanceBalanceBadgeTone = maintenanceDifferenceHours >= 0
+    ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+    : 'bg-red-600 text-white dark:bg-red-500';
   const totalProjectDifferenceHours = totalProjectAvailableHours - totalProjectWorkedHours;
+  const totalProjectBalanceAvailableHours = totalProjectAvailableHours + acceptedPendingSettlementHours;
+  const totalProjectBalanceHours = totalProjectBalanceAvailableHours - totalProjectWorkedHours;
+  const totalProjectBalancePct = totalProjectBalanceAvailableHours > 0
+    ? (totalProjectBalanceHours / totalProjectBalanceAvailableHours) * 100
+    : 0;
+  const totalProjectBalanceTone = totalProjectBalanceHours >= 0
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-100'
+    : 'border-red-200 bg-red-50 text-red-900 dark:border-red-500/40 dark:bg-red-950/30 dark:text-red-100';
+  const totalProjectBalanceBadgeTone = totalProjectBalanceHours >= 0
+    ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+    : 'bg-red-600 text-white dark:bg-red-500';
   const targetProfitPct = selectedProject.targetProfitPct ?? 20;
   const targetProfitRatio = targetProfitPct / 100;
   const historicalUsedHours = totalHoursUsed;
@@ -1362,7 +1438,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
 
                 {/* HOURS COMPARISON PROGRESS */}
                 <div className="space-y-8">
-                  <div className="rounded-3xl border border-indigo-200 bg-white p-6 shadow-lg shadow-indigo-950/10 dark:border-indigo-500/40 dark:bg-slate-800">
+                  <div className="rounded-3xl border-2 border-indigo-300 bg-gradient-to-br from-white via-indigo-50/35 to-white p-6 shadow-[0_18px_38px_rgba(79,70,229,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-indigo-400/80 dark:from-slate-800 dark:via-indigo-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
                   <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                       <Activity size={20} className="text-indigo-500" />
@@ -1372,8 +1448,9 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifference > 0 ? '+' : ''}{hoursDifference.toFixed(1)} h · {hoursDifferenceLabel}
                     </div>
                   </div>
-                  <div className="space-y-5">
-                    <div>
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
+                    <div className="space-y-5">
+                      <div>
                       <div className="flex justify-between text-sm mb-1.5 font-medium">
                         <span className="text-gray-600 dark:text-gray-400">Wykorzystane w zleceniach (Rozliczone + Zakontraktowane)</span>
                         <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1383,7 +1460,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                       </div>
                     </div>
 
-                    <div>
+                      <div>
                       <div className="flex justify-between text-sm mb-1.5 font-medium">
                         <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
                         <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1429,12 +1506,39 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                         </div>
                       </div>
                     </div>
+                    </div>
 
+                    <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${orderWorkBalanceTone}`}>
+                      <div>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
+                          <span className={`rounded-full px-3 py-1 text-xs font-black ${orderWorkBalanceBadgeTone}`}>
+                            {orderWorkBalanceHours >= 0 ? 'Plus' : 'Minus'}
+                          </span>
+                        </div>
+                        <p className="mt-4 text-sm leading-6">
+                          Przepracowano: <strong>{formatOrderHours(youtrackTotal)} h</strong><br />
+                          W zleceniach: <strong>{formatOrderHours(totalHoursUsed)} h</strong><br />
+                          Do rozliczenia zaakceptowane: <strong>{formatOrderHours(acceptedPendingSettlementHours)} h</strong>
+                        </p>
+                      </div>
+                      <div className="mt-5">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+                          Zlecenia + zaakceptowane - YouTrack
+                        </p>
+                        <p className="mt-2 text-4xl font-black tracking-tight">
+                          {orderWorkBalanceHours >= 0 ? '+' : ''}{formatOrderHours(orderWorkBalanceHours)} <span className="text-lg font-bold">h</span>
+                        </p>
+                        <p className="mt-1 text-sm font-semibold opacity-80">
+                          {orderWorkBalanceHours >= 0 ? '+' : ''}{orderWorkBalancePct.toFixed(1)}% względem godzin do rozliczenia
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                     {selectedProject.hasMaintenance && (
                       <>
-                        <div className="rounded-3xl border border-fuchsia-200 bg-white p-6 shadow-lg shadow-fuchsia-950/10 dark:border-fuchsia-500/40 dark:bg-slate-800">
+                        <div className="rounded-3xl border-2 border-fuchsia-300 bg-gradient-to-br from-white via-fuchsia-50/35 to-white p-6 shadow-[0_18px_38px_rgba(192,38,211,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-fuchsia-400/80 dark:from-slate-800 dark:via-fuchsia-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">Rozliczenie utrzymania</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${maintenanceDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
@@ -1443,8 +1547,9 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             </span>
                           </div>
 
-                          <div className="space-y-4">
-                            <div>
+                          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
+                            <div className="space-y-4">
+                              <div>
                               <div className="flex justify-between text-sm mb-1.5 font-medium">
                                 <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w utrzymaniu</span>
                                 <span className="text-gray-900 dark:text-white font-bold">{maintenanceAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1454,7 +1559,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               </div>
                             </div>
 
-                            <div>
+                              <div>
                               <div className="flex justify-between text-sm mb-1.5 font-medium">
                                 <span className="text-gray-600 dark:text-gray-400">Wykorzystano w utrzymaniu</span>
                                 <span className="text-gray-900 dark:text-white font-bold">{maintenanceWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1492,11 +1597,38 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                                   </div>
                                 </div>
                               </div>
+                              </div>
+                            </div>
+
+                            <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${maintenanceBalanceTone}`}>
+                              <div>
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
+                                  <span className={`rounded-full px-3 py-1 text-xs font-black ${maintenanceBalanceBadgeTone}`}>
+                                    {maintenanceDifferenceHours >= 0 ? 'Plus' : 'Minus'}
+                                  </span>
+                                </div>
+                                <p className="mt-4 text-sm leading-6">
+                                  Przepracowano: <strong>{formatOrderHours(maintenanceWorkedHours)} h</strong><br />
+                                  W utrzymaniu: <strong>{formatOrderHours(maintenanceAvailableHours)} h</strong>
+                                </p>
+                              </div>
+                              <div className="mt-5">
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+                                  Utrzymanie - YouTrack
+                                </p>
+                                <p className="mt-2 text-4xl font-black tracking-tight">
+                                  {maintenanceDifferenceHours >= 0 ? '+' : ''}{formatOrderHours(maintenanceDifferenceHours)} <span className="text-lg font-bold">h</span>
+                                </p>
+                                <p className="mt-1 text-sm font-semibold opacity-80">
+                                  {maintenanceDifferenceHours >= 0 ? '+' : ''}{maintenanceBalancePct.toFixed(1)}% względem puli utrzymania
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        <div className="rounded-3xl border border-sky-200 bg-white p-6 shadow-lg shadow-sky-950/10 dark:border-sky-500/40 dark:bg-slate-800">
+                        <div className="rounded-3xl border-2 border-sky-300 bg-gradient-to-br from-white via-sky-50/35 to-white p-6 shadow-[0_18px_38px_rgba(14,165,233,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-sky-400/80 dark:from-slate-800 dark:via-sky-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">Cały projekt: zlecenia + utrzymanie</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${totalProjectDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
@@ -1505,8 +1637,9 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                             </span>
                           </div>
 
-                          <div className="space-y-4">
-                            <div>
+                          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
+                            <div className="space-y-4">
+                              <div>
                               <div className="flex justify-between text-sm mb-1.5 font-medium">
                                 <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w całym projekcie</span>
                                 <span className="text-gray-900 dark:text-white font-bold">{totalProjectAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1516,7 +1649,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                               </div>
                             </div>
 
-                            <div>
+                              <div>
                               <div className="flex justify-between text-sm mb-1.5 font-medium">
                                 <span className="text-gray-600 dark:text-gray-400">Wykorzystano w całym projekcie</span>
                                 <span className="text-gray-900 dark:text-white font-bold">{totalProjectWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
@@ -1553,6 +1686,34 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
                                     <span>{formatBugHoursShare(totalProjectBugHours.other, totalProjectWorkedHours)}</span>
                                   </div>
                                 </div>
+                              </div>
+                              </div>
+                            </div>
+
+                            <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${totalProjectBalanceTone}`}>
+                              <div>
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
+                                  <span className={`rounded-full px-3 py-1 text-xs font-black ${totalProjectBalanceBadgeTone}`}>
+                                    {totalProjectBalanceHours >= 0 ? 'Plus' : 'Minus'}
+                                  </span>
+                                </div>
+                                <p className="mt-4 text-sm leading-6">
+                                  Przepracowano: <strong>{formatOrderHours(totalProjectWorkedHours)} h</strong><br />
+                                  W projekcie: <strong>{formatOrderHours(totalProjectAvailableHours)} h</strong><br />
+                                  Do rozliczenia zaakceptowane: <strong>{formatOrderHours(acceptedPendingSettlementHours)} h</strong>
+                                </p>
+                              </div>
+                              <div className="mt-5">
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+                                  Projekt + zaakceptowane - YouTrack
+                                </p>
+                                <p className="mt-2 text-4xl font-black tracking-tight">
+                                  {totalProjectBalanceHours >= 0 ? '+' : ''}{formatOrderHours(totalProjectBalanceHours)} <span className="text-lg font-bold">h</span>
+                                </p>
+                                <p className="mt-1 text-sm font-semibold opacity-80">
+                                  {totalProjectBalanceHours >= 0 ? '+' : ''}{totalProjectBalancePct.toFixed(1)}% względem godzin projektu
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -2773,7 +2934,7 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
         {activeTab === 'pendingSettlement' && (
-          <PendingSettlementView project={selectedProject} />
+          <PendingSettlementView project={selectedProject} onEntriesChanged={refreshPendingSettlementEntries} />
         )}
 
         {activeTab === '__status_placeholder__' && (
@@ -2795,7 +2956,10 @@ export const DashboardView = ({ onEdit }: { onEdit: (p: Project) => void }) => {
         )}
 
         {activeTab === 'notes' && (
-          <MeetingNotesMain project={selectedProject} />
+          <MeetingNotesMain
+            project={selectedProject}
+            onGoogleAuthorizationRequired={onGoogleAuthorizationRequired}
+          />
         )}
 
       </div>
@@ -5308,7 +5472,13 @@ const MaintenanceEntryModal = ({
   );
 };
 
-const PendingSettlementView = ({ project }: { project: Project }) => {
+const PendingSettlementView = ({
+  project,
+  onEntriesChanged,
+}: {
+  project: Project;
+  onEntriesChanged?: () => void | Promise<void>;
+}) => {
   const [entries, setEntries] = useState<PendingSettlementEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -5594,6 +5764,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     setIsModalOpen(false);
     setEditingEntry(null);
     await loadEntries();
+    await onEntriesChanged?.();
   };
 
   const handlePendingSettlementStatusChange = async (
@@ -5610,6 +5781,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
     try {
       await window.electron.savePendingSettlementEntry(nextEntry);
       setEntries((current) => current.map((item) => (item.id === entry.id ? nextEntry : item)));
+      await onEntriesChanged?.();
     } catch (statusError: any) {
       setError(statusError?.message || 'Nie udało się zmienić statusu pozycji do rozliczenia.');
     } finally {
@@ -5629,6 +5801,7 @@ const PendingSettlementView = ({ project }: { project: Project }) => {
       setIsModalOpen(false);
     }
     await loadEntries();
+    await onEntriesChanged?.();
   };
 
   const estimatedCount = entries.filter((entry) => entry.isEstimated).length;
@@ -8960,10 +9133,12 @@ const GoogleAuthSection = ({
   clientId,
   clientSecret,
   autoAuthorizeNonce = 0,
+  onAuthorized,
 }: {
   clientId: string;
   clientSecret: string;
   autoAuthorizeNonce?: number;
+  onAuthorized?: () => void | Promise<void>;
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -9004,6 +9179,7 @@ const GoogleAuthSection = ({
       setIsAuthenticated(true);
       setShowCodeInput(false);
       setAuthCode('');
+      await onAuthorized?.();
     } catch {
       setAuthError('Nieprawidłowy kod autoryzacji. Spróbuj ponownie.');
     } finally {
@@ -9316,7 +9492,11 @@ const createPendingSettlementDraft = (project: Project, entries: PendingSettleme
   };
 };
 
-const GlobalSchedulerSection = () => {
+const GlobalSchedulerSection = ({
+  onGoogleAuthorizationRequired,
+}: {
+  onGoogleAuthorizationRequired?: GoogleAuthorizationRetryHandler;
+}) => {
   const { projects } = useProjectContext();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [dailyHubs, setDailyHubs] = useState<DailyHub[]>([]);
@@ -9567,6 +9747,13 @@ const GlobalSchedulerSection = () => {
       await window.electron.runScheduledTaskNow(task.id);
       await loadTasks();
     } catch (runError: any) {
+      if (isGoogleAuthRefreshError(runError) && onGoogleAuthorizationRequired) {
+        onGoogleAuthorizationRequired({
+          title: `Wykonanie harmonogramu: ${task.name}`,
+          run: () => handleRunTaskNow(task),
+        });
+        return;
+      }
       setError(runError?.message || 'Nie udało się wykonać zadania harmonogramu.');
       await loadTasks();
     } finally {
@@ -11086,10 +11273,14 @@ export const SettingsModal = ({
   isOpen,
   onClose,
   googleAuthPromptNonce = 0,
+  onGoogleAuthorized,
+  onGoogleAuthorizationRequired,
 }: {
   isOpen: boolean;
   onClose: () => void;
   googleAuthPromptNonce?: number;
+  onGoogleAuthorized?: () => void | Promise<void>;
+  onGoogleAuthorizationRequired?: GoogleAuthorizationRetryHandler;
 }) => {
   const { settings } = useProjectContext();
 
@@ -11117,6 +11308,7 @@ export const SettingsModal = ({
                   clientId={settings?.googleClientId || ''}
                   clientSecret={settings?.googleClientSecret || ''}
                   autoAuthorizeNonce={googleAuthPromptNonce}
+                  onAuthorized={onGoogleAuthorized}
                 />
               </div>
             </div>
@@ -11127,7 +11319,7 @@ export const SettingsModal = ({
             </div>
 
             <div className="border-t border-gray-100 dark:border-gray-700 pt-6">
-              <GlobalSchedulerSection />
+              <GlobalSchedulerSection onGoogleAuthorizationRequired={onGoogleAuthorizationRequired} />
             </div>
           </div>
 

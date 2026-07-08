@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import type {
   EmailTemplate,
@@ -52,7 +52,14 @@ const isGoogleAuthRefreshError = (error: unknown) => {
   return message.includes('invalid_grant')
     || message.includes('Brak aktywnej autoryzacji Google')
     || message.includes('Aktualny token Google nie ma uprawnień')
+    || message.includes('insufficient authentication scopes')
+    || message.includes('Request had insufficient authentication scopes')
     || message.includes('Zaloguj się ponownie');
+};
+
+type PendingGoogleAction = {
+  title: string;
+  run: () => Promise<void>;
 };
 
 export default function App() {
@@ -68,6 +75,7 @@ const MainLayout = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [googleAuthPromptNonce, setGoogleAuthPromptNonce] = useState(0);
+  const pendingGoogleActionRef = useRef<PendingGoogleAction | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
   const [isDatabaseTransferPending, setIsDatabaseTransferPending] = useState(false);
@@ -128,7 +136,32 @@ const MainLayout = () => {
     setIsModalOpen(true);
   };
 
-  const handleExportDatabase = async () => {
+  const requestGoogleAuthorizationAndRetry = (action: PendingGoogleAction) => {
+    pendingGoogleActionRef.current = action;
+    alert(`Wygasły uprawnienia Google.\n\nAutoryzuj ponownie dostęp do Google. Po poprawnej autoryzacji akcja zostanie wykonana automatycznie:\n${action.title}`);
+    setIsSettingsOpen(true);
+    setGoogleAuthPromptNonce((current) => current + 1);
+  };
+
+  const handleGoogleAuthorized = async () => {
+    const pendingAction = pendingGoogleActionRef.current;
+    if (!pendingAction) return;
+
+    pendingGoogleActionRef.current = null;
+    setIsSettingsOpen(false);
+    await pendingAction.run();
+  };
+
+  const handleGoogleActionError = (error: unknown, action: PendingGoogleAction, fallbackMessage: string) => {
+    const message = error instanceof Error ? error.message : String(error || 'Nieznany błąd.');
+    if (isGoogleAuthRefreshError(error)) {
+      requestGoogleAuthorizationAndRetry(action);
+      return;
+    }
+    alert(`${fallbackMessage}\n${message}`);
+  };
+
+  const performExportDatabase = async () => {
     if (!window.electron?.exportDatabase) return;
 
     setIsDatabaseTransferPending(true);
@@ -137,28 +170,22 @@ const MainLayout = () => {
       if (result.canceled || !result.success) return;
       alert(`Baza danych została wyeksportowana do Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}`);
     } catch (error: any) {
-      const message = error?.message || 'Nieznany błąd.';
-      if (isGoogleAuthRefreshError(error)) {
-        const shouldLogin = window.confirm(
-          `Nie udało się wyeksportować bazy danych do Google Drive.\n${message}\n\nCzy chcesz teraz zalogować się ponownie do Google?`
-        );
-        if (shouldLogin) {
-          setIsSettingsOpen(true);
-          setGoogleAuthPromptNonce((current) => current + 1);
-        }
-        return;
-      }
-      alert(`Nie udało się wyeksportować bazy danych do Google Drive.\n${message}`);
+      handleGoogleActionError(
+        error,
+        { title: 'Eksport bazy danych do Google Drive', run: () => performExportDatabase() },
+        'Nie udało się wyeksportować bazy danych do Google Drive.',
+      );
     } finally {
       setIsDatabaseTransferPending(false);
     }
   };
 
-  const handleImportDatabase = async () => {
-    if (!window.electron?.importDatabase) return;
+  const handleExportDatabase = async () => {
+    await performExportDatabase();
+  };
 
-    const shouldImport = window.confirm('Czy pobrać bazę danych z udostępnionego folderu Google Drive i zastąpić nią lokalną bazę?');
-    if (!shouldImport) return;
+  const performImportDatabase = async () => {
+    if (!window.electron?.importDatabase) return;
 
     setIsDatabaseTransferPending(true);
     try {
@@ -167,21 +194,20 @@ const MainLayout = () => {
       alert(`Baza danych została pobrana z Google Drive.\nPlik: ${result.fileName || 'pcc-baza_danych.db'}\nAplikacja zostanie odświeżona.`);
       window.location.reload();
     } catch (error: any) {
-      const message = error?.message || 'Nieznany błąd.';
-      if (isGoogleAuthRefreshError(error)) {
-        const shouldLogin = window.confirm(
-          `Nie udało się pobrać bazy danych z Google Drive.\n${message}\n\nCzy chcesz teraz zalogować się ponownie do Google?`
-        );
-        if (shouldLogin) {
-          setIsSettingsOpen(true);
-          setGoogleAuthPromptNonce((current) => current + 1);
-        }
-        return;
-      }
-      alert(`Nie udało się pobrać bazy danych z Google Drive.\n${message}`);
+      handleGoogleActionError(
+        error,
+        { title: 'Import bazy danych z Google Drive', run: () => performImportDatabase() },
+        'Nie udało się pobrać bazy danych z Google Drive.',
+      );
     } finally {
       setIsDatabaseTransferPending(false);
     }
+  };
+
+  const handleImportDatabase = async () => {
+    const shouldImport = window.confirm('Czy pobrać bazę danych z udostępnionego folderu Google Drive i zastąpić nią lokalną bazę?');
+    if (!shouldImport) return;
+    await performImportDatabase();
   };
 
   return (
@@ -203,7 +229,10 @@ const MainLayout = () => {
           {currentView === 'daily' ? (
             <DailyMain />
           ) : (
-            <DashboardView onEdit={handleEditProject} />
+            <DashboardView
+              onEdit={handleEditProject}
+              onGoogleAuthorizationRequired={requestGoogleAuthorizationAndRetry}
+            />
           )}
         </Suspense>
       </main>
@@ -220,6 +249,8 @@ const MainLayout = () => {
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
             googleAuthPromptNonce={googleAuthPromptNonce}
+            onGoogleAuthorized={handleGoogleAuthorized}
+            onGoogleAuthorizationRequired={requestGoogleAuthorizationAndRetry}
           />
         </Suspense>
       )}

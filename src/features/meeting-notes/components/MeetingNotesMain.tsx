@@ -9,6 +9,7 @@ import { Editor } from './Editor';
 
 interface MeetingNotesMainProps {
   project: Project;
+  onGoogleAuthorizationRequired?: (action: { title: string; run: () => Promise<void> }) => void;
 }
 
 const createMeetingNoteStep = (): OrderProtocolStep => ({
@@ -114,7 +115,17 @@ const applyCurrentDateVariables = (meetingNoteData: MeetingNoteData): MeetingNot
   };
 };
 
-export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
+const isGoogleAuthRefreshError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return message.includes('invalid_grant')
+    || message.includes('Brak aktywnej autoryzacji Google')
+    || message.includes('Aktualny token Google nie ma uprawnień')
+    || message.includes('insufficient authentication scopes')
+    || message.includes('Request had insufficient authentication scopes')
+    || message.includes('Zaloguj się ponownie');
+};
+
+export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: MeetingNotesMainProps) => {
   const [data, setData] = useState<MeetingNoteData>({
     projectId: project.id,
     titleTemplate: `Notatka ze spotkania w dniu {{data}}`,
@@ -455,13 +466,13 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
     });
   };
 
-  const syncWithGoogleDocs = async () => {
+  const syncWithGoogleDocs = async (skipConfirmation = false) => {
     if (!project.googleDocLink) {
       alert('Brak linku do Google Docs w ustawieniach projektu!');
       return;
     }
 
-    if (!confirm('Czy na pewno chcesz dopisać aktualną notatkę do Google Docs?')) return;
+    if (!skipConfirmation && !confirm('Czy na pewno chcesz dopisać aktualną notatkę do Google Docs?')) return;
 
     setIsSaving(true);
     try {
@@ -473,7 +484,12 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
         // Double check auth
         const status = await window.electron.getGoogleAuthStatus();
         if (!status.isAuthenticated) {
-          if (confirm('Nie jesteś zalogowany do Google. Czy chcesz zalogować się teraz?')) {
+          if (onGoogleAuthorizationRequired) {
+            onGoogleAuthorizationRequired({
+              title: 'Wysłanie notatki do Google Docs',
+              run: () => syncWithGoogleDocs(true),
+            });
+          } else {
             handleGoogleLogin();
           }
           return;
@@ -494,6 +510,13 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
         }
       }
     } catch (error) {
+      if (isGoogleAuthRefreshError(error) && onGoogleAuthorizationRequired) {
+        onGoogleAuthorizationRequired({
+          title: 'Wysłanie notatki do Google Docs',
+          run: () => syncWithGoogleDocs(true),
+        });
+        return;
+      }
       alert('Błąd synchronizacji: ' + error);
     } finally {
       setIsSaving(false);
@@ -672,7 +695,7 @@ export const MeetingNotesMain = ({ project }: MeetingNotesMainProps) => {
           </button>
           
           <button
-            onClick={syncWithGoogleDocs}
+            onClick={() => syncWithGoogleDocs()}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-200 dark:shadow-none"
           >
             <Send size={18} />

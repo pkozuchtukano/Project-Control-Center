@@ -125,6 +125,19 @@
   -- Produkcyjny build rozdziela główny pakiet frontendu na mniejszy shell oraz osobne chunki widoków, co skraca odpowiedzialność modułu startowego bez zmiany danych w bazie.
 
 ## Dashboard projektu
+- 2026-07-08 - Kafelek bilansu w `Zlecenia vs Praca`
+  -- W karcie `Zlecenia vs Praca` dodano dobrze widoczny kafelek bilansu po prawej stronie progressbarow.
+  -- Bilans pokazuje formule: godziny w zleceniach + zaakceptowane godziny z zakladki `Do rozliczenia` - godziny przepracowane z YouTrack.
+  -- Dashboard laduje zaakceptowane pozycje `Do rozliczenia` i odswieza bilans po zapisie, zmianie statusu albo usunieciu pozycji w tej zakladce.
+- 2026-07-08 - Kafelek bilansu w `Rozliczenie utrzymania`
+  -- W karcie `Rozliczenie utrzymania` dodano taki sam kafelek bilansu po prawej stronie progressbarow.
+  -- Bilans utrzymania pokazuje formule: pula utrzymania - godziny przepracowane w utrzymaniu wedlug YouTrack, bez uwzgledniania pozycji `Do rozliczenia`.
+- 2026-07-08 - Kafelek bilansu w `Caly projekt: zlecenia + utrzymanie`
+  -- W karcie calego projektu dodano kafelek bilansu po prawej stronie progressbarow, spojny z kartami zlecen i utrzymania.
+  -- Bilans calego projektu pokazuje formule: zlecenia + pula utrzymania + zaakceptowane godziny z `Do rozliczenia` - wszystkie godziny przepracowane wedlug YouTrack.
+- 2026-07-08 - Trojwymiarowe karty bilansow godzin
+  -- W kartach `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie` wzmocniono obramowania, gradient tla, ring i cien.
+  -- Kafelki bilansu dostaly mocniejszy cien oraz wewnetrzny highlight, aby byly wyrazniej oddzielone od tla dashboardu.
 - 2026-06-24 - Oddzielne karty rozliczen i BUG-ow
   -- Zbiorczy panel porownania godzin podzielono na karty: `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie`.
   -- Kazda karta zawiera wlasny podzial BUG/reszta dla odpowiadajacego jej zakresu danych, co ulatwia porownanie zlecen, utrzymania i calosci projektu.
@@ -410,6 +423,9 @@
   -- Interfejs i eksporty pokazują teraz jednoznaczne, pełne określenia zamiast skrótów, co poprawia czytelność dla odbiorców raportów.
 
 ## Synchronizacja bazy danych
+- 2026-07-08 - Ponawianie akcji Google po odswiezeniu autoryzacji
+  -- Reczne eksporty i importy bazy do Google Drive po bledzie wygaslej albo niewystarczajacej autoryzacji otwieraja okno autoryzacji Google i zapamietuja wybrana akcje.
+  -- Po poprawnym wklejeniu kodu autoryzacji aplikacja automatycznie ponawia pierwotnie wybrany eksport albo import, bez ponownego wyboru akcji przez uzytkownika.
 - 2026-03-18 – Ręczny eksport i import bazy danych
   -- Dodano przyciski eksportu i importu lokalnej bazy SQLite w lewym dolnym rogu sidebara oraz IPC w procesie Electron do tworzenia spójnego snapshotu i podmiany pliku bazy.
   -- Użytkownik może zapisać kopię bazy do pliku `.db` lub zaimportować wskazaną kopię i odświeżyć aplikację na danych z importu.
@@ -438,6 +454,9 @@
   -- Menu traya powinno teraz wyświetlać poprawne polskie znaki zamiast zniekształconych liter w zasobniku Windows.
 
 ## Ustawienia główne
+- 2026-07-08 - Ponawianie recznego wykonania harmonogramu po autoryzacji Google
+  -- Przycisk `Wykonaj teraz` w globalnym harmonogramie rozpoznaje wygasla albo niewystarczajaca autoryzacje Gmail/Google.
+  -- Po ponownej autoryzacji Google aplikacja automatycznie ponawia wybrane wykonanie harmonogramu, zachowujac dotychczasowy zapis zadania przed uruchomieniem.
 - 2026-04-21 – Zapis przed ręcznym uruchomieniem zadania harmonogramu
   -- Przycisk `Wykonaj teraz` w globalnym harmonogramie zapisuje teraz aktualny stan formularza zadania przed uruchomieniem wykonania.
   -- Dzięki temu zmiana typu akcji na `Daily z AI`, prompt systemowy AI oraz wybór źródeł Daily nie są pomijane, gdy użytkownik uruchomi zadanie od razu po edycji.
@@ -882,6 +901,9 @@
   -- Szablon HTML wstawianych źródeł został uproszczony: zmniejszono odstępy, paddingi i marginesy nagłówków, sekcji, komentarzy oraz cytatów.
   -- Poprawiono także uszkodzone literały tekstowe, dzięki czemu w treści statusu wyświetlają się poprawnie napisy `Powiązania` i `Powiązane podzadania`.
 ## Notatki ze spotkań
+- 2026-07-08 - Ponawianie wysylki do Google Docs po autoryzacji
+  -- Synchronizacja notatki z Google Docs korzysta ze wspolnego przeplywu ponownej autoryzacji Google po bledzie wygaslego tokenu albo brakujacego scope.
+  -- Po poprawnym wklejeniu kodu autoryzacji aplikacja automatycznie dopisuje wybrana notatke do Google Docs bez ponownego potwierdzania tej samej akcji.
 - 2026-06-09 - Format podpowiedzi osób w notatkach
   -- Podpowiedzi osób wywoływane w edytorze notatek znakiem `@` pokazują teraz etykiety w formacie `P. Imię Nazwisko`.
   -- Wybranie osoby z listy wstawia do treści notatki ten sam format etykiety, bez zmiany zapisanych danych interesariuszy projektu ani schematu bazy.
