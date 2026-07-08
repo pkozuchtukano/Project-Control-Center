@@ -195,7 +195,7 @@ export const StatisticsView = ({ items }: Props) => {
 
     return (
         <div className="flex flex-col gap-6 h-full overflow-y-auto pr-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-wrap items-center gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm shrink-0">
+            <div className="flex flex-wrap items-center gap-4 pcc-card-compact shrink-0">
                 <div>
                     <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Od daty</label>
                     <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]" />
@@ -224,7 +224,7 @@ export const StatisticsView = ({ items }: Props) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-6">
-                <div className="lg:col-span-2 min-w-0 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                <div className="lg:col-span-2 min-w-0 pcc-card">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider">Rozkład miesięczny (roboczogodziny)</h3>
                     <div className="h-[350px] min-h-[350px] w-full min-w-0">
                         {sortedMonthlyData.length > 0 ? (
@@ -248,7 +248,7 @@ export const StatisticsView = ({ items }: Props) => {
                     </div>
                 </div>
 
-                <div className="min-w-0 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col items-center">
+                <div className="min-w-0 pcc-card flex flex-col items-center">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider self-start">Struktura prac</h3>
                     <div className="h-[250px] min-h-[250px] w-full min-w-0">
                         {categoryData.length > 0 ? (
@@ -317,7 +317,7 @@ export const StatisticsView = ({ items }: Props) => {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                <div className="pcc-card">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider">Uczestnicy projektu</h3>
                     <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
                         {authorData.map((author) => (
@@ -337,7 +337,7 @@ export const StatisticsView = ({ items }: Props) => {
                     </div>
                 </div>
 
-                <div className="lg:col-span-2 min-w-0 bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+                <div className="lg:col-span-2 min-w-0 pcc-card">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-6 uppercase tracking-wider">Zaangażowanie w czasie (miesięcznie / rbh)</h3>
                     <div className="h-[350px] min-h-[350px] w-full min-w-0">
                         {monthlyAuthorData.length > 0 ? (

@@ -138,6 +138,16 @@
 - 2026-07-08 - Trojwymiarowe karty bilansow godzin
   -- W kartach `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie` wzmocniono obramowania, gradient tla, ring i cien.
   -- Kafelki bilansu dostaly mocniejszy cien oraz wewnetrzny highlight, aby byly wyrazniej oddzielone od tla dashboardu.
+  -- Styl kart przesunieto w kierunku ciemnych paneli z radialna poswiata, miekkim cieniem i subtelnym efektem glow, zgodnie z referencja wizualna.
+  -- Efekt 3D zostal dodatkowo wzmocniony przez perspektywe, glebsze cienie pod kartami, mocniejsza poswiate i wizualne wysuniecie kafelkow bilansu ponad tlo karty.
+- 2026-07-08 - Ujednolicenie paddingow i struktury kart bilansu
+  -- Karty `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie` korzystaja teraz ze wspolnego zestawu klas dla paddingow, naglowkow, siatki i kafelkow bilansu.
+  -- Sekcje utrzymania i calego projektu sa rownorzednymi kartami, a nie wizualnie zagniezdzonymi blokami w karcie zlecen, dzieki czemu obramowania i odstepy sa konsekwentne.
+  -- Panele BUG/reszta oraz tory progressbarow dostaly spojny ciemny styl dopasowany do trojwymiarowych kart.
+- 2026-07-08 - Wspolny styl 3D kart aplikacji
+  -- Do globalnego CSS dodano klasy `pcc-card`, `pcc-card-compact` i `pcc-card-panel` definiujace wspolny trojwymiarowy wyglad kart, obramowanie, cien, gradient i highlight.
+  -- Powtarzalne karty tresci w dashboardzie, statusie, utrzymaniu, rejestrze pracy, linkach projektu, wycenie, notatkach i widokach YouTrack/Daily korzystaja teraz z tego samego stylu.
+  -- Zmiana nie obejmuje kontrolek formularzy, dropdownow, modali ani raportow do druku, aby nie pogorszyc czytelnosci i nie zmieniac zachowania specjalnych powierzchni UI.
 - 2026-06-24 - Oddzielne karty rozliczen i BUG-ow
   -- Zbiorczy panel porownania godzin podzielono na karty: `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie`.
   -- Kazda karta zawiera wlasny podzial BUG/reszta dla odpowiadajacego jej zakresu danych, co ulatwia porownanie zlecen, utrzymania i calosci projektu.

@@ -607,7 +607,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
 
     if (!settings?.youtrackBaseUrl || !settings?.youtrackToken) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 text-center bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+            <div className="flex flex-col items-center justify-center p-12 text-center pcc-card-panel">
                 <AlertCircle size={48} className="text-orange-400 mb-4" />
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Brak Konfiguracji YouTrack</h3>
                 <p className="text-gray-500 dark:text-gray-400 max-w-md">Przejdź do Ustawień Głównych (ikona zębatki w panelu bocznym) i wprowadź adres Base URL oraz Permanent Token do platformy YouTrack.</p>
@@ -619,7 +619,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
         <div className="flex flex-col h-full overflow-hidden animate-in fade-in duration-300">
 
             {/* FILTERS PANEL */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div className="pcc-card-compact mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="flex flex-wrap items-center gap-4">
                     <div>
                         <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Projekty (np. PMS, CBCP)</label>
@@ -759,7 +759,7 @@ export const YouTrackTab = ({ project }: { project: Project }) => {
                     const isExcluded = excludedIssues.has(issue.idReadable);
                     const isDropdownOpen = openDropdownId === issue.idReadable;
                     return (
-                        <details open={!isExcluded} key={issue.id} className={`group bg-white dark:bg-gray-800 rounded-2xl shadow-sm border outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'} relative ${isDropdownOpen ? 'z-40' : 'z-10'}`}>
+                        <details open={!isExcluded} key={issue.id} className={`group pcc-card-panel border outline-none transition-opacity ${isExcluded ? 'opacity-50 border-red-200 dark:border-red-900/50' : 'border-gray-100 dark:border-gray-800'} relative ${isDropdownOpen ? 'z-40' : 'z-10'}`}>
                             <summary className="p-5 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-start justify-between cursor-pointer select-none outline-none group-open:bg-gray-50/80 dark:group-open:bg-gray-800/80 transition-colors rounded-2xl group-open:rounded-b-none group-open:rounded-t-2xl">
                                 <div className="flex-1">
                                     <div className="flex flex-wrap items-center gap-3 mb-1">

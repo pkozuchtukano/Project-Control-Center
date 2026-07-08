@@ -646,7 +646,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="pcc-card-compact flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <FileText className="text-indigo-500" size={24} />
@@ -717,7 +717,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
             />
           </div>
 
-          <section className="order-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/60">
+          <section className="order-2 pcc-card-compact dark:bg-gray-800/60">
             <div className="flex items-start justify-between gap-4 border-b border-gray-100 pb-4 dark:border-gray-700">
               <div>
                 <div className="flex items-center gap-2">
@@ -967,7 +967,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
             />
           </section>
 
-          <div className="order-5 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="order-5 pcc-card">
             <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
               <Mail className="text-indigo-500" size={18} />
               <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">{'Szablon wiadomo\u015bci E-mail'}</h3>
@@ -1143,7 +1143,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
         {/* RIGHT COLUMN: STAKEHOLDERS & INFO */}
         <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="pcc-card-compact">
             <div className="flex items-center gap-2 mb-4">
               <Users className="text-indigo-500" size={18} />
               <h3 className="font-bold text-gray-900 dark:text-white uppercase tracking-wider text-sm">Lista obecności</h3>

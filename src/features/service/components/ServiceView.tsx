@@ -1457,19 +1457,19 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm dark:border-red-900/30 dark:bg-gray-800">
+        <div className="pcc-card-compact border-red-100 dark:border-red-900/30">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Zaległe zadania</p>
           <p className="mt-3 text-3xl font-black text-red-600 dark:text-red-300">{overdueTasks.length}</p>
         </div>
-        <div className="rounded-2xl border border-amber-100 bg-white p-5 shadow-sm dark:border-amber-900/30 dark:bg-gray-800">
+        <div className="pcc-card-compact border-amber-100 dark:border-amber-900/30">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Nadchodzące 7 dni</p>
           <p className="mt-3 text-3xl font-black text-amber-600 dark:text-amber-300">{upcomingTasks.length}</p>
         </div>
-        <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm dark:border-emerald-900/30 dark:bg-gray-800">
+        <div className="pcc-card-compact border-emerald-100 dark:border-emerald-900/30">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Wykonane</p>
           <p className="mt-3 text-3xl font-black text-emerald-600 dark:text-emerald-300">{completedTasks.length}</p>
         </div>
-        <div className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm dark:border-sky-900/30 dark:bg-gray-800">
+        <div className="pcc-card-compact border-sky-100 dark:border-sky-900/30">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Obowiązki ciągłe</p>
           <p className="mt-3 text-3xl font-black text-sky-600 dark:text-sky-300">{continuousObligations.length}</p>
         </div>
@@ -1477,7 +1477,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)]">
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="pcc-card-panel">
             <div className="flex flex-col gap-4 border-b border-gray-100 px-6 py-5 dark:border-gray-700 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Terminy do dopilnowania</h3>
@@ -1587,7 +1587,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
             )}
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="pcc-card-panel">
             <div className="border-b border-gray-100 px-6 py-5 dark:border-gray-700">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Katalog obowiązków</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">W tym miejscu opisujesz, co dokładnie musi być spełnione w ramach projektu.</p>
@@ -1679,7 +1679,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="pcc-card-compact">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="text-indigo-500" size={18} />
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Obowiązki ciągłe</h3>
@@ -1698,7 +1698,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="pcc-card-compact">
             <div className="flex items-center gap-2">
               <Siren className="text-indigo-500" size={18} />
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Zdarzenia i wyzwalacze</h3>
@@ -1740,7 +1740,7 @@ export const ServiceView = ({ project, alerts = [] }: ServiceViewProps) => {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <div className="pcc-card-compact">
             <div className="flex items-center gap-2">
               <Clock3 className="text-indigo-500" size={18} />
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Jak z tego korzystać</h3>

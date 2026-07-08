@@ -116,7 +116,7 @@ export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ esti
               {availableVariables.map(variable => (
                 <div
                   key={variable.token}
-                  className="rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-900/50 dark:bg-gray-900/70"
+                  className="pcc-card-compact p-3 border-indigo-100 dark:border-indigo-900/50"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <button

@@ -275,7 +275,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* HEADER */}
-      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="pcc-card flex justify-between items-center">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <Calculator className="text-indigo-500" /> Wycena i Harmonogram
@@ -326,7 +326,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
       <div className={`grid grid-cols-1 ${isFlowCollapsed ? 'xl:grid-cols-[4rem_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.55fr)]'} gap-6 items-start transition-[grid-template-columns] duration-200`}>
         {/* ESTIMATION TABLE */}
         <div className="order-2 xl:order-none xl:col-start-2 xl:row-start-1 space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="pcc-card-panel overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
               <h3 className="font-bold text-gray-900 dark:text-white">Kalkulator Roboczogodzin</h3>
               <div className="flex items-center gap-2">
@@ -354,7 +354,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
 
         {/* SCHEDULE & SUMMARY */}
         <div className="contents">
-          <div className="order-3 xl:order-none xl:col-start-2 xl:row-start-2 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+          <div className="order-3 xl:order-none xl:col-start-2 xl:row-start-2 pcc-card-panel overflow-hidden">
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-900/50">
               <h3 className="font-bold text-gray-900 dark:text-white">Harmonogram</h3>
               <div className="flex items-center gap-2">
@@ -378,7 +378,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
             </div>
           </div>
 
-          <div className={`order-1 xl:order-none xl:col-start-1 xl:row-start-1 xl:row-span-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden ${isFlowCollapsed ? 'xl:min-h-[220px]' : ''}`}>
+          <div className={`order-1 xl:order-none xl:col-start-1 xl:row-start-1 xl:row-span-3 pcc-card-panel overflow-hidden ${isFlowCollapsed ? 'xl:min-h-[220px]' : ''}`}>
             {isFlowCollapsed ? (
               <div className="flex h-full min-h-[220px] flex-col items-center gap-4 p-3">
                 <button
@@ -617,7 +617,7 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
         </div>
 
       {/* EMAIL TEMPLATE SECTION */}
-      <div className="order-4 xl:order-none xl:col-start-2 xl:row-start-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="order-4 xl:order-none xl:col-start-2 xl:row-start-3 pcc-card-panel overflow-hidden">
         <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50">
           <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Mail className="text-indigo-500" size={18} /> Szablon wiadomości E-mail

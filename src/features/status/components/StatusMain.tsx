@@ -597,7 +597,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
     <div className="space-y-6 animate-in fade-in duration-300">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7.4fr)_minmax(300px,2.6fr)] gap-4">
         <div className="space-y-6">
-        <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <section className="pcc-card-compact xl:p-5">
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Spotkanie statusowe</h2>
@@ -706,7 +706,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
           </div>
         </section>
 
-        <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <section className="pcc-card-compact xl:p-5">
           <Editor
             content={editorContent}
             onChange={(value) => {
@@ -723,7 +723,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
         </section>
         </div>
 
-        <aside className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800 sticky top-4 self-start max-h-[calc(100vh-2rem)] flex flex-col min-h-0">
+        <aside className="pcc-card-compact xl:p-5 sticky top-4 self-start max-h-[calc(100vh-2rem)] flex flex-col min-h-0">
           <div className="min-h-0 overflow-y-auto pr-1">
             <section>
             <div className="flex items-start justify-between gap-3 mb-4">
@@ -768,7 +768,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
         </aside>
       </div>
 
-      <section className="bg-white dark:bg-gray-800 rounded-2xl p-4 xl:p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+      <section className="pcc-card-compact xl:p-5">
         <div className="flex items-center justify-between gap-3 mb-5">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Historia statusów</h3>

@@ -587,7 +587,7 @@ export const ProjectLinksMain = ({ project, compact = false }: ProjectLinksMainP
   } = useProjectLinksState(project.id);
 
   return (
-    <div className={`rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800 ${compact ? 'h-full flex flex-col' : ''}`}>
+    <div className={`pcc-card-panel ${compact ? 'h-full flex flex-col' : ''}`}>
       <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5 dark:border-gray-800">
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">Linki</h3>

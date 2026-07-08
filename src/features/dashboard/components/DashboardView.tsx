@@ -1191,6 +1191,17 @@ export const DashboardView = ({
     : dashboardSyncProgress?.status === 'completed'
       ? 'Zsynchronizowano'
       : 'Synchronizacja';
+  const hoursCardBaseClass = 'relative overflow-hidden rounded-[28px] p-7 text-white ring-1 ring-white/10 transform-gpu [transform:perspective(1200px)_rotateX(1deg)_translateZ(0)] before:pointer-events-none before:absolute before:inset-x-8 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/55 before:to-transparent after:pointer-events-none after:absolute after:inset-x-10 after:bottom-0 after:h-28 after:blur-3xl';
+  const hoursCardHeaderClass = 'mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between';
+  const hoursCardGridClass = 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.36fr)] xl:items-stretch';
+  const hoursMetricsClass = 'space-y-6';
+  const hoursLabelClass = 'text-slate-300';
+  const hoursValueClass = 'font-bold text-white';
+  const hoursTrackClass = 'w-full overflow-hidden rounded-full bg-slate-700/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)]';
+  const hoursLegendClass = 'mt-3 flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-slate-400';
+  const bugPanelClass = 'mt-5 rounded-2xl border border-rose-400/20 bg-black/20 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]';
+  const bugItemClass = 'flex items-center justify-between rounded-xl bg-slate-950/25 px-3 py-2';
+  const balanceCardClass = 'flex h-full min-h-[260px] flex-col justify-between rounded-2xl border p-6 shadow-[0_26px_50px_rgba(0,0,0,0.36),0_0_34px_rgba(16,185,129,0.16),inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-18px_34px_rgba(0,0,0,0.22)] ring-1 ring-inset ring-white/20 transform-gpu [transform:perspective(900px)_rotateX(1.4deg)_translateZ(14px)]';
 
   return (
     <div className="flex-1 overflow-y-auto px-2 py-3 xl:px-3 xl:py-4 bg-gray-50 dark:bg-gray-900/50">
@@ -1244,7 +1255,7 @@ export const DashboardView = ({
         </div>
 
         {isDashboardSyncPanelOpen && (
-          <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm dark:border-indigo-900/40 dark:bg-gray-800">
+          <div className="pcc-card-compact border-indigo-100 dark:border-indigo-900/40">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-wrap items-end gap-3">
                 <div>
@@ -1413,7 +1424,7 @@ export const DashboardView = ({
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2.4fr)_minmax(320px,0.9fr)] xl:items-stretch">
               <div className="space-y-6">
                 {/* TIME PROGRESS */}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+                <div className="pcc-card">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                       <Clock size={20} className="text-indigo-500" />
@@ -1438,68 +1449,68 @@ export const DashboardView = ({
 
                 {/* HOURS COMPARISON PROGRESS */}
                 <div className="space-y-8">
-                  <div className="rounded-3xl border-2 border-indigo-300 bg-gradient-to-br from-white via-indigo-50/35 to-white p-6 shadow-[0_18px_38px_rgba(79,70,229,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-indigo-400/80 dark:from-slate-800 dark:via-indigo-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
-                  <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
-                    <div className="flex items-center gap-2 text-gray-900 dark:text-white">
-                      <Activity size={20} className="text-indigo-500" />
+                  <div className={`${hoursCardBaseClass} border border-indigo-400/45 bg-[radial-gradient(circle_at_50%_-15%,rgba(129,140,248,0.46),transparent_42%),linear-gradient(145deg,#101827_0%,#172238_52%,#111827_100%)] shadow-[0_42px_90px_rgba(79,70,229,0.46),0_18px_36px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-22px_48px_rgba(15,23,42,0.55)] after:bg-indigo-500/20`}>
+                  <div className={hoursCardHeaderClass}>
+                    <div className="flex items-center gap-2 text-white">
+                      <Activity size={20} className="text-indigo-300" />
                       <h3 className="font-bold sm:text-lg">Zlecenia vs Praca</h3>
                     </div>
                     <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hoursDifferenceTone}`}>
                       {hoursDifference > 0 ? '+' : ''}{hoursDifferencePct.toFixed(1)}% · {hoursDifference > 0 ? '+' : ''}{hoursDifference.toFixed(1)} h · {hoursDifferenceLabel}
                     </div>
                   </div>
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
-                    <div className="space-y-5">
+                  <div className={hoursCardGridClass}>
+                    <div className={hoursMetricsClass}>
                       <div>
-                      <div className="flex justify-between text-sm mb-1.5 font-medium">
-                        <span className="text-gray-600 dark:text-gray-400">Wykorzystane w zleceniach (Rozliczone + Zakontraktowane)</span>
-                        <span className="text-gray-900 dark:text-white font-bold">{totalHoursUsed.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                      <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                        <span className={hoursLabelClass}>Wykorzystane w zleceniach (Rozliczone + Zakontraktowane)</span>
+                        <span className={hoursValueClass}>{totalHoursUsed.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                       </div>
-                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                      <div className={`${hoursTrackClass} h-3`}>
                         <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalHoursUsed / maxScale) * 100)}%` }}></div>
                       </div>
                     </div>
 
                       <div>
-                      <div className="flex justify-between text-sm mb-1.5 font-medium">
-                        <span className="text-gray-600 dark:text-gray-400">Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
-                        <span className="text-gray-900 dark:text-white font-bold">{youtrackTotal.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                      <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                        <span className={hoursLabelClass}>Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
+                        <span className={hoursValueClass}>{youtrackTotal.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                       </div>
-                      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                      <div className={`${hoursTrackClass} flex h-4`}>
                         <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(youtrackHours['Programistyczne'], progPct)}`}></div>
                         <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(youtrackHours['Obsługa projektu'], obsPct)}`}></div>
                         <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(youtrackHours['Inne'], inPct)}`}></div>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                      <div className={hoursLegendClass}>
                         <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(youtrackHours['Programistyczne'], progPct)})</div>
                         <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(youtrackHours['Obsługa projektu'], obsPct)})</div>
                         <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(youtrackHours['Inne'], inPct)})</div>
                       </div>
 
-                      <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/50 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
+                      <div className={bugPanelClass}>
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                            <Bug size={16} className="text-rose-500" />
+                          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                            <Bug size={16} className="text-rose-400" />
                             <span>{'BUGi ze zlece\u0144 / reszta'}</span>
                           </div>
-                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                          <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                             {formatHoursWithUnit(youtrackTotal)}
                           </span>
                         </div>
-                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-700/80">
                           <div
                             className="h-full bg-rose-500 transition-all duration-700"
                             style={{ width: `${youtrackTotal > 0 ? Math.min(100, (orderBugHours.bug / youtrackTotal) * 100) : 0}%` }}
                             title={`BUG: ${formatBugHoursShare(orderBugHours.bug, youtrackTotal)}`}
                           />
                         </div>
-                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
-                          <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                        <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-slate-300 sm:grid-cols-2">
+                          <div className={bugItemClass}>
                             <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
                             <span>{formatBugHoursShare(orderBugHours.bug, youtrackTotal)}</span>
                           </div>
-                          <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                          <div className={bugItemClass}>
                             <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
                             <span>{formatBugHoursShare(orderBugHours.other, youtrackTotal)}</span>
                           </div>
@@ -1508,7 +1519,7 @@ export const DashboardView = ({
                     </div>
                     </div>
 
-                    <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${orderWorkBalanceTone}`}>
+                    <div className={`${balanceCardClass} ${orderWorkBalanceTone}`}>
                       <div>
                         <div className="flex items-center justify-between gap-3">
                           <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
@@ -1535,63 +1546,64 @@ export const DashboardView = ({
                       </div>
                     </div>
                   </div>
+                  </div>
 
                     {selectedProject.hasMaintenance && (
                       <>
-                        <div className="rounded-3xl border-2 border-fuchsia-300 bg-gradient-to-br from-white via-fuchsia-50/35 to-white p-6 shadow-[0_18px_38px_rgba(192,38,211,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-fuchsia-400/80 dark:from-slate-800 dark:via-fuchsia-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Rozliczenie utrzymania</p>
+                        <div className={`${hoursCardBaseClass} border border-fuchsia-400/45 bg-[radial-gradient(circle_at_50%_-15%,rgba(217,70,239,0.44),transparent_42%),linear-gradient(145deg,#101827_0%,#1d1838_52%,#111827_100%)] shadow-[0_42px_90px_rgba(168,85,247,0.42),0_18px_36px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-22px_48px_rgba(15,23,42,0.55)] after:bg-fuchsia-500/20`}>
+                          <div className={hoursCardHeaderClass}>
+                            <p className="text-sm font-semibold text-white">Rozliczenie utrzymania</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${maintenanceDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
                               {maintenanceDifferenceHours >= 0 ? 'Pozostało ' : 'Przekroczono '}
                               {Math.abs(maintenanceDifferenceHours).toFixed(1)} h
                             </span>
                           </div>
 
-                          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
-                            <div className="space-y-4">
+                          <div className={hoursCardGridClass}>
+                            <div className={hoursMetricsClass}>
                               <div>
-                              <div className="flex justify-between text-sm mb-1.5 font-medium">
-                                <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w utrzymaniu</span>
-                                <span className="text-gray-900 dark:text-white font-bold">{maintenanceAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                                <span className={hoursLabelClass}>Do wykorzystania w utrzymaniu</span>
+                                <span className={hoursValueClass}>{maintenanceAvailableHours.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                               </div>
-                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                              <div className={`${hoursTrackClass} h-3`}>
                                 <div className="bg-fuchsia-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (maintenanceAvailableHours / maxScale) * 100)}%` }}></div>
                               </div>
                             </div>
 
                               <div>
-                              <div className="flex justify-between text-sm mb-1.5 font-medium">
-                                <span className="text-gray-600 dark:text-gray-400">Wykorzystano w utrzymaniu</span>
-                                <span className="text-gray-900 dark:text-white font-bold">{maintenanceWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                                <span className={hoursLabelClass}>Wykorzystano w utrzymaniu</span>
+                                <span className={hoursValueClass}>{maintenanceWorkedHours.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                               </div>
-                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                              <div className={`${hoursTrackClass} flex h-4`}>
                                 <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(maintenanceHoursByCategory['Programistyczne'], maintenanceProgPct)}`}></div>
                                 <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(maintenanceHoursByCategory['Obsługa projektu'], maintenanceObsPct)}`}></div>
                                 <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(maintenanceHoursByCategory['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(maintenanceHoursByCategory['Inne'], maintenanceInPct)}`}></div>
                               </div>
-                              <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                              <div className={hoursLegendClass}>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(maintenanceHoursByCategory['Programistyczne'], maintenanceProgPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(maintenanceHoursByCategory['Obsługa projektu'], maintenanceObsPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(maintenanceHoursByCategory['Inne'], maintenanceInPct)})</div>
                               </div>
-                              <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
-                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
-                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" />{'BUGi z utrzymania / reszta'}</span>
-                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(maintenanceWorkedHours)}</span>
+                              <div className={bugPanelClass}>
+                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-white">
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-400" />{'BUGi z utrzymania / reszta'}</span>
+                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{formatHoursWithUnit(maintenanceWorkedHours)}</span>
                                 </div>
-                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-700/80">
                                   <div
                                     className="h-full bg-rose-500 transition-all duration-700"
                                     style={{ width: `${maintenanceWorkedHours > 0 ? Math.min(100, (maintenanceBugHours.bug / maintenanceWorkedHours) * 100) : 0}%` }}
                                     title={`BUG: ${formatBugHoursShare(maintenanceBugHours.bug, maintenanceWorkedHours)}`}
                                   />
                                 </div>
-                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
-                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-slate-300 sm:grid-cols-2">
+                                  <div className={bugItemClass}>
                                     <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
                                     <span>{formatBugHoursShare(maintenanceBugHours.bug, maintenanceWorkedHours)}</span>
                                   </div>
-                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                  <div className={bugItemClass}>
                                     <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
                                     <span>{formatBugHoursShare(maintenanceBugHours.other, maintenanceWorkedHours)}</span>
                                   </div>
@@ -1600,7 +1612,7 @@ export const DashboardView = ({
                               </div>
                             </div>
 
-                            <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${maintenanceBalanceTone}`}>
+                            <div className={`${balanceCardClass} ${maintenanceBalanceTone}`}>
                               <div>
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
@@ -1628,60 +1640,60 @@ export const DashboardView = ({
                           </div>
                         </div>
 
-                        <div className="rounded-3xl border-2 border-sky-300 bg-gradient-to-br from-white via-sky-50/35 to-white p-6 shadow-[0_18px_38px_rgba(14,165,233,0.18),inset_0_1px_0_rgba(255,255,255,0.75)] ring-1 ring-inset ring-white/70 dark:border-sky-400/80 dark:from-slate-800 dark:via-sky-950/25 dark:to-slate-900 dark:shadow-[0_20px_44px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10">
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">Cały projekt: zlecenia + utrzymanie</p>
+                        <div className={`${hoursCardBaseClass} border border-sky-400/45 bg-[radial-gradient(circle_at_50%_-15%,rgba(56,189,248,0.42),transparent_42%),linear-gradient(145deg,#101827_0%,#13263b_52%,#111827_100%)] shadow-[0_42px_90px_rgba(14,165,233,0.38),0_18px_36px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.16),inset_0_-22px_48px_rgba(15,23,42,0.55)] after:bg-sky-500/20`}>
+                          <div className={hoursCardHeaderClass}>
+                            <p className="text-sm font-semibold text-white">Cały projekt: zlecenia + utrzymanie</p>
                             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${totalProjectDifferenceHours >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
                               {totalProjectDifferenceHours >= 0 ? 'Pozostało ' : 'Przekroczono '}
                               {Math.abs(totalProjectDifferenceHours).toFixed(1)} h
                             </span>
                           </div>
 
-                          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.38fr)]">
-                            <div className="space-y-4">
+                          <div className={hoursCardGridClass}>
+                            <div className={hoursMetricsClass}>
                               <div>
-                              <div className="flex justify-between text-sm mb-1.5 font-medium">
-                                <span className="text-gray-600 dark:text-gray-400">Do wykorzystania w całym projekcie</span>
-                                <span className="text-gray-900 dark:text-white font-bold">{totalProjectAvailableHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                                <span className={hoursLabelClass}>Do wykorzystania w całym projekcie</span>
+                                <span className={hoursValueClass}>{totalProjectAvailableHours.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                               </div>
-                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                              <div className={`${hoursTrackClass} h-3`}>
                                 <div className="bg-sky-500 h-full transition-all duration-1000" style={{ width: `${Math.min(100, (totalProjectAvailableHours / maxScale) * 100)}%` }}></div>
                               </div>
                             </div>
 
                               <div>
-                              <div className="flex justify-between text-sm mb-1.5 font-medium">
-                                <span className="text-gray-600 dark:text-gray-400">Wykorzystano w całym projekcie</span>
-                                <span className="text-gray-900 dark:text-white font-bold">{totalProjectWorkedHours.toFixed(1)} <span className="text-gray-500 font-normal">h</span></span>
+                              <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
+                                <span className={hoursLabelClass}>Wykorzystano w całym projekcie</span>
+                                <span className={hoursValueClass}>{totalProjectWorkedHours.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
                               </div>
-                              <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-4 overflow-hidden flex">
+                              <div className={`${hoursTrackClass} flex h-4`}>
                                 <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(totalProjectHoursByCategory['Programistyczne'], totalProjectProgPct)}`}></div>
                                 <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Obsługa projektu'] / maxScale) * 100}%` }} title={`Obsługa projektu: ${formatShareLabel(totalProjectHoursByCategory['Obsługa projektu'], totalProjectObsPct)}`}></div>
                                 <div className="bg-amber-500 h-full transition-all duration-1000" style={{ width: `${(totalProjectHoursByCategory['Inne'] / maxScale) * 100}%` }} title={`Inne: ${formatShareLabel(totalProjectHoursByCategory['Inne'], totalProjectInPct)}`}></div>
                               </div>
-                              <div className="flex flex-wrap items-center justify-center gap-4 mt-3 text-xs font-medium text-gray-500">
+                              <div className={hoursLegendClass}>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-violet-500"></div> Programistyczne ({formatShareLabel(totalProjectHoursByCategory['Programistyczne'], totalProjectProgPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></div> Obsługa projektu ({formatShareLabel(totalProjectHoursByCategory['Obsługa projektu'], totalProjectObsPct)})</div>
                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm bg-amber-500"></div> Inne ({formatShareLabel(totalProjectHoursByCategory['Inne'], totalProjectInPct)})</div>
                               </div>
-                              <div className="mt-4 rounded-xl border border-rose-100 bg-white/70 p-4 dark:border-rose-900/30 dark:bg-gray-900/20">
-                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-900 dark:text-white">
-                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-500" />{'BUGi ca\u0142ego projektu / reszta'}</span>
-                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{formatHoursWithUnit(totalProjectWorkedHours)}</span>
+                              <div className={bugPanelClass}>
+                                <div className="flex items-center justify-between gap-3 text-sm font-semibold text-white">
+                                  <span className="flex items-center gap-2"><Bug size={16} className="text-rose-400" />{'BUGi ca\u0142ego projektu / reszta'}</span>
+                                  <span className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">{formatHoursWithUnit(totalProjectWorkedHours)}</span>
                                 </div>
-                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-700/80">
                                   <div
                                     className="h-full bg-rose-500 transition-all duration-700"
                                     style={{ width: `${totalProjectWorkedHours > 0 ? Math.min(100, (totalProjectBugHours.bug / totalProjectWorkedHours) * 100) : 0}%` }}
                                     title={`BUG: ${formatBugHoursShare(totalProjectBugHours.bug, totalProjectWorkedHours)}`}
                                   />
                                 </div>
-                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300 sm:grid-cols-2">
-                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-xs font-semibold text-slate-300 sm:grid-cols-2">
+                                  <div className={bugItemClass}>
                                     <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500"></span>BUG</span>
                                     <span>{formatBugHoursShare(totalProjectBugHours.bug, totalProjectWorkedHours)}</span>
                                   </div>
-                                  <div className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2 dark:bg-gray-900/30">
+                                  <div className={bugItemClass}>
                                     <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400"></span>Reszta</span>
                                     <span>{formatBugHoursShare(totalProjectBugHours.other, totalProjectWorkedHours)}</span>
                                   </div>
@@ -1690,7 +1702,7 @@ export const DashboardView = ({
                               </div>
                             </div>
 
-                            <div className={`flex h-full flex-col justify-between rounded-2xl border p-5 shadow-[0_16px_34px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.55)] ring-1 ring-inset ring-white/60 dark:shadow-[0_18px_40px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.08)] dark:ring-white/10 ${totalProjectBalanceTone}`}>
+                            <div className={`${balanceCardClass} ${totalProjectBalanceTone}`}>
                               <div>
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="text-xs font-black uppercase tracking-[0.18em] opacity-70">Bilans</p>
@@ -1721,7 +1733,6 @@ export const DashboardView = ({
 
             </>
           )}
-                  </div>
                 </div>
               </div>
 
@@ -1734,7 +1745,7 @@ export const DashboardView = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
               {/* KARTA INFO */}
-              <div className="col-span-1 md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+              <div className="col-span-1 md:col-span-2 pcc-card">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
                     <Briefcase className="text-indigo-500" size={20} /> Wszystkie informacje
@@ -1908,7 +1919,7 @@ export const DashboardView = ({
 
 
               {/* CHARTS */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col">
+              <div className="pcc-card flex flex-col">
                 <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-6 flex items-center gap-2">
                   <BarChartIcon className="text-indigo-500" size={20} /> Limity Godzin
                 </h3>
@@ -1935,7 +1946,7 @@ export const DashboardView = ({
             </div>
 
             {roleSettlementRows.length > 0 && (
-              <section className="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm dark:border-indigo-900/50 dark:bg-gray-800">
+              <section className="pcc-card-panel overflow-hidden border-indigo-100 dark:border-indigo-900/50">
                 <div className="flex flex-col gap-2 border-b border-indigo-100 bg-indigo-50/60 px-6 py-5 dark:border-indigo-900/50 dark:bg-indigo-950/20 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
@@ -2089,7 +2100,7 @@ export const DashboardView = ({
                       Raport zarządczy
                     </button>
                   </div>
-                  <div className="w-full min-w-[220px] rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+                  <div className="w-full min-w-[220px] pcc-card-compact border-white/70 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-white/5">
                     <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-gray-500 dark:text-gray-400">Wykorzystanie umowy</p>
                     <div className="mt-2 flex items-baseline gap-2">
                       <span className="text-3xl font-black text-gray-900 dark:text-white">{contractUsagePct.toFixed(1)}%</span>
@@ -2125,7 +2136,7 @@ export const DashboardView = ({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="pcc-card">
               <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                   <Activity size={20} className="text-indigo-500" />
@@ -2188,7 +2199,7 @@ export const DashboardView = ({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="pcc-card-compact">
               <button
                 type="button"
                 onClick={() => toggleSettlementSection('settlement-overview')}
@@ -2201,7 +2212,7 @@ export const DashboardView = ({
                 <div className="mt-4 space-y-6">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                     {filteredSettlementRows.map((row) => (
-                      <div key={row.label} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900/30">
+                      <div key={row.label} className="pcc-card-compact dark:bg-gray-900/30">
                         <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">{row.label}</p>
                         <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
                           {row.value}
@@ -2236,7 +2247,7 @@ export const DashboardView = ({
                       </div>
                       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                         {filteredMaintenanceSettlementRows.map((row) => (
-                          <div key={row.label} className="rounded-2xl border border-fuchsia-100 bg-white p-5 shadow-sm dark:border-fuchsia-900/40 dark:bg-gray-900/40">
+                          <div key={row.label} className="pcc-card-compact border-fuchsia-100 dark:border-fuchsia-900/40 dark:bg-gray-900/40">
                             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-fuchsia-400 dark:text-fuchsia-300">{row.label}</p>
                             <div className={`mt-3 text-3xl font-black tracking-tight ${row.tone}`}>
                               {row.value}
@@ -2265,7 +2276,7 @@ export const DashboardView = ({
             </div>
 
             {selectedProject.hasMaintenance && (
-              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+              <div className="pcc-card-compact">
                 <button
                   type="button"
                   onClick={() => toggleSettlementSection('settlement-breakdown')}
@@ -2281,7 +2292,7 @@ export const DashboardView = ({
                         <h4 className="text-sm font-black uppercase tracking-[0.22em] text-gray-900 dark:text-white">{section.title}</h4>
                         <div className="mt-4 space-y-3">
                           {section.items.map((item) => (
-                            <div key={`${section.key}-${item.label}`} className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-gray-900/30">
+                            <div key={`${section.key}-${item.label}`} className="pcc-card-compact border-white/70 bg-white/80 dark:border-white/10 dark:bg-gray-900/30">
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.label}</p>
                                 <p className={`text-xl font-black ${item.tone}`}>
@@ -2311,7 +2322,7 @@ export const DashboardView = ({
               </div>
             )}
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+            <div className="pcc-card">
               <button
                 type="button"
                 onClick={() => toggleSettlementSection('settlement-burnup')}
@@ -2524,7 +2535,7 @@ export const DashboardView = ({
             </div>
 
             {selectedProject.hasMaintenance && (
-              <div className="rounded-2xl border border-fuchsia-100 bg-white p-6 shadow-sm dark:border-fuchsia-900/30 dark:bg-gray-800">
+              <div className="pcc-card border-fuchsia-100 dark:border-fuchsia-900/30">
                 <button
                   type="button"
                   onClick={() => toggleSettlementSection('settlement-burnup-maintenance')}
@@ -2748,7 +2759,7 @@ export const DashboardView = ({
             )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr]">
-              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800 overflow-hidden">
+              <div className="pcc-card-panel overflow-hidden">
                 <button
                   type="button"
                   onClick={() => toggleSettlementSection('settlement-table')}
@@ -2787,7 +2798,7 @@ export const DashboardView = ({
               </div>
 
               <div className="space-y-6">
-                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                <div className="pcc-card">
                   <button
                     type="button"
                     onClick={() => toggleSettlementSection('settlement-profitability')}
@@ -2825,7 +2836,7 @@ export const DashboardView = ({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                <div className="pcc-card">
                   <button
                     type="button"
                     onClick={() => toggleSettlementSection('settlement-authors')}
@@ -2862,7 +2873,7 @@ export const DashboardView = ({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+                <div className="pcc-card">
                   <button
                     type="button"
                     onClick={() => toggleSettlementSection('settlement-status')}
@@ -2938,7 +2949,7 @@ export const DashboardView = ({
         )}
 
         {activeTab === '__status_placeholder__' && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-gray-800 text-center flex flex-col items-center animate-in fade-in duration-300">
+          <div className="pcc-card text-center flex flex-col items-center animate-in fade-in duration-300">
             <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/50 rounded-full flex items-center justify-center mb-4">
               <Activity size={28} className="text-blue-400 dark:text-blue-500" />
             </div>
@@ -3134,7 +3145,7 @@ const OrdersRegistryView = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="pcc-card flex justify-between items-center">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <Briefcase className="text-indigo-500" /> Zlecenia
@@ -3234,7 +3245,7 @@ const OrdersRegistryView = () => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="pcc-card-panel overflow-hidden">
         {sortedOrders.length === 0 ? (
           <div className="p-12 text-center flex flex-col items-center">
             <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900/50 rounded-full flex items-center justify-center mb-4">
@@ -3836,7 +3847,7 @@ const OrderProtocolFlowModal = ({
                   {availableVariables.map(variable => (
                     <div
                       key={variable.token}
-                      className="rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm dark:border-indigo-900/50 dark:bg-gray-900/70"
+                      className="pcc-card-compact p-3 border-indigo-100 dark:border-indigo-900/50"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <button
@@ -4016,7 +4027,7 @@ const OrderProtocolFlowModal = ({
                   return (
                     <div
                       key={step.id}
-                      className={`rounded-2xl border bg-white dark:bg-gray-800/60 shadow-sm transition-all ${
+                      className={`pcc-card-panel border transition-all ${
                         isCompleted
                           ? 'border-emerald-200 dark:border-emerald-800/60 p-3'
                           : 'border-gray-200 dark:border-gray-700 p-5'
@@ -4084,7 +4095,7 @@ const OrderProtocolFlowModal = ({
             </section>
           )}
 
-          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 mt-6">
+          <section className="pcc-card mt-6">
             <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
               <Mail className="text-indigo-500" size={18} />
               <div>
@@ -5127,7 +5138,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="pcc-card flex justify-between items-center">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <DollarSign className="text-indigo-500" /> Utrzymanie
@@ -5151,21 +5162,21 @@ const MaintenanceView = ({ project }: { project: Project }) => {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="pcc-card-compact">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Miesięcy</p>
           <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{entries.length}</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="pcc-card-compact">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Suma netto</p>
           <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{formatCurrencyValue(totalNet)} zł</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="pcc-card-compact">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Suma brutto</p>
           <p className="mt-3 text-3xl font-black text-gray-900 dark:text-white">{formatCurrencyValue(totalGross)} zł</p>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="pcc-card-panel overflow-hidden">
         {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="animate-spin text-indigo-500" size={32} />
@@ -5969,7 +5980,7 @@ const PendingSettlementView = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+      <div className="pcc-card flex justify-between items-center">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-1">
             <FileText className="text-indigo-500" /> Do rozliczenia
@@ -6126,7 +6137,7 @@ const PendingSettlementView = ({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+      <div className="pcc-card-panel overflow-hidden">
         {isLoading ? (
           <div className="flex justify-center p-12">
             <Loader2 className="animate-spin text-indigo-500" size={32} />
@@ -6742,7 +6753,7 @@ const PendingSettlementEntryModal = ({
               </div>
 
               <div className="mt-5 grid grid-cols-1 gap-4">
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                <div className="pcc-card-compact">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Wycena</p>
                   <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
                     <div className="xl:col-span-1">
@@ -6818,7 +6829,7 @@ const PendingSettlementEntryModal = ({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                <div className="pcc-card-compact">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Akceptacja</p>
                   <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div className="md:col-span-3">
@@ -6882,7 +6893,7 @@ const PendingSettlementEntryModal = ({
               </div>
 
               <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                <div className="pcc-card-compact">
                   <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Czas pracy przed akceptacją</label>
                   <input
                     type="number"
@@ -6895,7 +6906,7 @@ const PendingSettlementEntryModal = ({
                   />
                 </div>
 
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800/70">
+                <div className="pcc-card-compact">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Status pozycji</p>
                   <div className="mt-4">
                     <div ref={statusComboboxRef} className="relative">
@@ -7396,7 +7407,7 @@ const MaintenanceSettlementFlowModal = ({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <section className="pcc-card">
             <button
               type="button"
               onClick={() => setIsVariablesSectionExpanded(prev => !prev)}
@@ -7426,7 +7437,7 @@ const MaintenanceSettlementFlowModal = ({
           {isEditMode ? (
             <section className="space-y-4">
               {draftSteps.map((step, index) => (
-                <div key={step.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-5 shadow-sm">
+                <div key={step.id} className="pcc-card-compact dark:bg-gray-800/60">
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center shrink-0">
@@ -7531,7 +7542,7 @@ const MaintenanceSettlementFlowModal = ({
                   return (
                     <div
                       key={step.id}
-                      className={`rounded-2xl border bg-white dark:bg-gray-800/60 shadow-sm transition-all ${
+                      className={`pcc-card-panel border transition-all ${
                         isCompleted
                           ? 'border-emerald-200 dark:border-emerald-800/60 p-3'
                           : 'border-gray-200 dark:border-gray-700 p-5'
@@ -7599,7 +7610,7 @@ const MaintenanceSettlementFlowModal = ({
             </section>
           )}
 
-          <section className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800">
+          <section className="pcc-card">
             <div className="flex items-center gap-2 mb-4 border-b border-gray-100 dark:border-gray-700 pb-4">
               <Mail className="text-indigo-500" size={18} />
               <div>

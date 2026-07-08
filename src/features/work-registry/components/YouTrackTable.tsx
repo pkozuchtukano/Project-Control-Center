@@ -388,7 +388,7 @@ export const YouTrackTable = ({ items, onSetCategory, onSetMaintenance, onSetCat
     const allSelected = issueGroups.length > 0 && selectedIssueIds.size === issueGroups.length;
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm relative">
+        <div className="flex flex-col h-full pcc-card-panel overflow-hidden relative">
             {/* ---- Pasek filtrów ---- */}
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-wrap gap-3 items-center bg-gray-50/50 dark:bg-gray-800/50">
                 {/* Checkbox "zaznacz wszystkie" */}

@@ -928,7 +928,7 @@ export const ProceduresMain = ({ project }: ProceduresMainProps) => {
         )}
 
         {mode === 'list' && (
-          <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <section className="pcc-card-compact">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black text-gray-900 dark:text-white">Lista procedur</h2>
             </div>
@@ -976,7 +976,7 @@ export const ProceduresMain = ({ project }: ProceduresMainProps) => {
 
         {mode === 'editor' && (
         <section className="grid min-h-[760px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="overflow-hidden pcc-card-panel">
             <div className="grid h-full min-h-[760px] grid-cols-[72px_minmax(0,1fr)]">
               <aside className="flex flex-col items-center gap-2 border-r border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-950/60">
                 <button type="button" onClick={() => setActiveTool('select')} title="Zaznacz i przesuwaj" className={`h-11 w-11 rounded-lg border inline-flex items-center justify-center ${activeTool === 'select' ? 'border-indigo-400 bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-200' : 'border-gray-200 bg-white text-gray-500 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'}`}>
@@ -1262,7 +1262,7 @@ export const ProceduresMain = ({ project }: ProceduresMainProps) => {
             </div>
           </div>
 
-          <aside className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <aside className="space-y-4 pcc-card-compact">
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-black uppercase tracking-wide text-gray-500 dark:text-gray-400">Procedura</h2>

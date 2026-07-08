@@ -573,7 +573,7 @@ export const DailyMain = ({ project }: DailyMainProps) => {
                   <div
                     key={hub.id}
                     onClick={() => setSelectedHub(hub)}
-                    className="group relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-6 shadow-sm hover:shadow-xl hover:border-indigo-200 dark:hover:border-indigo-900 transition-all cursor-pointer overflow-hidden"
+                    className="group relative pcc-card cursor-pointer transition-all hover:border-indigo-200 dark:hover:border-indigo-900"
                   >
                     <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                       <button 
