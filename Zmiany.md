@@ -148,6 +148,14 @@
   -- Do globalnego CSS dodano klasy `pcc-card`, `pcc-card-compact` i `pcc-card-panel` definiujace wspolny trojwymiarowy wyglad kart, obramowanie, cien, gradient i highlight.
   -- Powtarzalne karty tresci w dashboardzie, statusie, utrzymaniu, rejestrze pracy, linkach projektu, wycenie, notatkach i widokach YouTrack/Daily korzystaja teraz z tego samego stylu.
   -- Zmiana nie obejmuje kontrolek formularzy, dropdownow, modali ani raportow do druku, aby nie pogorszyc czytelnosci i nie zmieniac zachowania specjalnych powierzchni UI.
+- 2026-07-08 - Rozroznienie zlecen i utrzymania w rozliczeniach
+  -- W zakladce `Rozliczenia` dla projektow z utrzymaniem dodano dwa wyrazne kafle: `Zlecenia` oraz `Utrzymanie`, pokazujace osobne pule i przepracowane godziny.
+  -- Obliczenia `Zlecenia vs Praca` w rozliczeniach pomijaja teraz logi oznaczone jako utrzymanie, dzieki czemu czesc zleceniowa nie miesza sie z praca utrzymaniowa.
+  -- Naglowek porownania godzin w projektach z utrzymaniem wskazuje teraz wprost, ze karta dotyczy zlecen bez utrzymania.
+- 2026-07-08 - Spojna definicja godzin przepracowanych w zleceniach
+  -- W zakladce `Rozliczenia` godziny przepracowane w zleceniach sa teraz liczone jako logi YouTrack z wybranego zakresu dat, ktore nie sa oznaczone jako utrzymanie.
+  -- Ten sam odfiltrowany zestaw logow zasila podsumowanie, wykres `Zlecenia vs Praca`, podzial BUG/reszta i liczbe zadan zleceniowych.
+  -- Wykresy narastania godzin i raport zarzadczy dla zlecen korzystaja teraz z logow bez utrzymania, aby linia godzin zalogowanych zgadzala sie z podsumowaniem zlecen.
 - 2026-06-24 - Oddzielne karty rozliczen i BUG-ow
   -- Zbiorczy panel porownania godzin podzielono na karty: `Zlecenia vs Praca`, `Rozliczenie utrzymania` oraz `Caly projekt: zlecenia + utrzymanie`.
   -- Kazda karta zawiera wlasny podzial BUG/reszta dla odpowiadajacego jej zakresu danych, co ulatwia porownanie zlecen, utrzymania i calosci projektu.

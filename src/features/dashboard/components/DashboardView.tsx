@@ -701,7 +701,7 @@ export const DashboardView = ({
   ];
   const burnUpTrendData = buildBurnUpTrendData({
     orders: orders.filter((order) => !isCancelledOrder(order)),
-    workItems,
+    workItems: nonMaintenanceWorkItems,
   });
   const lastBurnUpDate = burnUpTrendData.length > 0 ? burnUpTrendData[burnUpTrendData.length - 1].date : null;
   const todayDateKey = getDateKey(new Date());
@@ -740,9 +740,9 @@ export const DashboardView = ({
     : burnUpRangeMode === 'custom'
       ? burnUpVisibleRange
       : lastHalfYearRange;
-  const filteredWorkItems = workItems;
-  const filteredOrderWorkItems = filteredWorkItems;
-  const filteredOrderBugWorkItems = filteredWorkItems.filter((item) => !item.isMaintenance);
+  const filteredWorkItems = workItems.filter((item) => doesWorkItemOverlapRange(item.date, effectiveBurnUpRange));
+  const filteredOrderWorkItems = filteredWorkItems.filter((item) => !item.isMaintenance);
+  const filteredOrderBugWorkItems = filteredOrderWorkItems;
   const filteredMaintenanceWorkItems = filteredWorkItems.filter((item) => item.isMaintenance);
   const filteredMaintenanceEntries = maintenanceEntries.filter((entry) =>
     doesMaintenanceEntryOverlapRange(entry.month, effectiveBurnUpRange)
@@ -2136,11 +2136,93 @@ export const DashboardView = ({
               </div>
             </div>
 
+            {selectedProject.hasMaintenance && (
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                <div className="relative overflow-hidden rounded-[26px] border border-sky-300/60 bg-[radial-gradient(circle_at_20%_-15%,rgba(56,189,248,0.28),transparent_42%),linear-gradient(145deg,#f8fbff_0%,#eff6ff_52%,#f8fafc_100%)] p-6 shadow-[0_26px_55px_rgba(14,165,233,0.18),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-sky-500/35 dark:bg-[radial-gradient(circle_at_20%_-15%,rgba(56,189,248,0.22),transparent_42%),linear-gradient(145deg,#0f172a_0%,#13263b_55%,#111827_100%)] dark:shadow-[0_30px_70px_rgba(14,165,233,0.2),0_18px_38px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="inline-flex rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-sky-700 shadow-sm dark:border-sky-400/20 dark:bg-white/10 dark:text-sky-200">
+                        {'Zlecenia'}
+                      </p>
+                      <h4 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                        {formatOrderHours(filteredContractedTotalHours)} h
+                      </h4>
+                      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        {'Formalne zlecenia: rozliczone + oczekujace na odbior, bez godzin oznaczonych jako utrzymanie.'}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-sky-200 bg-white/80 px-4 py-3 text-right dark:border-sky-400/20 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {'Przepracowane'}
+                      </p>
+                      <p className="mt-1 text-xl font-black text-sky-700 dark:text-sky-200">
+                        {formatOrderHours(filteredYoutrackTotal)} h
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {'Rozliczone'}
+                      </p>
+                      <p className="mt-1 text-lg font-black text-emerald-700 dark:text-emerald-300">{formatOrderHours(filteredSettledHours)} h</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {'Do rozliczenia'}
+                      </p>
+                      <p className="mt-1 text-lg font-black text-amber-700 dark:text-amber-300">{formatOrderHours(filteredPendingSettlementHours)} h</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative overflow-hidden rounded-[26px] border border-fuchsia-300/60 bg-[radial-gradient(circle_at_20%_-15%,rgba(217,70,239,0.3),transparent_42%),linear-gradient(145deg,#fff7ff_0%,#faf5ff_52%,#f8fafc_100%)] p-6 shadow-[0_26px_55px_rgba(192,38,211,0.18),inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-fuchsia-500/35 dark:bg-[radial-gradient(circle_at_20%_-15%,rgba(217,70,239,0.22),transparent_42%),linear-gradient(145deg,#0f172a_0%,#24173a_55%,#111827_100%)] dark:shadow-[0_30px_70px_rgba(192,38,211,0.2),0_18px_38px_rgba(0,0,0,0.38),inset_0_1px_0_rgba(255,255,255,0.12)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="inline-flex rounded-full border border-fuchsia-200 bg-white/80 px-3 py-1 text-[11px] font-black uppercase tracking-[0.24em] text-fuchsia-700 shadow-sm dark:border-fuchsia-400/20 dark:bg-white/10 dark:text-fuchsia-200">
+                        {'Utrzymanie'}
+                      </p>
+                      <h4 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                        {formatOrderHours(filteredMaintenanceAvailableHours)} h
+                      </h4>
+                      <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        {'Osobna pula abonamentowa oraz logi YouTrack oznaczone jako utrzymanie.'}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-fuchsia-200 bg-white/80 px-4 py-3 text-right dark:border-fuchsia-400/20 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {'Przepracowane'}
+                      </p>
+                      <p className="mt-1 text-xl font-black text-fuchsia-700 dark:text-fuchsia-200">
+                        {formatOrderHours(filteredMaintenanceYoutrackTotal)} h
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {'Miesiace'}
+                      </p>
+                      <p className="mt-1 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300">{filteredMaintenanceEntries.length}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        {filteredMaintenanceDifferenceHours >= 0 ? 'Pozostalo' : 'Przekroczono'}
+                      </p>
+                      <p className={`mt-1 text-lg font-black ${filteredMaintenanceDifferenceHours >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {formatOrderHours(filteredMaintenanceDifferenceHours)} h
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="pcc-card">
               <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2 text-gray-900 dark:text-white">
                   <Activity size={20} className="text-indigo-500" />
-                  <h3 className="font-bold sm:text-lg">Zlecenia vs Praca</h3>
+                  <h3 className="font-bold sm:text-lg">{selectedProject.hasMaintenance ? 'Zlecenia vs Praca (bez utrzymania)' : 'Zlecenia vs Praca'}</h3>
                 </div>
                 <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${filteredOrderVsWorkTone}`}>
                   {filteredProfitabilityHours > 0 ? '+' : ''}{filteredOrderVsWorkDifferencePct.toFixed(1)}% · {filteredProfitabilityHours > 0 ? '+' : ''}{filteredProfitabilityHours.toFixed(1)} h · {filteredOrderVsWorkLabel}
@@ -2980,7 +3062,7 @@ export const DashboardView = ({
         onClose={() => setIsExecutiveSettlementReportOpen(false)}
         project={selectedProject}
         orders={orders}
-        workItems={workItems}
+        workItems={nonMaintenanceWorkItems}
         burnUpTrendData={visibleBurnUpTrendData}
         burnUpRange={effectiveBurnUpRange}
         burnUpEstimateCeiling={burnUpEstimateCeiling}
@@ -7828,6 +7910,16 @@ const doesMaintenanceEntryOverlapRange = (
   const monthStart = getDateKey(new Date(year, monthIndex - 1, 1));
   const monthEnd = getDateKey(new Date(year, monthIndex, 0));
   return monthStart <= range.end && monthEnd >= range.start;
+};
+const doesWorkItemOverlapRange = (
+  workItemDate: string,
+  range: { start: string; end: string } | null,
+) => {
+  if (!range) return true;
+  const date = parseCalendarDate(workItemDate);
+  if (!date) return false;
+  const dateKey = getDateKey(date);
+  return dateKey >= range.start && dateKey <= range.end;
 };
 const getOrderTimelineEndDate = (order: Order, fallbackEndDate: Date) =>
   parseCalendarDate(order.scheduleTo)
