@@ -1032,6 +1032,12 @@
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
 
 ## Do rozliczenia
+- 2026-07-10 - Filtr zaznaczonych pozycji
+  -- Do kafelkow filtrow w widoku `Do rozliczenia` dodano filtr `Zaznaczone`, liczony na podstawie pozycji zaznaczonych checkboxami na liscie.
+  -- Klikniecie kafelka ogranicza liste do aktualnie zaznaczonych pozycji i dziala razem z istniejacym wyszukiwaniem oraz filtrami dat.
+- 2026-07-10 - Projektowa pamiec danych akceptacji
+  -- Formularz pozycji `Do rozliczenia` zapamietuje w danych projektu ostatnio zapisane pola `Kto zaakceptowal` i `Kanal akceptacji` z zaakceptowanej pozycji.
+  -- Po zaznaczeniu checkboxa `Zaakceptowane?` formularz uzupelnia date akceptacji dzisiejsza data oraz podpowiada zapamietana osobe i kanal tylko w ramach aktualnego projektu.
 - 2026-04-27 – Zmiana statusu bezpośrednio na liście `Do rozliczenia`
   -- W kolumnie `Status` dodano listę wyboru pozwalającą zmienić status pozycji bez otwierania formularza edycji.
   -- Zmiana korzysta z istniejących pól statusu i zapisuje wpis przez dotychczasowy mechanizm `savePendingSettlementEntry`, bez migracji bazy i bez utraty danych.

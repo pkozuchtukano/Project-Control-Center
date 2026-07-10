@@ -44,6 +44,10 @@ export type Project = {
   taskTypes?: TaskType[];
   googleDocLink?: string;
   pendingSettlementYoutrackUrl?: string;
+  pendingSettlementAcceptanceDefaults?: {
+    acceptedBy?: string;
+    acceptanceChannel?: string;
+  };
   clickupDailyUrl?: string;
   isHiddenInSidebar?: boolean;
   hasPersonnelRoles?: boolean;

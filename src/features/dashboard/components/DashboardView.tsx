@@ -5572,12 +5572,13 @@ const PendingSettlementView = ({
   project: Project;
   onEntriesChanged?: () => void | Promise<void>;
 }) => {
+  const { updateProject } = useProjectContext();
   const [entries, setEntries] = useState<PendingSettlementEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<PendingSettlementEntry | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'selected' | 'new' | 'estimated' | 'notEstimated' | 'accepted' | 'notAccepted' | 'inProgress' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilterField, setDateFilterField] = useState<'requestDate' | 'estimationDate' | 'acceptanceDate'>('requestDate');
   const [dateFilterFrom, setDateFilterFrom] = useState('');
@@ -5854,6 +5855,27 @@ const PendingSettlementView = ({
     if (!window.electron?.savePendingSettlementEntry) return;
 
     await window.electron.savePendingSettlementEntry(entry);
+    const nextAcceptanceDefaults = {
+      acceptedBy: entry.acceptedBy?.trim() || '',
+      acceptanceChannel: entry.acceptanceChannel?.trim() || '',
+    };
+    const currentAcceptanceDefaults = {
+      acceptedBy: project.pendingSettlementAcceptanceDefaults?.acceptedBy?.trim() || '',
+      acceptanceChannel: project.pendingSettlementAcceptanceDefaults?.acceptanceChannel?.trim() || '',
+    };
+
+    if (
+      entry.isAccepted
+      && (nextAcceptanceDefaults.acceptedBy || nextAcceptanceDefaults.acceptanceChannel)
+      && (
+        nextAcceptanceDefaults.acceptedBy !== currentAcceptanceDefaults.acceptedBy
+        || nextAcceptanceDefaults.acceptanceChannel !== currentAcceptanceDefaults.acceptanceChannel
+      )
+    ) {
+      await updateProject(project.id, {
+        pendingSettlementAcceptanceDefaults: nextAcceptanceDefaults,
+      });
+    }
     setIsModalOpen(false);
     setEditingEntry(null);
     await loadEntries();
@@ -5904,6 +5926,7 @@ const PendingSettlementView = ({
   const newCount = entries.filter((entry) => getPendingSettlementStatusValue(entry) === 'new').length;
   const inProgressCount = entries.filter((entry) => entry.isInProgress).length;
   const completedCount = entries.filter((entry) => entry.isCompleted).length;
+  const selectedCount = entries.filter((entry) => selectedPendingSettlementIds.has(entry.id)).length;
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase('pl-PL');
   const hasActiveDateFilter = Boolean(dateFilterFrom || dateFilterTo);
   const hasActivePendingSettlementFilters = activeFilter !== 'all'
@@ -5913,6 +5936,8 @@ const PendingSettlementView = ({
   const filteredEntries = entries.filter((entry) => {
     const matchesFilter = (() => {
       switch (activeFilter) {
+        case 'selected':
+          return selectedPendingSettlementIds.has(entry.id);
         case 'new':
           return getPendingSettlementStatusValue(entry) === 'new';
         case 'estimated':
@@ -5959,6 +5984,7 @@ const PendingSettlementView = ({
 
   const summaryCards = [
     { id: 'all' as const, label: 'Pozycji', count: entries.length, dotClass: 'bg-slate-400 dark:bg-slate-500' },
+    { id: 'selected' as const, label: 'Zaznaczone', count: selectedCount, dotClass: 'bg-emerald-500 dark:bg-emerald-400' },
     { id: 'new' as const, label: 'Nowe', count: newCount, dotClass: 'bg-slate-400 dark:bg-slate-300' },
     { id: 'estimated' as const, label: 'Wycenione', count: estimatedCount, dotClass: 'bg-cyan-500 dark:bg-cyan-400' },
     { id: 'notEstimated' as const, label: 'Niewycenione', count: notEstimatedCount, dotClass: 'bg-sky-500 dark:bg-sky-400' },
@@ -6104,7 +6130,7 @@ const PendingSettlementView = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-9">
         {summaryCards.map((card) => {
           const isActive = activeFilter === card.id;
           return (
@@ -6488,6 +6514,13 @@ const PendingSettlementEntryModal = ({
         const teamEstimatedHours = name === 'teamEstimatedHours' ? Number(nextValue) || 0 : prev.teamEstimatedHours;
         const marginPercent = name === 'marginPercent' ? Number(nextValue) || 0 : prev.marginPercent;
         updated.estimatedHours = calculatePendingSettlementEstimatedHours(teamEstimatedHours, marginPercent);
+      }
+
+      if (name === 'isAccepted' && nextValue === true) {
+        const acceptanceDefaults = getPendingSettlementAcceptanceDefaults(project, entries);
+        updated.acceptanceDate = format(new Date(), 'yyyy-MM-dd');
+        updated.acceptedBy = prev.acceptedBy?.trim() || acceptanceDefaults.acceptedBy;
+        updated.acceptanceChannel = prev.acceptanceChannel?.trim() || acceptanceDefaults.acceptanceChannel;
       }
 
       return updated;
@@ -9552,6 +9585,29 @@ const calculatePendingSettlementEstimatedHours = (teamEstimatedHours: number, ma
   const safeTeamEstimate = Number(teamEstimatedHours) || 0;
   const safeMargin = Number(marginPercent) || 0;
   return Math.max(0, Math.ceil(safeTeamEstimate * (1 + safeMargin / 100)));
+};
+
+const getPendingSettlementAcceptanceDefaults = (
+  project: Project,
+  entries: PendingSettlementEntry[],
+) => {
+  const projectDefaults = {
+    acceptedBy: project.pendingSettlementAcceptanceDefaults?.acceptedBy?.trim() || '',
+    acceptanceChannel: project.pendingSettlementAcceptanceDefaults?.acceptanceChannel?.trim() || '',
+  };
+
+  if (projectDefaults.acceptedBy || projectDefaults.acceptanceChannel) {
+    return projectDefaults;
+  }
+
+  const latestAcceptedEntry = [...entries]
+    .filter((entry) => entry.isAccepted && ((entry.acceptedBy || '').trim() || (entry.acceptanceChannel || '').trim()))
+    .sort((first, second) => (second.updatedAt || second.createdAt || '').localeCompare(first.updatedAt || first.createdAt || ''))[0];
+
+  return {
+    acceptedBy: latestAcceptedEntry?.acceptedBy?.trim() || '',
+    acceptanceChannel: latestAcceptedEntry?.acceptanceChannel?.trim() || '',
+  };
 };
 
 const createPendingSettlementDraft = (project: Project, entries: PendingSettlementEntry[] = []): PendingSettlementEntry => {

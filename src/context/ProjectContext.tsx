@@ -37,6 +37,10 @@ const normalizeProject = (project: Project): Project => {
     maintenanceVatRate,
     maintenanceGrossAmount,
     clickupDailyUrl: project.clickupDailyUrl ?? '',
+    pendingSettlementAcceptanceDefaults: {
+      acceptedBy: project.pendingSettlementAcceptanceDefaults?.acceptedBy ?? '',
+      acceptanceChannel: project.pendingSettlementAcceptanceDefaults?.acceptanceChannel ?? '',
+    },
     isHiddenInSidebar: project.isHiddenInSidebar ?? false,
     hasPersonnelRoles,
     personnelRoles: (project.personnelRoles || []).map(normalizePersonnelRole),
