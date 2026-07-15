@@ -3,6 +3,26 @@ import { format } from 'date-fns';
 import type { MaintenanceEntry, Project } from '../types';
 
 export const DEFAULT_MAINTENANCE_VAT_RATE = 23;
+export const MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS = [1, 2, 3, 12] as const;
+
+export const normalizeMaintenanceSettlementPeriodMonths = (value?: number | null) =>
+  MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS.includes(value as typeof MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS[number])
+    ? Number(value)
+    : 1;
+
+export const formatMaintenancePeriod = (month: string, periodMonths?: number | null) => {
+  const normalizedPeriodMonths = normalizeMaintenanceSettlementPeriodMonths(periodMonths);
+  if (normalizedPeriodMonths === 1) return formatMaintenanceMonth(month);
+
+  const [yearValue, monthValue] = month.split('-');
+  const year = Number(yearValue);
+  const monthIndex = Number(monthValue);
+  if (!year || !monthIndex || monthIndex < 1 || monthIndex > 12) return month;
+
+  const startDate = new Date(year, monthIndex - 1, 1);
+  const endDate = new Date(year, monthIndex - 1 + normalizedPeriodMonths, 0);
+  return `${startDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })} - ${endDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}`;
+};
 
 export const roundCurrency = (value: number) => Number((value || 0).toFixed(2));
 
@@ -87,6 +107,7 @@ export const createMaintenanceDraft = (project: Project): MaintenanceEntry => {
     id: createClientId(),
     projectId: project.id,
     month: getCurrentMonthValue(),
+    periodMonths: normalizeMaintenanceSettlementPeriodMonths(project.maintenanceSettlementPeriodMonths),
     netAmount: project.maintenanceNetAmount || 0,
     vatRate: project.maintenanceVatRate || DEFAULT_MAINTENANCE_VAT_RATE,
     grossAmount: project.maintenanceGrossAmount || 0,

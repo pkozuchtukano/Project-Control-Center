@@ -11,6 +11,10 @@
 - 2026-07-01 - Aliasowanie zmiennych z kropka w szablonach wyceny
   -- Resolver zmiennych wyceny rozpoznaje teraz aliasy z kropka dla danych projektu, wyceny, harmonogramu i zgodnych nazw zlecenia, np. `{{project.code}}`, `{{estimation.totalHours}}`, `{{order.orderNumber}}`.
   -- Zmienne z kropka nie sa juz traktowane jako dodatkowe pola wlasne, gdy odpowiadaja znanym tokenom wyceny; dzialaja w flow wyceny, linkach oraz szablonie e-mail.
+- 2026-07-10 - Dokladniejszy podzial oczekiwanych godzin wedlug rol
+  -- Przycisk `Wypelnij` w wycenie projektow z rolami personelu rozdziela teraz oczekiwana liczbe godzin najpierw na unikalne role wedlug procentu udzialu z projektu.
+  -- Gdy ta sama rola wystepuje w kilku pozycjach wyceny, godziny sa dzielone miedzy te pozycje tak, aby laczna suma godzin tej roli odpowiadala jej procentowi udzialu.
+  -- Automatycznie wpisywana `Liczba godzin` pozostaje liczba calkowita, bez miejsc po przecinku.
 - 2026-06-24 - Zapamietywanie rol przy pozycjach zlecenia
   -- Szablon pozycji nowego zlecenia zapisuje teraz nazwe produktu oraz identyfikator i nazwe przypisanej roli personelu.
   -- Przy kolejnym dodawaniu zlecenia role sa automatycznie przywracane do odpowiednich produktow; starsze szablony z samymi nazwami nadal dzialaja bez migracji danych.
@@ -498,6 +502,17 @@
   -- Treść raportu `Daily` jest generowana po stronie Electrona przy faktycznym wykonaniu zadania, grupowana po projektach i budowana bez filtra osób, z zakresem dat wyliczanym z częstotliwości harmonogramu (`dzisiaj`, `7 dni`, `30 dni`).
 
 ## Rejestr zleceń
+- 2026-07-15 - Flow tworzenia i edycji zlecenia
+  -- W formularzu nowego oraz edytowanego zlecenia dodano lewe, wspolne dla projektu flow procesu tworzenia i edycji zlecenia.
+  -- Flow pozwala dodawac, porzadkowac, oznaczac jako wykonane i laczyc kroki z adresami URL; panel mozna zwinac, a stan zwinięcia jest zapamietywany lokalnie.
+  -- Opisy krokow oraz linki obsluguja zmienne danych biezacego zlecenia, a panel pokazuje liste dostepnych pol i ich aktualnych wartosci; token oraz wartosc mozna osobno kopiowac do schowka, takze bezposrednio z podstawionej wartosci w opisie kroku.
+  -- Uklad kart krokow, przyciskow linkow i oznaczania wykonania dopasowano do flow wyceny.
+- 2026-07-15 - Osobne flow PP i PO w projekcie
+  -- Flow protokolu przekazania i protokolu odbioru sa teraz zapisywane w osobnych polach projektu, dzieki czemu ich kroki nie nadpisuja sie wzajemnie.
+  -- Odczyt zachowuje kompatybilnosc ze starszym wspolnym `orderProtocolFlow` oraz flow zapisanym w pojedynczym zleceniu.
+- 2026-07-15 - Nazwy produktow zlecenia w protokolach
+  -- Dodano zmienna `{{nazwy_produktow_zlecenia}}` do protokolu przekazania i odbioru; zwraca nazwy produktow zlecenia rozdzielone przecinkami.
+  -- Zachowano dotychczasowe aliasy `{{produkty}}` i `{{items}}`, a dodatkowo dostepne sa `{{orderProductNames}}` oraz `{{products}}`.
 - 2026-07-07 - Kwoty netto i brutto zlecenia w zmiennych protokolu odbioru
   -- Do listy zmiennych protokolow PP/PO dodano jawne tokeny `{{kwota_netto_zlecenia}}` i `{{kwota_brutto_zlecenia}}` korzystajace z tych samych wyliczen co dotychczasowe `{{wartosc_netto}}` i `{{wartosc_brutto}}`.
   -- Tokeny sa widoczne w panelu dostepnych zmiennych i moga byc uzywane w krokach flow, linkach oraz szablonie e-mail protokolu odbioru bez zmiany zapisanych danych.
@@ -1035,6 +1050,7 @@
 - 2026-07-10 - Filtr zaznaczonych pozycji
   -- Do kafelkow filtrow w widoku `Do rozliczenia` dodano filtr `Zaznaczone`, liczony na podstawie pozycji zaznaczonych checkboxami na liscie.
   -- Klikniecie kafelka ogranicza liste do aktualnie zaznaczonych pozycji i dziala razem z istniejacym wyszukiwaniem oraz filtrami dat.
+  -- Zwezono poziomy padding i odstepy liter w etykietach kafelkow, aby dluzsze nazwy filtrow miescily sie w jednym wierszu.
 - 2026-07-10 - Projektowa pamiec danych akceptacji
   -- Formularz pozycji `Do rozliczenia` zapamietuje w danych projektu ostatnio zapisane pola `Kto zaakceptowal` i `Kanal akceptacji` z zaakceptowanej pozycji.
   -- Po zaznaczeniu checkboxa `Zaakceptowane?` formularz uzupelnia date akceptacji dzisiejsza data oraz podpowiada zapamietana osobe i kanal tylko w ramach aktualnego projektu.
@@ -1235,6 +1251,10 @@
 
 
 ## Dostepnosc UI
+- 2026-07-14 - Konfigurowalne okresy rozliczeniowe utrzymania
+  -- W ustawieniach projektu utrzymaniowego dodano wybor okresu rozliczeniowego: 1, 2, 3 albo 12 miesiecy; domyslnie pozostaje 1 miesiac.
+  -- Wpisy utrzymania zapisuja dlugosc okresu, a rozliczenia, faktury, filtry zakresu dat i wykres burn-up uwzgledniaja caly wybrany okres.
+  -- Dodano bezstratna migracje SQLite z wartoscia domyslna 1 dla istniejacych wpisow utrzymania.
 - 2026-06-24 - Pelnoekranowy formularz zlecenia
   -- Modal dodawania i edycji zlecenia wykorzystuje teraz cala dostepna przestrzen ekranu.
   -- Usunieto ograniczenia szerokosci, wysokosci i zewnetrzne marginesy modala; naglowek i stopka pozostaja stale widoczne, a formularz przewija sie w srodkowej czesci.

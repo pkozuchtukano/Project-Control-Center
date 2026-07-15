@@ -4,6 +4,7 @@ import type {
   Project, Order, Settings, DailyHub
 } from '../types';
 import { getEnvSettingsOrNull } from '../config/env';
+import { normalizeMaintenanceSettlementPeriodMonths } from '../utils/appCalculations';
 
 const DEFAULT_MAINTENANCE_VAT_RATE = 23;
 
@@ -36,6 +37,7 @@ const normalizeProject = (project: Project): Project => {
     maintenanceNetAmount,
     maintenanceVatRate,
     maintenanceGrossAmount,
+    maintenanceSettlementPeriodMonths: normalizeMaintenanceSettlementPeriodMonths(project.maintenanceSettlementPeriodMonths),
     clickupDailyUrl: project.clickupDailyUrl ?? '',
     pendingSettlementAcceptanceDefaults: {
       acceptedBy: project.pendingSettlementAcceptanceDefaults?.acceptedBy ?? '',

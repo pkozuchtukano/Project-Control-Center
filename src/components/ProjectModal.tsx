@@ -15,6 +15,7 @@ import { useProjectContext } from '../context/ProjectContext';
 import { TaskTypeIconMap } from '../utils/icons';
 import {
   DEFAULT_MAINTENANCE_VAT_RATE,
+  MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS,
   calculateGrossFromNet,
   calculateNetFromGross,
 } from '../utils/appCalculations';
@@ -33,7 +34,7 @@ export const ProjectModal = ({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
-    hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
+    hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0, maintenanceSettlementPeriodMonths: 1,
     taskTypes: [],
     googleDocLink: '',
     pendingSettlementYoutrackUrl: '',
@@ -69,6 +70,7 @@ export const ProjectModal = ({
         maintenanceNetAmount: projectToEdit.maintenanceNetAmount ?? 0,
         maintenanceVatRate: projectToEdit.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE,
         maintenanceGrossAmount: projectToEdit.maintenanceGrossAmount ?? calculateGrossFromNet(projectToEdit.maintenanceNetAmount ?? 0, projectToEdit.maintenanceVatRate ?? DEFAULT_MAINTENANCE_VAT_RATE),
+        maintenanceSettlementPeriodMonths: projectToEdit.maintenanceSettlementPeriodMonths ?? 1,
         targetProfitPct: projectToEdit.targetProfitPct !== undefined ? projectToEdit.targetProfitPct : 20,
         taskTypes: projectToEdit.taskTypes || [],
         googleDocLink: projectToEdit.googleDocLink || '',
@@ -88,7 +90,7 @@ export const ProjectModal = ({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
-        hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0,
+        hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0, maintenanceSettlementPeriodMonths: 1,
         taskTypes: [],
         googleDocLink: '',
         pendingSettlementYoutrackUrl: '',
@@ -105,11 +107,12 @@ export const ProjectModal = ({
     }
   }, [projectToEdit, isOpen]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const checked = e.target instanceof HTMLInputElement ? e.target.checked : false;
     let newValue: any = type === 'checkbox' ? checked : value;
 
-    if (type === 'number') {
+    if (type === 'number' || name === 'maintenanceSettlementPeriodMonths') {
       newValue = parseFloat(value) || 0;
     }
 
@@ -451,7 +454,7 @@ export const ProjectModal = ({
                   </div>
                 </label>
 
-                <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity ${formData.hasMaintenance ? 'opacity-100' : 'opacity-60'}`}>
+                <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 transition-opacity ${formData.hasMaintenance ? 'opacity-100' : 'opacity-60'}`}>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota Netto (PLN)</label>
                     <input
@@ -477,6 +480,20 @@ export const ProjectModal = ({
                       disabled={!formData.hasMaintenance}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Okres rozliczeniowy</label>
+                    <select
+                      name="maintenanceSettlementPeriodMonths"
+                      value={formData.maintenanceSettlementPeriodMonths ?? 1}
+                      onChange={handleChange}
+                      disabled={!formData.hasMaintenance}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800"
+                    >
+                      {MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS.map((months) => (
+                        <option key={months} value={months}>{months} {months === 1 ? 'miesiąc' : 'miesiące'}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kwota Brutto (PLN)</label>

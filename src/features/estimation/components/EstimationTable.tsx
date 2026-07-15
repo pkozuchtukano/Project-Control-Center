@@ -128,6 +128,16 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
   );
   const getRoleById = (roleId?: string) => personnelRoles.find((role) => role.id === roleId);
   const getItemGrossRate = (item: EstimationItem) => Number(item.rate ?? getRoleForItem(item)?.hourlyRate ?? 0) || 0;
+  const roundDistributedHours = (value: number) => Math.round(value);
+  const distributeRoleHours = (roleHours: number, roleItems: EstimationItem[]) => {
+    if (roleItems.length === 0) return [];
+    if (roleItems.length === 1) return [roundDistributedHours(roleHours)];
+
+    const baseHours = Math.floor(roleHours / roleItems.length);
+    const remainder = roleHours - (baseHours * roleItems.length);
+
+    return roleItems.map((_, index) => baseHours + (index < remainder ? 1 : 0));
+  };
 
   const updateItemRole = (item: EstimationItem, roleId: string) => {
     const role = getRoleById(roleId);
@@ -165,12 +175,11 @@ export const EstimationTable: React.FC<EstimationTableProps> = ({
           const role = getRoleById(roleId);
           if (!role || roleItems.length === 0) return;
 
-          const roleHours = Math.round(currentExpectedHours * ((Number(role.participationPct) || 0) / 100));
-          const baseHours = Math.floor(roleHours / roleItems.length);
-          const remainder = roleHours - (baseHours * roleItems.length);
+          const roleHours = roundDistributedHours(currentExpectedHours * ((Number(role.participationPct) || 0) / 100));
+          const distributedHours = distributeRoleHours(roleHours, roleItems);
 
           roleItems.forEach((item, index) => {
-            hoursByItemId.set(item.id, baseHours + (index < remainder ? 1 : 0));
+            hoursByItemId.set(item.id, distributedHours[index] || 0);
           });
         });
 

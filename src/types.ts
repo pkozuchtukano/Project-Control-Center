@@ -39,6 +39,7 @@ export type Project = {
   maintenanceNetAmount: number;
   maintenanceVatRate: number;
   maintenanceGrossAmount: number;
+  maintenanceSettlementPeriodMonths?: number;
   targetProfitPct?: number;
   youtrackQuery?: string;
   taskTypes?: TaskType[];
@@ -53,6 +54,9 @@ export type Project = {
   hasPersonnelRoles?: boolean;
   personnelRoles?: ProjectPersonnelRole[];
   orderProtocolFlow?: OrderProtocolFlow;
+  orderHandoverProtocolFlow?: OrderProtocolFlow;
+  orderAcceptanceProtocolFlow?: OrderProtocolFlow;
+  orderCreateEditFlow?: OrderProtocolFlow;
   orderInvoiceFlow?: OrderProtocolFlow;
   stakeholders?: Stakeholder[];
 };
@@ -498,6 +502,7 @@ export type MaintenanceEntry = {
   id: string;
   projectId: string;
   month: string;
+  periodMonths?: number;
   netAmount: number;
   vatRate: number;
   grossAmount: number;

@@ -449,6 +449,9 @@ const ensureMaintenanceEntryFlowColumns = () => {
     if (!columns.some(col => col.name === 'invoiceFlow')) {
         db.prepare('ALTER TABLE maintenance_entries ADD COLUMN invoiceFlow TEXT').run();
     }
+    if (!columns.some(col => col.name === 'periodMonths')) {
+        db.prepare('ALTER TABLE maintenance_entries ADD COLUMN periodMonths INTEGER NOT NULL DEFAULT 1').run();
+    }
 };
 
 // Tworzenie tabel Key-Value dla projektĂłw, zgĹ‚oszeĹ„ i ustawieĹ„
@@ -556,6 +559,7 @@ db.exec(`
         id TEXT PRIMARY KEY,
         projectId TEXT NOT NULL,
         month TEXT NOT NULL,
+        periodMonths INTEGER NOT NULL DEFAULT 1,
         netAmount REAL NOT NULL,
         vatRate REAL NOT NULL,
         grossAmount REAL NOT NULL,
@@ -849,6 +853,7 @@ const initializeDatabase = () => {
             id TEXT PRIMARY KEY,
             projectId TEXT NOT NULL,
             month TEXT NOT NULL,
+            periodMonths INTEGER NOT NULL DEFAULT 1,
             netAmount REAL NOT NULL,
             vatRate REAL NOT NULL,
             grossAmount REAL NOT NULL,
@@ -5010,7 +5015,7 @@ ipcMain.handle('get-maintenance-entries', async (_, projectId: string) => {
     try {
         ensureMaintenanceEntryFlowColumns();
         const rows = db.prepare(`
-            SELECT id, projectId, month, netAmount, vatRate, grossAmount, notes, settlementFlow, invoiceFlow, createdAt, updatedAt
+            SELECT id, projectId, month, periodMonths, netAmount, vatRate, grossAmount, notes, settlementFlow, invoiceFlow, createdAt, updatedAt
             FROM maintenance_entries
             WHERE projectId = ?
             ORDER BY month DESC, createdAt DESC
@@ -5018,6 +5023,7 @@ ipcMain.handle('get-maintenance-entries', async (_, projectId: string) => {
             id: string;
             projectId: string;
             month: string;
+            periodMonths: number;
             netAmount: number;
             vatRate: number;
             grossAmount: number;
@@ -5042,6 +5048,7 @@ ipcMain.handle('save-maintenance-entry', async (_, data: {
     id: string;
     projectId: string;
     month: string;
+    periodMonths?: number;
     netAmount: number;
     vatRate: number;
     grossAmount: number;
@@ -5054,10 +5061,11 @@ ipcMain.handle('save-maintenance-entry', async (_, data: {
     try {
         ensureMaintenanceEntryFlowColumns();
         db.prepare(`
-            INSERT INTO maintenance_entries (id, projectId, month, netAmount, vatRate, grossAmount, notes, settlementFlow, invoiceFlow, createdAt, updatedAt)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO maintenance_entries (id, projectId, month, periodMonths, netAmount, vatRate, grossAmount, notes, settlementFlow, invoiceFlow, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 month = excluded.month,
+                periodMonths = excluded.periodMonths,
                 netAmount = excluded.netAmount,
                 vatRate = excluded.vatRate,
                 grossAmount = excluded.grossAmount,
@@ -5069,6 +5077,7 @@ ipcMain.handle('save-maintenance-entry', async (_, data: {
             data.id,
             data.projectId,
             data.month,
+            [1, 2, 3, 12].includes(data.periodMonths || 1) ? data.periodMonths || 1 : 1,
             data.netAmount,
             data.vatRate,
             data.grossAmount,

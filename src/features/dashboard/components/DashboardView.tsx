@@ -28,6 +28,8 @@ import {
   Briefcase,
   Bug,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   ClipboardPaste,
   Clock,
@@ -40,6 +42,7 @@ import {
   FileText,
   FileUp,
   Info,
+  ListChecks,
   LayoutDashboard,
   Loader2,
   Mail,
@@ -67,6 +70,7 @@ import type {
   OrderItem,
   OrderProtocolEmailTemplateData,
   OrderProtocolFlow,
+  OrderProtocolStep,
   PendingSettlementEntry,
   Project,
   ScheduledTask,
@@ -85,7 +89,9 @@ import {
   createClientId,
   createMaintenanceDraft,
   formatDateDaysAgo,
-  formatMaintenanceMonth,
+  formatMaintenancePeriod,
+  MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS,
+  normalizeMaintenanceSettlementPeriodMonths,
   readDashboardLastSyncDate,
   saveDashboardLastSyncDate,
 } from '../../../utils/appCalculations';
@@ -591,7 +597,7 @@ export const DashboardView = ({
       title: 'Utrzymanie',
       subtitle: 'Abonament i praca rozliczana w ramach wpisów utrzymaniowych.',
       headerValue: `${formatOrderHours(maintenanceAvailableHours)} h`,
-      headerNote: `${maintenanceEntries.length} mies. · ${formatOrderHours(maintenanceWorkedHours)} h wykorzystane`,
+  headerNote: `${maintenanceEntries.reduce((sum, entry) => sum + normalizeMaintenanceSettlementPeriodMonths(entry.periodMonths), 0)} mies. · ${formatOrderHours(maintenanceWorkedHours)} h wykorzystane`,
       tone: 'border-fuchsia-100 bg-fuchsia-50/70 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20',
       accent: 'text-fuchsia-700 dark:text-fuchsia-300',
       titleClassName: 'text-fuchsia-800 dark:text-fuchsia-200',
@@ -745,7 +751,7 @@ export const DashboardView = ({
   const filteredOrderBugWorkItems = filteredOrderWorkItems;
   const filteredMaintenanceWorkItems = filteredWorkItems.filter((item) => item.isMaintenance);
   const filteredMaintenanceEntries = maintenanceEntries.filter((entry) =>
-    doesMaintenanceEntryOverlapRange(entry.month, effectiveBurnUpRange)
+    doesMaintenanceEntryOverlapRange(entry.month, effectiveBurnUpRange, entry.periodMonths)
   );
   const filteredOrders = orders.filter((order) =>
     doesOrderOverlapRange(order, effectiveBurnUpRange, new Date())
@@ -891,7 +897,7 @@ export const DashboardView = ({
       value: formatOrderHours(filteredMaintenanceAvailableHours),
       amountNet: filteredMaintenanceContractNetValue,
       amountGross: filteredMaintenanceContractGrossValue,
-      note: `${filteredMaintenanceEntries.length} mies. utrzymania w wybranym zakresie dat.`,
+  note: `${filteredMaintenanceEntries.reduce((sum, entry) => sum + normalizeMaintenanceSettlementPeriodMonths(entry.periodMonths), 0)} mies. utrzymania w wybranym zakresie dat.`,
       tone: 'text-fuchsia-700 dark:text-fuchsia-300',
     },
     {
@@ -1002,7 +1008,7 @@ export const DashboardView = ({
           label: 'Godziny z utrzymania',
           value: formatOrderHours(filteredMaintenanceAvailableHours),
           suffix: 'h',
-          note: `${filteredMaintenanceEntries.length} mies. utrzymania w wybranym zakresie.`,
+  note: `${filteredMaintenanceEntries.reduce((sum, entry) => sum + normalizeMaintenanceSettlementPeriodMonths(entry.periodMonths), 0)} mies. utrzymania w wybranym zakresie.`,
           amountNet: filteredMaintenanceContractNetValue,
           amountGross: filteredMaintenanceContractGrossValue,
           tone: 'text-gray-900 dark:text-white',
@@ -2201,9 +2207,9 @@ export const DashboardView = ({
                   <div className="mt-5 grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
                       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                        {'Miesiace'}
+                        {'Miesiace w okresach'}
                       </p>
-                      <p className="mt-1 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300">{filteredMaintenanceEntries.length}</p>
+                      <p className="mt-1 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300">{filteredMaintenanceEntries.reduce((sum, entry) => sum + normalizeMaintenanceSettlementPeriodMonths(entry.periodMonths), 0)}</p>
                     </div>
                     <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 dark:border-white/10 dark:bg-white/10">
                       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
@@ -3162,7 +3168,7 @@ const OrdersRegistryView = () => {
   };
 
   const handleSavePpFlow = async (_orderId: string, flow: NonNullable<Order['ppFlow']>) => {
-    await updateProject(selectedProject.id, { orderProtocolFlow: flow });
+    await updateProject(selectedProject.id, { orderHandoverProtocolFlow: flow });
   };
 
   const handleApplyPpHandoverDate = async (orderId: string, handoverDate: string) => {
@@ -3170,7 +3176,7 @@ const OrdersRegistryView = () => {
   };
 
   const handleSavePoFlow = async (_orderId: string, flow: NonNullable<Order['poFlow']>) => {
-    await updateProject(selectedProject.id, { orderProtocolFlow: flow });
+    await updateProject(selectedProject.id, { orderAcceptanceProtocolFlow: flow });
   };
 
   const handleApplyPoAcceptanceDate = async (orderId: string, acceptanceDate: string) => {
@@ -3179,6 +3185,10 @@ const OrdersRegistryView = () => {
 
   const handleSaveFvFlow = async (_orderId: string, flow: OrderProtocolFlow) => {
     await updateProject(selectedProject.id, { orderInvoiceFlow: flow });
+  };
+
+  const handleSaveOrderCreateEditFlow = async (flow: OrderProtocolFlow) => {
+    await updateProject(selectedProject.id, { orderCreateEditFlow: flow });
   };
 
   const handleApplyFvDate = async () => {};
@@ -3470,13 +3480,13 @@ const OrdersRegistryView = () => {
         )}
       </div>
 
-      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} onDelete={handleDeleteFromModal} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} project={selectedProject} orderToEdit={editingOrder} onSave={handleSave} onDelete={handleDeleteFromModal} onSaveOrderCreateEditFlow={handleSaveOrderCreateEditFlow} />
       <ReportCbcpModal isOpen={isReportModalOpen} onClose={() => setIsReportModalOpen(false)} project={selectedProject} orders={orders} />
       <ReportPmsModal isOpen={isPmsReportModalOpen} onClose={() => setIsPmsReportModalOpen(false)} project={selectedProject} orders={orders} />
       <OrderProtocolFlowModal
         isOpen={Boolean(ppOrder)}
         order={ppOrder}
-        projectFlow={selectedProject.orderProtocolFlow}
+        projectFlow={selectedProject.orderHandoverProtocolFlow || selectedProject.orderProtocolFlow}
         onClose={() => setPpOrderId(null)}
         onSave={handleSavePpFlow}
         onApplyProtocolDate={handleApplyPpHandoverDate}
@@ -3485,7 +3495,7 @@ const OrdersRegistryView = () => {
       <OrderProtocolFlowModal
         isOpen={Boolean(poOrder)}
         order={poOrder}
-        projectFlow={selectedProject.orderProtocolFlow}
+        projectFlow={selectedProject.orderAcceptanceProtocolFlow || selectedProject.orderProtocolFlow}
         onClose={() => setPoOrderId(null)}
         onSave={handleSavePoFlow}
         onApplyProtocolDate={handleApplyPoAcceptanceDate}
@@ -4490,6 +4500,171 @@ const normalizeOrderProtocolFlow = (flow?: OrderProtocolFlow | null) => ({
   updatedAt: flow?.updatedAt,
 });
 
+const ORDER_CREATE_EDIT_FLOW_COLLAPSED_STORAGE_KEY = 'pcc_order_create_edit_flow_collapsed';
+
+const OrderCreateEditFlowPanel = ({
+  flow,
+  onSave,
+  isCollapsed,
+  onCollapsedChange,
+  order,
+  project,
+}: {
+  flow?: OrderProtocolFlow;
+  onSave: (flow: OrderProtocolFlow) => Promise<void>;
+  isCollapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+  order: Order;
+  project: Project;
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [draftSteps, setDraftSteps] = useState<OrderProtocolStep[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [copiedVariableId, setCopiedVariableId] = useState<string | null>(null);
+  const normalizedFlow = normalizeOrderProtocolFlow(flow);
+  const persistedSteps = normalizedFlow.steps;
+  const completedStepIds = normalizedFlow.completedStepIds || [];
+  const availableVariables = getOrderProtocolVariableDefinitions(order, project, 'PP')
+    .slice()
+    .sort((left, right) => left.token.localeCompare(right.token, 'pl', { sensitivity: 'base' }));
+
+  useEffect(() => {
+    if (!isEditMode) setDraftSteps(persistedSteps);
+  }, [isEditMode, persistedSteps]);
+
+  const saveFlow = async (nextFlow: OrderProtocolFlow) => {
+    setIsSaving(true);
+    try {
+      await onSave(nextFlow);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    const steps = draftSteps
+      .map((step) => ({ ...step, description: step.description.trim(), linkUrl: step.linkUrl?.trim() || '', linkLabel: step.linkLabel?.trim() || '' }))
+      .filter((step) => step.description || step.linkUrl || step.linkLabel);
+    await saveFlow({
+      steps,
+      completedStepIds: completedStepIds.filter((stepId) => steps.some((step) => step.id === stepId)),
+      updatedAt: new Date().toISOString(),
+    });
+    setIsEditMode(false);
+  };
+
+  const handleToggleCompleted = async (stepId: string, completed: boolean) => {
+    await saveFlow({
+      ...normalizedFlow,
+      completedStepIds: completed
+        ? [...new Set([...completedStepIds, stepId])]
+        : completedStepIds.filter((id) => id !== stepId),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleCopyVariable = async (value: string, id: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopiedVariableId(id);
+    window.setTimeout(() => setCopiedVariableId(null), 2000);
+  };
+
+  const moveStep = (stepId: string, direction: 'up' | 'down') => {
+    setDraftSteps((current) => {
+      const index = current.findIndex((step) => step.id === stepId);
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+      const next = [...current];
+      const [step] = next.splice(index, 1);
+      next.splice(targetIndex, 0, step);
+      return next;
+    });
+  };
+
+  if (isCollapsed) {
+    return (
+      <aside className="pcc-card-panel flex min-h-[220px] flex-col items-center gap-4 overflow-hidden p-3">
+        <button type="button" onClick={() => onCollapsedChange(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300" title="Rozwiń flow zlecenia" aria-label="Rozwiń flow zlecenia">
+          <ChevronRight size={18} />
+        </button>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex rotate-180 items-center gap-2 [writing-mode:vertical-rl]">
+            <ListChecks className="text-indigo-500" size={18} />
+            <span className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Flow zlecenia</span>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="pcc-card-panel overflow-hidden">
+      <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
+        <div>
+          <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white"><ListChecks className="text-indigo-500" size={18} />Flow zlecenia</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Wspólny proces tworzenia i edycji zleceń w tym projekcie.</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button type="button" onClick={() => onCollapsedChange(true)} className="rounded-xl border border-gray-200 bg-white p-2 text-gray-500 transition hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300" title="Schowaj flow zlecenia" aria-label="Schowaj flow zlecenia"><ChevronLeft size={16} /></button>
+          {isEditMode ? (
+            <>
+              <button type="button" onClick={() => { setDraftSteps(persistedSteps); setIsEditMode(false); }} disabled={isSaving} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">Anuluj</button>
+              <button type="button" onClick={() => void handleSave()} disabled={isSaving} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Zapisz</button>
+            </>
+          ) : (
+            <button type="button" onClick={() => { setDraftSteps(persistedSteps.length ? persistedSteps : [createOrderProtocolStep()]); setIsEditMode(true); }} className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300"><Edit2 size={16} />Edytuj flow</button>
+          )}
+        </div>
+      </div>
+      <div className="space-y-4 p-4">
+        <details className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-xs dark:border-indigo-900/50 dark:bg-indigo-900/20">
+          <summary className="cursor-pointer font-semibold text-indigo-700 dark:text-indigo-300">{'Zmienne z bie\u017c\u0105cego zlecenia'}</summary>
+          <div className="mt-3 grid gap-2">
+            {availableVariables.map((variable) => {
+              const token = `{{${variable.token}}}`;
+              const value = variable.value || '';
+              const tokenId = `token:${variable.token}`;
+              const valueId = `value:${variable.token}`;
+              return (
+                <div key={variable.token} className="rounded-lg border border-indigo-100 bg-white/70 p-2 dark:border-indigo-900/50 dark:bg-gray-900/40">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => void handleCopyVariable(token, tokenId)} className="group inline-flex min-w-0 items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 font-semibold text-indigo-800 transition hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200" title={`Kliknij, aby skopiowa\u0107 ${token}.`}>
+                      <code className="truncate">{token}</code>
+                      {copiedVariableId === tokenId ? <span className="text-[10px] font-bold text-emerald-500">{'Skopiowano'}</span> : <Copy size={12} className="opacity-60 group-hover:opacity-100" />}
+                    </button>
+                    <button type="button" onClick={() => void handleCopyVariable(value, valueId)} disabled={!value} className="group inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-left text-gray-600 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800" title={value ? 'Kliknij, aby skopiowa\u0107 aktualn\u0105 warto\u015b\u0107.' : 'Brak aktualnej warto\u015bci do skopiowania.'}>
+                      <span className="max-w-full break-all">{value || '—'}</span>
+                      {copiedVariableId === valueId ? <span className="shrink-0 text-[10px] font-bold text-emerald-500">{'Skopiowano'}</span> : <Copy size={12} className="shrink-0 opacity-0 group-hover:opacity-60" />}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+        {isEditMode ? (
+          <>
+            {draftSteps.map((step, index) => (
+              <div key={step.id} className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">{index + 1}</div><div><div className="text-sm font-semibold text-gray-900 dark:text-white">Krok {index + 1}</div><div className="text-xs text-gray-500 dark:text-gray-400">{'Opis, opcjonalna etykieta i link.'}</div></div></div><div className="flex gap-1"><button type="button" onClick={() => moveStep(step.id, 'up')} disabled={index === 0} className="rounded-lg border border-gray-200 p-2 text-gray-500 disabled:opacity-30 dark:border-gray-700"><ArrowUp size={15} /></button><button type="button" onClick={() => moveStep(step.id, 'down')} disabled={index === draftSteps.length - 1} className="rounded-lg border border-gray-200 p-2 text-gray-500 disabled:opacity-30 dark:border-gray-700"><ArrowDown size={15} /></button><button type="button" onClick={() => setDraftSteps((current) => current.filter((item) => item.id !== step.id))} className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-red-300 hover:text-red-600 dark:border-gray-700"><Trash2 size={15} /></button></div></div>
+                <div className="grid gap-3 md:grid-cols-2"><div><label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{'Etykieta linku'}</label><input value={step.linkLabel || ''} onChange={(event) => setDraftSteps((current) => current.map((item) => item.id === step.id ? { ...item, linkLabel: event.target.value } : item))} placeholder="Nazwa linku (opcjonalnie)" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" /></div><div><label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Link</label><input value={step.linkUrl || ''} onChange={(event) => setDraftSteps((current) => current.map((item) => item.id === step.id ? { ...item, linkUrl: event.target.value } : item))} placeholder="https://..." className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" /></div></div>
+                <div><label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{'Opis kroku'}</label><textarea value={step.description} onChange={(event) => setDraftSteps((current) => current.map((item) => item.id === step.id ? { ...item, description: event.target.value } : item))} rows={3} placeholder="Opis kroku" className="w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" /></div>
+              </div>
+            ))}
+            <button type="button" onClick={() => setDraftSteps((current) => [...current, createOrderProtocolStep()])} className="inline-flex items-center gap-2 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/60 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300"><Plus size={16} />Dodaj krok flow</button>
+          </>
+        ) : persistedSteps.length ? persistedSteps.map((step, index) => {
+          const completed = completedStepIds.includes(step.id);
+          const description = resolveOrderProtocolTemplate(step.description || '', order, project, 'PP');
+          const linkLabel = resolveOrderProtocolTemplate(step.linkLabel || '', order, project, 'PP');
+          const linkUrl = resolveOrderProtocolTemplate(step.linkUrl || '', order, project, 'PP');
+          return <div key={step.id} className={`rounded-2xl border shadow-sm transition-all ${completed ? 'border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800/60 dark:bg-emerald-900/10' : 'border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40'}`}><div className="flex items-start gap-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${completed ? 'bg-emerald-600' : 'bg-indigo-600'}`}>{index + 1}</div><div className="min-w-0 flex-1 space-y-2"><div className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Krok {index + 1}</div><p className={`whitespace-pre-wrap text-sm leading-6 ${completed ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}>{description ? renderResolvedTemplateWithHighlightedValues(step.description || '', order, project, 'PP') : 'Brak opisu kroku.'}</p>{linkUrl && <a href={linkUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300"><ExternalLink size={15} className="shrink-0" /><span className="truncate">{linkLabel || linkUrl}</span></a>}</div><label className={`inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-all ${completed ? 'border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'border-gray-200 bg-white text-gray-400 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-300'}`} title="Wykonane"><input type="checkbox" checked={completed} onChange={(event) => void handleToggleCompleted(step.id, event.target.checked)} disabled={isSaving} className="sr-only" /><CheckCircle size={18} className={completed ? '' : 'opacity-55'} /></label></div></div>;
+        }) : <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center dark:border-gray-700 dark:bg-gray-900/40"><p className="text-sm font-medium text-gray-600 dark:text-gray-300">Flow zlecenia jest puste.</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{'W\u0142\u0105cz edycj\u0119 i dodaj kroki procesu zlecenia.'}</p></div>}
+      </div>
+    </aside>
+  );
+};
+
 const createEmptyEmailTemplate = (): EmailTemplate => ({
   to: '',
   cc: '',
@@ -4709,7 +4884,7 @@ const getOrderProtocolVariableDefinitions = (
     { token: 'uwagi', aliases: ['notes'], value: order.notes || '' },
     { token: 'data_utworzenia', aliases: ['createdAt'], value: toCalendarDateString(order.createdAt) },
     { token: 'data', aliases: ['dzis', 'today'], value: resolvedDate },
-    { token: 'produkty', aliases: ['items'], value: productNames.join(', ') },
+    { token: 'nazwy_produktow_zlecenia', aliases: ['orderProductNames', 'products', 'produkty', 'items'], value: productNames.join(', ') },
     { token: 'liczba_pozycji', aliases: ['itemsCount'], value: String(order.items.length) },
     { token: 'suma_godzin', aliases: ['totalHours'], value: formatOrderHours(totalHours) },
     { token: 'wartosc_netto', aliases: ['netValue', 'orderNetValue', 'kwota_netto_zlecenia'], value: formatCurrencyValue(totalNetValue) },
@@ -4729,9 +4904,10 @@ const getMaintenanceSettlementVariableDefinitions = (
   const [yearValue, monthValue] = entry.month.split('-');
   const year = Number(yearValue);
   const monthIndex = Number(monthValue);
+  const periodMonths = normalizeMaintenanceSettlementPeriodMonths(entry.periodMonths);
   const monthDate = year && monthIndex ? new Date(year, monthIndex - 1, 1) : null;
   const monthStart = monthDate ? format(monthDate, 'yyyy-MM-dd') : '';
-  const monthEnd = monthDate ? format(new Date(year, monthIndex, 0), 'yyyy-MM-dd') : '';
+  const monthEnd = monthDate ? format(new Date(year, monthIndex - 1 + periodMonths, 0), 'yyyy-MM-dd') : '';
   const settlementDate = overrides?.data
     || monthEnd
     || format(new Date(), 'yyyy-MM-dd');
@@ -4741,7 +4917,9 @@ const getMaintenanceSettlementVariableDefinitions = (
     { token: 'nazwa_projektu', aliases: ['projectName'], value: project.name || '' },
     { token: 'nr_umowy', aliases: ['contractNo'], value: project.contractNo || '' },
     { token: 'miesiac', aliases: ['month'], value: entry.month || '' },
-    { token: 'miesiac_nazwa', aliases: ['monthName'], value: monthDate ? formatMaintenanceMonth(entry.month) : entry.month || '' },
+    { token: 'miesiac_nazwa', aliases: ['monthName'], value: monthDate ? formatMaintenancePeriod(entry.month, periodMonths) : entry.month || '' },
+    { token: 'okres_rozliczeniowy', aliases: ['settlementPeriod'], value: monthDate ? formatMaintenancePeriod(entry.month, periodMonths) : entry.month || '' },
+    { token: 'liczba_miesiecy_okresu', aliases: ['periodMonths'], value: String(periodMonths) },
     { token: 'poczatek_miesiaca', aliases: ['monthStart', 'startOfMonth'], value: monthStart },
     { token: 'koniec_miesiaca', aliases: ['monthEnd', 'endOfMonth'], value: monthEnd },
     { token: 'rok', aliases: ['year'], value: yearValue || '' },
@@ -5276,7 +5454,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-800">
                 <tr>
-                  <th className="px-6 py-4 whitespace-nowrap">Miesiąc</th>
+                    <th className="px-6 py-4 whitespace-nowrap">Okres</th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">Netto</th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">VAT</th>
                   <th className="px-6 py-4 text-right whitespace-nowrap">Brutto</th>
@@ -5288,7 +5466,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
                 {entries.map((entry) => (
                   <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                     <td className="px-6 py-4 font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-                      {formatMaintenanceMonth(entry.month)}
+                      {formatMaintenancePeriod(entry.month, entry.periodMonths)}
                     </td>
                     <td className="px-6 py-4 text-right whitespace-nowrap text-gray-700 dark:text-gray-200">
                       {formatCurrencyValue(entry.netAmount)} zł
@@ -5308,8 +5486,8 @@ const MaintenanceView = ({ project }: { project: Project }) => {
                           type="button"
                           onClick={() => setSettlementEntryId(entry.id)}
                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition"
-                          title="Rozliczenie miesiąca"
-                          aria-label={`Rozliczenie miesiąca ${formatMaintenanceMonth(entry.month)}`}
+                          title="Rozliczenie okresu"
+                          aria-label={`Rozliczenie okresu ${formatMaintenancePeriod(entry.month, entry.periodMonths)}`}
                         >
                           <FileText size={16} />
                         </button>
@@ -5318,7 +5496,7 @@ const MaintenanceView = ({ project }: { project: Project }) => {
                           onClick={() => setInvoiceEntryId(entry.id)}
                           className="px-2.5 py-1.5 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 dark:text-violet-300 dark:bg-violet-900/30 dark:hover:bg-violet-900/50 rounded-lg transition border border-violet-100 dark:border-violet-800/60"
                           title="Faktura FV utrzymania"
-                          aria-label={`Faktura FV utrzymania za ${formatMaintenanceMonth(entry.month)}`}
+                          aria-label={`Faktura FV utrzymania za ${formatMaintenancePeriod(entry.month, entry.periodMonths)}`}
                         >
                           FV
                         </button>
@@ -5398,9 +5576,9 @@ const MaintenanceEntryModal = ({
       setFormData(createMaintenanceDraft(project));
   }, [entryToEdit, isOpen, project.id]);
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = event.target;
-    const nextValue = type === 'number' ? parseFloat(value) || 0 : value;
+    const nextValue = type === 'number' || name === 'periodMonths' ? parseFloat(value) || 0 : value;
 
     setFormData((prev) => {
       const updated = { ...prev, [name]: nextValue, updatedAt: new Date().toISOString() };
@@ -5450,7 +5628,7 @@ const MaintenanceEntryModal = ({
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[95vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-            {entryToEdit ? 'Edytuj wpis utrzymania' : 'Dodaj miesiąc utrzymania'}
+            {entryToEdit ? 'Edytuj wpis utrzymania' : 'Dodaj okres utrzymania'}
           </h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
             <X size={20} />
@@ -5468,7 +5646,7 @@ const MaintenanceEntryModal = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Miesiąc *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Początek okresu *</label>
                 <input
                   required
                   type="month"
@@ -5478,6 +5656,19 @@ const MaintenanceEntryModal = ({
                   onKeyDown={handleDateInputTabNavigation}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition [color-scheme:light] dark:[color-scheme:dark]"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Długość okresu</label>
+                <select
+                  name="periodMonths"
+                  value={normalizeMaintenanceSettlementPeriodMonths(formData.periodMonths)}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                >
+                  {MAINTENANCE_SETTLEMENT_PERIOD_OPTIONS.map((months) => (
+                    <option key={months} value={months}>{months} {months === 1 ? 'miesiąc' : 'miesiące'}</option>
+                  ))}
+                </select>
               </div>
               <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm text-indigo-900 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-100">
                 <p className="font-semibold">Projekt</p>
@@ -6138,13 +6329,13 @@ const PendingSettlementView = ({
               key={card.id}
               type="button"
               onClick={() => setActiveFilter(card.id)}
-              className={`rounded-2xl p-5 text-left shadow-sm border transition ${
+              className={`rounded-2xl px-4 py-5 text-left shadow-sm border transition ${
                 isActive
                   ? 'bg-indigo-50 border-indigo-200 text-indigo-950 dark:bg-indigo-500/10 dark:border-indigo-400/40 dark:text-white'
                   : 'bg-white border-gray-100 text-gray-900 hover:border-indigo-200 hover:bg-indigo-50/60 dark:bg-gray-800 dark:border-gray-800 dark:text-white dark:hover:border-indigo-400/30 dark:hover:bg-indigo-500/5'
               }`}
             >
-              <p className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] ${
+              <p className={`flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
                 isActive ? 'text-indigo-600 dark:text-indigo-200' : 'text-gray-500 dark:text-gray-400'
               }`}>
                 <span className={`h-2.5 w-2.5 rounded-full ${card.dotClass}`} aria-hidden="true" />
@@ -7323,22 +7514,22 @@ const MaintenanceSettlementFlowModal = ({
   const availableVariables = getMaintenanceSettlementVariableDefinitions(entry, project);
   const modalLabels = mode === 'invoice'
     ? {
-        title: `Faktura FV utrzymania ${formatMaintenanceMonth(entry.month)}`,
+        title: `Faktura FV utrzymania ${formatMaintenancePeriod(entry.month, entry.periodMonths)}`,
         flowStepLabel: 'Krok faktury FV',
         emptyTitle: 'Brak zdefiniowanego flow faktury FV',
-        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki faktury FV dla wybranego miesiąca utrzymania.',
+        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki faktury FV dla wybranego okresu utrzymania.',
         editTitle: 'Edycja flow faktury FV',
         closeLabel: 'Zamknij modal faktury FV utrzymania',
-        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania dla faktury FV.',
+        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego okresu utrzymania dla faktury FV.',
       }
     : {
-        title: `Rozliczenie miesiąca ${formatMaintenanceMonth(entry.month)}`,
+        title: `Rozliczenie okresu ${formatMaintenancePeriod(entry.month, entry.periodMonths)}`,
         flowStepLabel: 'Krok rozliczenia',
-        emptyTitle: 'Brak zdefiniowanego flow rozliczenia miesiąca',
-        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla wybranego miesiąca utrzymania.',
-        editTitle: 'Edycja flow rozliczenia miesiąca',
-        closeLabel: 'Zamknij modal rozliczenia miesiąca',
-        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego miesiąca utrzymania.',
+        emptyTitle: 'Brak zdefiniowanego flow rozliczenia okresu',
+        emptyDescription: 'Użyj ikony edycji w prawym górnym rogu, aby dodać kroki dla wybranego okresu utrzymania.',
+        editTitle: 'Edycja flow rozliczenia okresu',
+        closeLabel: 'Zamknij modal rozliczenia okresu',
+        emailDescription: 'Zapisywany w ramach projektu i podstawiany zmiennymi z bieżącego okresu utrzymania.',
       };
 
   const handleOpenEditMode = () => {
@@ -7504,8 +7695,8 @@ const MaintenanceSettlementFlowModal = ({
           <section className="rounded-2xl border border-indigo-100 bg-indigo-50/70 dark:border-indigo-900/40 dark:bg-indigo-950/20 p-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Miesiąc</p>
-                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{formatMaintenanceMonth(entry.month)}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Okres</p>
+                <p className="mt-2 text-base font-black text-gray-900 dark:text-white">{formatMaintenancePeriod(entry.month, entry.periodMonths)}</p>
               </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Netto</p>
@@ -7929,6 +8120,7 @@ const normalizeDateRange = (start: string, end: string) =>
 const doesMaintenanceEntryOverlapRange = (
   month: string,
   range: { start: string; end: string } | null,
+  periodMonths?: number,
 ) => {
   if (!range) return true;
   if (!month?.trim()) return false;
@@ -7941,7 +8133,7 @@ const doesMaintenanceEntryOverlapRange = (
   }
 
   const monthStart = getDateKey(new Date(year, monthIndex - 1, 1));
-  const monthEnd = getDateKey(new Date(year, monthIndex, 0));
+  const monthEnd = getDateKey(new Date(year, monthIndex - 1 + normalizeMaintenanceSettlementPeriodMonths(periodMonths), 0));
   return monthStart <= range.end && monthEnd >= range.start;
 };
 const doesWorkItemOverlapRange = (
@@ -8348,7 +8540,7 @@ const summarizeBurnUpTrendData = (points: BurnUpTrendPoint[]) => {
   };
 };
 
-const getMaintenanceMonthRange = (month: string) => {
+const getMaintenanceMonthRange = (month: string, periodMonths?: number) => {
   if (!month?.trim()) return null;
 
   const [yearValue, monthValue] = month.split('-');
@@ -8360,7 +8552,7 @@ const getMaintenanceMonthRange = (month: string) => {
 
   return {
     startDate: new Date(year, monthIndex - 1, 1),
-    endDate: new Date(year, monthIndex, 0),
+    endDate: new Date(year, monthIndex - 1 + normalizeMaintenanceSettlementPeriodMonths(periodMonths), 0),
   };
 };
 
@@ -8380,7 +8572,7 @@ const buildMaintenanceBurnUpTrendData = ({
   const today = parseCalendarDate(format(new Date(), 'yyyy-MM-dd')) || new Date();
   const relevantEntries = maintenanceEntries
     .map((entry) => {
-      const monthRange = getMaintenanceMonthRange(entry.month);
+      const monthRange = getMaintenanceMonthRange(entry.month, entry.periodMonths);
       const totalHours = (entry.netAmount || 0) / rateNetto;
 
       if (!monthRange || totalHours <= 0) {
@@ -8388,7 +8580,7 @@ const buildMaintenanceBurnUpTrendData = ({
       }
 
       return {
-        periodLabel: formatMaintenanceMonth(entry.month),
+        periodLabel: formatMaintenancePeriod(entry.month, entry.periodMonths),
         startDate: monthRange.startDate,
         endDate: monthRange.endDate,
         totalHours,
@@ -8576,7 +8768,9 @@ const removeFinancialSentences = (text: string) =>
     .join(' ')
     .trim();
 
-const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }: any) => {
+const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete, onSaveOrderCreateEditFlow }: any) => {
+  const [isOrderFlowCollapsed, setIsOrderFlowCollapsed] = useState(() =>
+    typeof window !== 'undefined' && window.localStorage.getItem(ORDER_CREATE_EDIT_FLOW_COLLAPSED_STORAGE_KEY) === 'true');
   const [formData, setFormData] = useState<Omit<Order, 'id'>>({
     projectId: project?.id || '',
     orderNumber: '',
@@ -8646,6 +8840,12 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
       isCancelled = true;
     };
   }, [orderToEdit?.id, isOpen, project?.id, project?.code]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ORDER_CREATE_EDIT_FLOW_COLLAPSED_STORAGE_KEY, String(isOrderFlowCollapsed));
+    }
+  }, [isOrderFlowCollapsed]);
 
   const handleChange = (e: any) => {
     const { name, value, type, checked } = e.target;
@@ -8740,7 +8940,9 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
 
         {/* MODAL BODY (SCROLLABLE) */}
         <div className="p-6 overflow-y-auto flex-1">
-          <form id="order-form" onSubmit={handleSubmit} className="space-y-8">
+          <form id="order-form" onSubmit={handleSubmit} className={`grid grid-cols-1 items-start gap-6 ${isOrderFlowCollapsed ? 'xl:grid-cols-[4rem_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.65fr)]'} transition-[grid-template-columns] duration-200`}>
+            <OrderCreateEditFlowPanel flow={project?.orderCreateEditFlow} onSave={onSaveOrderCreateEditFlow} isCollapsed={isOrderFlowCollapsed} onCollapsedChange={setIsOrderFlowCollapsed} order={{ ...formData, id: orderToEdit?.id || '' }} project={project} />
+            <div className="min-w-0 space-y-8">
 
             {/* Sekcja 1: Podstawowe */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -8911,6 +9113,7 @@ const OrderModal = ({ isOpen, onClose, project, orderToEdit, onSave, onDelete }:
                   </div>
                 )}
               </div>
+            </div>
             </div>
 
           </form>
