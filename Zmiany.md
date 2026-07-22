@@ -1,4 +1,7 @@
 ## Konfiguracja projektu
+- 2026-07-22 - Dane kontaktowe interesariuszy
+  -- W edycji projektu, w sekcji `Interesariusze`, dodano dla każdej osoby pola `Telefon` i `E-mail`.
+  -- Dane kontaktowe są zapisywane razem z interesariuszem w danych projektu; istniejące projekty pozostają zgodne i nie wymagają migracji tabeli bazy danych.
 - 2026-05-08 - Role personelu w projekcie
   -- Do modelu projektu dodano opcjonalny parametr `Projekt z rolami personelu` oraz listę ról personelu z nazwą roli, procentem udziału, minimalną liczbą roboczogodzin i maksymalną liczbą roboczogodzin.
   -- Formularz dodawania i edycji projektu pokazuje sekcję `Role personelu`; po zaznaczeniu checkboxa można dopisać role i uzupełnić ich parametry.
@@ -129,6 +132,9 @@
   -- Produkcyjny build rozdziela główny pakiet frontendu na mniejszy shell oraz osobne chunki widoków, co skraca odpowiedzialność modułu startowego bez zmiany danych w bazie.
 
 ## Dashboard projektu
+- 2026-07-22 - Karta kontaktow projektu
+  -- Na dashboardzie dodano karte `Kontakty projektu` z podzialem interesariuszy na klienta i wykonawce.
+  -- Dla kazdej osoby karta pokazuje imie i nazwisko, role lub opis oraz klikalny adres e-mail i numer telefonu; brakujace dane maja czytelny stan pusty.
 - 2026-07-08 - Kafelek bilansu w `Zlecenia vs Praca`
   -- W karcie `Zlecenia vs Praca` dodano dobrze widoczny kafelek bilansu po prawej stronie progressbarow.
   -- Bilans pokazuje formule: godziny w zleceniach + zaakceptowane godziny z zakladki `Do rozliczenia` - godziny przepracowane z YouTrack.

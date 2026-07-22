@@ -2,6 +2,8 @@ export type Stakeholder = {
   id: string;
   name: string;
   role: string;
+  phone?: string;
+  email?: string;
   company: 'customer' | 'contractor';
   isPresent: boolean;
 };

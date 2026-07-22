@@ -653,7 +653,7 @@ export const ProjectModal = ({
                 </div>
                 <button 
                   type="button" 
-                  onClick={() => setStakeholders(prev => [...prev, { id: Date.now().toString(), name: '', role: '', company: 'customer', isPresent: true }])} 
+                  onClick={() => setStakeholders(prev => [...prev, { id: Date.now().toString(), name: '', role: '', phone: '', email: '', company: 'customer', isPresent: true }])}
                   className="text-xs text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1.5 hover:text-indigo-700 transition px-3 py-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-indigo-100 dark:border-indigo-900"
                 >
                   <Plus size={14} /> Dodaj Osobę
@@ -688,6 +688,26 @@ export const ProjectModal = ({
                           <option value="customer">Klient</option>
                           <option value="contractor">Wykonawca</option>
                         </select>
+                      </div>
+                      <div className="col-span-6">
+                        <input
+                          type="tel"
+                          value={s.phone ?? ''}
+                          onChange={(e) => setStakeholders(prev => prev.map(item => item.id === s.id ? { ...item, phone: e.target.value } : item))}
+                          placeholder="Telefon"
+                          autoComplete="tel"
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700/50 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        />
+                      </div>
+                      <div className="col-span-6">
+                        <input
+                          type="email"
+                          value={s.email ?? ''}
+                          onChange={(e) => setStakeholders(prev => prev.map(item => item.id === s.id ? { ...item, email: e.target.value } : item))}
+                          placeholder="E-mail"
+                          autoComplete="email"
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700/50 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
+                        />
                       </div>
                     </div>
                     <button 

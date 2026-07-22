@@ -46,6 +46,7 @@ import {
   LayoutDashboard,
   Loader2,
   Mail,
+  Phone,
   Plus,
   Printer,
   RefreshCw,
@@ -53,6 +54,7 @@ import {
   Send,
   Settings as SettingsIcon,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
 
@@ -346,6 +348,8 @@ export const DashboardView = ({
   const settledHours = settledOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const contractedHours = pendingSettlementOrders.reduce((sum, order) => sum + getOrderHoursTotal(order), 0);
   const totalHoursUsed = settledHours + contractedHours;
+  const customerStakeholders = (selectedProject.stakeholders || []).filter((stakeholder) => stakeholder.company === 'customer');
+  const contractorStakeholders = (selectedProject.stakeholders || []).filter((stakeholder) => stakeholder.company === 'contractor');
   const personnelRoles = selectedProject.hasPersonnelRoles ? (selectedProject.personnelRoles || []) : [];
   const roleSettlementOrders = [...settledOrders, ...pendingSettlementOrders];
   const roleSettlementRows = personnelRoles.map((role) => {
@@ -1746,6 +1750,90 @@ export const DashboardView = ({
                 <ProjectLinksMain project={selectedProject} compact />
               </div>
             </div>
+
+            <section className="pcc-card">
+              <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
+                    <Users size={20} className="text-indigo-500" /> Kontakty projektu
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Interesariusze po stronie klienta i wykonawcy.
+                  </p>
+                </div>
+                <span className="self-start rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 sm:self-auto">
+                  {customerStakeholders.length + contractorStakeholders.length} os.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                {[
+                  {
+                    key: 'customer',
+                    title: 'Klient',
+                    stakeholders: customerStakeholders,
+                    tone: 'border-sky-100 bg-sky-50/60 dark:border-sky-900/40 dark:bg-sky-950/20',
+                    badgeTone: 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300',
+                  },
+                  {
+                    key: 'contractor',
+                    title: 'Wykonawca',
+                    stakeholders: contractorStakeholders,
+                    tone: 'border-violet-100 bg-violet-50/60 dark:border-violet-900/40 dark:bg-violet-950/20',
+                    badgeTone: 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300',
+                  },
+                ].map((group) => (
+                  <div key={group.key} className={`rounded-2xl border p-4 ${group.tone}`}>
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h4 className="font-bold text-gray-900 dark:text-white">{group.title}</h4>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${group.badgeTone}`}>
+                        {group.stakeholders.length} os.
+                      </span>
+                    </div>
+
+                    {group.stakeholders.length > 0 ? (
+                      <div className="space-y-3">
+                        {group.stakeholders.map((stakeholder) => (
+                          <article key={stakeholder.id} className="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm dark:border-white/10 dark:bg-gray-900/60">
+                            <p className="font-bold text-gray-900 dark:text-white">{stakeholder.name}</p>
+                            <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                              {stakeholder.role || 'Brak roli / opisu'}
+                            </p>
+                            <div className="mt-3 flex flex-col gap-2 text-sm">
+                              {stakeholder.email && (
+                                <a
+                                  href={`mailto:${stakeholder.email}`}
+                                  className="flex min-w-0 items-center gap-2 text-indigo-600 transition hover:text-indigo-700 hover:underline dark:text-indigo-400 dark:hover:text-indigo-300"
+                                >
+                                  <Mail size={15} className="shrink-0" />
+                                  <span className="truncate">{stakeholder.email}</span>
+                                </a>
+                              )}
+                              {stakeholder.phone && (
+                                <a
+                                  href={`tel:${stakeholder.phone}`}
+                                  className="flex items-center gap-2 text-gray-700 transition hover:text-indigo-600 hover:underline dark:text-gray-300 dark:hover:text-indigo-400"
+                                >
+                                  <Phone size={15} className="shrink-0" />
+                                  <span>{stakeholder.phone}</span>
+                                </a>
+                              )}
+                              {!stakeholder.email && !stakeholder.phone && (
+                                <p className="text-xs text-gray-400 dark:text-gray-500">Brak danych kontaktowych</p>
+                              )}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-gray-200 bg-white/60 px-4 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                        Brak przypisanych osób.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
 
             {/* BENTO GRID */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
