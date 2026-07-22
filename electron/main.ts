@@ -1,6 +1,6 @@
 ﻿import electron from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, net } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import tls from 'tls';
@@ -35,6 +35,21 @@ const configureSystemCertificateAuthorities = () => {
 };
 
 configureSystemCertificateAuthorities();
+
+const fetchYouTrackResponse = (url: string, options?: RequestInit) =>
+    net.fetch(url, options);
+
+const getNetworkErrorMessage = (error: unknown) => {
+    const requestError = error as Error & { cause?: Error & { code?: string } };
+    const causeCode = requestError?.cause?.code;
+    const causeMessage = requestError?.cause?.message;
+
+    if (causeCode || causeMessage) {
+        return [requestError.message, causeCode, causeMessage].filter(Boolean).join(' - ');
+    }
+
+    return requestError?.message || String(error);
+};
 
 // Odnalezienie prawidĹ‚owego miejsca na bazÄ™
 const dbPath = isDev
@@ -1482,7 +1497,7 @@ ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, param
             fetchOptions.body = JSON.stringify(data);
         }
 
-        const response = await fetch(urlObj.toString(), fetchOptions);
+        const response = await fetchYouTrackResponse(urlObj.toString(), fetchOptions);
 
         if (!response.ok) {
             const responseText = await response.text();
@@ -1498,8 +1513,8 @@ ipcMain.handle('fetch-youtrack', async (_, { url, method = 'GET', headers, param
         }
 
         return await response.json();
-    } catch (error: any) {
-        const message = error?.message || String(error);
+    } catch (error: unknown) {
+        const message = getNetworkErrorMessage(error);
         console.error(`BĹ‚Ä…d zapytania fetch-youtrack do ${url}:`, error);
         throw new Error(message);
     }
@@ -2149,7 +2164,7 @@ const fetchYouTrackJson = async (baseUrl: string, token: string, endpoint: strin
         url.searchParams.append(key, String(value));
     });
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchYouTrackResponse(url.toString(), {
         headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/json',

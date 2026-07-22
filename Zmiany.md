@@ -109,6 +109,10 @@
   -- Dane procedur sa zapisywane w nowej tabeli SQLite `procedures` z polem `projectId`, tworzonej bezstratnie przez `CREATE TABLE IF NOT EXISTS` i uzupelnianej migracja `ALTER TABLE` dla wczesniejszej wersji tabeli.
 
 ## Build i konfiguracja
+- 2026-07-22 - Przywrocenie synchronizacji z YouTrack po zmianie lancucha TLS
+  -- Zapytania YouTrack wykonywane w procesie glownym korzystaja teraz ze stosu sieciowego Electron/Chromium i systemowego magazynu certyfikatow Windows.
+  -- Synchronizacja zachowuje pelna walidacje TLS, a blad transportowy zawiera kod i szczegolowa przyczyne zamiast samego komunikatu `fetch failed`.
+  -- Zmiana nie modyfikuje danych ani schematu bazy.
 - 2026-06-09 - Naprawa błędów TypeScript w notatkach i statusie
   -- Usunięto nieużywany helper eksportu flow w notatkach oraz oznaczono stare, niepodpięte akcje resetowania notatki tak, aby nie blokowały kompilacji `tsc`.
   -- W module Status doprecyzowano obsługę tytułu draftu, typowanie usuwania fragmentu HTML oraz identyfikator otwierany w szczegółach źródła.
