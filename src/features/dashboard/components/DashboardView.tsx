@@ -716,25 +716,6 @@ export const DashboardView = ({
   const lastBurnUpDate = burnUpTrendData.length > 0 ? burnUpTrendData[burnUpTrendData.length - 1].date : null;
   const todayDateKey = getDateKey(new Date());
   const latestVisibleBurnUpDate = lastBurnUpDate && lastBurnUpDate < todayDateKey ? lastBurnUpDate : todayDateKey;
-  const fullContractBurnUpRange = (() => {
-    const contractStart = parseCalendarDate(selectedProject.dateFrom);
-    const contractEnd = parseCalendarDate(selectedProject.dateTo);
-
-    if (contractStart && contractEnd) {
-      return normalizeDateRange(getDateKey(contractStart), getDateKey(contractEnd));
-    }
-
-    if (contractStart && latestVisibleBurnUpDate) {
-      return normalizeDateRange(getDateKey(contractStart), latestVisibleBurnUpDate);
-    }
-
-    if (lastBurnUpDate) {
-      const firstBurnUpDate = burnUpTrendData[0]?.date || lastBurnUpDate;
-      return normalizeDateRange(firstBurnUpDate, lastBurnUpDate);
-    }
-
-    return null;
-  })();
   const lastHalfYearRange = (() => {
     if (!latestVisibleBurnUpDate) return null;
     const endDate = parseCalendarDate(latestVisibleBurnUpDate);
@@ -746,7 +727,7 @@ export const DashboardView = ({
     };
   })();
   const effectiveBurnUpRange = burnUpRangeMode === 'full'
-    ? fullContractBurnUpRange
+    ? null
     : burnUpRangeMode === 'custom'
       ? burnUpVisibleRange
       : lastHalfYearRange;
@@ -1150,7 +1131,7 @@ export const DashboardView = ({
   const shouldShowMaintenanceBurnUpMarginZeroLine = maintenanceBurnUpSummary.shouldShowMarginZeroLine;
   const applyFullBurnUpRange = () => {
     setBurnUpRangeMode('full');
-    setBurnUpVisibleRange(fullContractBurnUpRange);
+    setBurnUpVisibleRange(null);
     setBurnUpSelectionStart(null);
     setBurnUpSelectionEnd(null);
   };

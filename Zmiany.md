@@ -136,6 +136,10 @@
   -- Produkcyjny build rozdziela główny pakiet frontendu na mniejszy shell oraz osobne chunki widoków, co skraca odpowiedzialność modułu startowego bez zmiany danych w bazie.
 
 ## Dashboard projektu
+- 2026-07-24 - Spojne godziny przepracowane w dashboardzie i rozliczeniach
+  -- Tryb `Pelny zakres` w zakladce `Rozliczenia` obejmuje teraz wszystkie zapisane logi pracy projektu, tak samo jak podsumowanie na dashboardzie.
+  -- Daty poczatku i konca umowy nie odcinaja juz logow pracy w trybie pelnym; ograniczenie dat nadal dziala dla filtra ostatnich 6 miesiecy i zakresu zaznaczonego na wykresie.
+  -- Zmiana nie modyfikuje danych ani schematu bazy.
 - 2026-07-22 - Karta kontaktow projektu
   -- Na dashboardzie dodano karte `Kontakty projektu` z podzialem interesariuszy na klienta i wykonawce.
   -- Dla kazdej osoby karta pokazuje imie i nazwisko, role lub opis oraz klikalny adres e-mail i numer telefonu; brakujace dane maja czytelny stan pusty.
