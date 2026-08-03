@@ -36,3 +36,4 @@ google-tokens.json
 baza_danych.db
 baza_danych.db-shm
 baza_danych.db-wal
+backups/*.db

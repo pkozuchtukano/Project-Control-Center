@@ -9,7 +9,7 @@ import { useProjectContext } from '../../../context/ProjectContext';
 import { useWorkRegistry } from '../hooks/useWorkRegistry';
 import { YouTrackTable } from './YouTrackTable';
 import { StatisticsView } from './StatisticsView';
-import { syncWorkItems, type SyncProgress } from '../services/youtrackSync';
+import { getFullHistorySyncStartDate, syncWorkItems, type SyncProgress } from '../services/youtrackSync';
 import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 
 interface Props {
@@ -68,15 +68,11 @@ export const WorkRegistryMain = ({ project, settings }: Props) => {
     }, [project.id, project.youtrackQuery, project.code]);
 
     const openSyncModal = () => {
-        let defaultFrom = format(startOfMonth(new Date()), 'yyyy-MM-dd');
-        if (workItems && workItems.length > 0) {
-            const latestItem = workItems.reduce((latest, current) =>
-                current.date > latest.date ? current : latest
-            );
-            defaultFrom = latestItem.date.split('T')[0];
-        }
-
-        setDateFrom(defaultFrom);
+        setDateFrom(getFullHistorySyncStartDate(
+            workItems,
+            project.dateFrom,
+            format(startOfMonth(new Date()), 'yyyy-MM-dd')
+        ));
         setDateTo(format(new Date(), 'yyyy-MM-dd'));
         setIsSyncModalOpen(true);
     };

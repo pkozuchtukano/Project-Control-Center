@@ -506,6 +506,23 @@ db.exec(`
         lastModified TEXT,
         projectId TEXT
     );
+    CREATE TABLE IF NOT EXISTS work_items_sync_archive (
+        archiveId INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL,
+        issueId TEXT,
+        issueReadableId TEXT,
+        issueSummary TEXT,
+        issueType TEXT,
+        author TEXT,
+        authorName TEXT,
+        date TEXT,
+        minutes INTEGER,
+        description TEXT,
+        lastModified TEXT,
+        projectId TEXT,
+        archivedAt TEXT NOT NULL,
+        archiveReason TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS work_registry_sync_meta (
         projectId TEXT PRIMARY KEY,
         lastSyncDate TEXT NOT NULL,
@@ -799,6 +816,23 @@ const initializeDatabase = () => {
             description TEXT,
             lastModified TEXT,
             projectId TEXT
+        );
+        CREATE TABLE IF NOT EXISTS work_items_sync_archive (
+            archiveId INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT NOT NULL,
+            issueId TEXT,
+            issueReadableId TEXT,
+            issueSummary TEXT,
+            issueType TEXT,
+            author TEXT,
+            authorName TEXT,
+            date TEXT,
+            minutes INTEGER,
+            description TEXT,
+            lastModified TEXT,
+            projectId TEXT,
+            archivedAt TEXT NOT NULL,
+            archiveReason TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS work_registry_sync_meta (
             projectId TEXT PRIMARY KEY,

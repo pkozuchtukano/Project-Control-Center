@@ -13,6 +13,24 @@ export interface SyncProgress {
     error?: string;
 }
 
+export const getFullHistorySyncStartDate = (
+    workItems: Array<Pick<WorkItem, 'date'>>,
+    projectDateFrom?: string,
+    fallbackDate = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+) => {
+    if (projectDateFrom && !Number.isNaN(parseISO(projectDateFrom).getTime())) {
+        return projectDateFrom;
+    }
+
+    const candidates = [
+        ...workItems.map(item => item.date?.split('T')[0])
+    ].filter((date): date is string => Boolean(date && !Number.isNaN(parseISO(date).getTime())));
+
+    return candidates.length > 0
+        ? candidates.reduce((earliest, current) => current < earliest ? current : earliest)
+        : fallbackDate;
+};
+
 export const syncWorkItems = async (
     projectId: string,
     youtrackQuery: string,

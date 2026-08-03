@@ -101,7 +101,7 @@ import { YouTrackTab } from '../../../components/YouTrackTab';
 import { WorkRegistryMain } from '../../work-registry/components/WorkRegistryMain';
 import { useWorkRegistry } from '../../work-registry/hooks/useWorkRegistry';
 import { exportOrdersToExcel, importOrdersFromExcel } from '../../work-registry/services/excelService';
-import { syncWorkItems, type SyncProgress } from '../../work-registry/services/youtrackSync';
+import { getFullHistorySyncStartDate, syncWorkItems, type SyncProgress } from '../../work-registry/services/youtrackSync';
 import { EstimationMain } from '../../estimation/components/EstimationMain';
 import { MeetingNotesMain } from '../../meeting-notes/components/MeetingNotesMain';
 import { DailyMain } from '../../daily/components/DailyMain';
@@ -1217,7 +1217,13 @@ export const DashboardView = ({
           <div className="flex flex-wrap items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setIsDashboardSyncPanelOpen((current) => !current)}
+              onClick={() => setIsDashboardSyncPanelOpen((current) => {
+                if (!current) {
+                  setDashboardSyncDateFrom(getFullHistorySyncStartDate(workItems, selectedProject.dateFrom));
+                  setDashboardSyncDateTo(format(new Date(), 'yyyy-MM-dd'));
+                }
+                return !current;
+              })}
               disabled={isDashboardSyncing}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm border ${
                 dashboardSyncProgress?.status === 'completed'
@@ -1465,7 +1471,7 @@ export const DashboardView = ({
                       <div>
                       <div className="mb-2 flex justify-between gap-4 text-sm font-medium">
                         <span className={hoursLabelClass}>Przepracowane w zleceniach (YouTrack / rejestr pracy)</span>
-                        <span className={hoursValueClass}>{youtrackTotal.toFixed(1)} <span className="font-normal text-slate-400">h</span></span>
+                        <span className={hoursValueClass}>{formatYouTrackDuration(youtrackTotal)}</span>
                       </div>
                       <div className={`${hoursTrackClass} flex h-4`}>
                         <div className="bg-violet-500 h-full transition-all duration-1000" style={{ width: `${(youtrackHours['Programistyczne'] / maxScale) * 100}%` }} title={`Programistyczne: ${formatShareLabel(youtrackHours['Programistyczne'], progPct)}`}></div>
@@ -4867,6 +4873,12 @@ const buildOrderItemsFromTemplate = (template?: OrderItemTemplateData | null): O
 
 const formatOrderHours = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatYouTrackDuration = (hours: number) => {
+  const totalMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${wholeHours.toLocaleString('pl-PL')} h ${String(minutes).padStart(2, '0')} min`;
+};
 const formatCurrencyValue = (value: number) =>
   value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatNullableNumber = (value?: number | null) =>

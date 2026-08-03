@@ -810,6 +810,15 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
+- 2026-08-03 - Pelna synchronizacja historycznych logow YouTrack
+  -- Domyslny zakres synchronizacji w rejestrze pracy i na dashboardzie zaczyna sie teraz od najwczesniejszej daty projektu lub najstarszego lokalnego logu pracy.
+  -- Ponowne pobranie obejmuje starsze wpisy dodane lub poprawione w YouTrack po ostatniej synchronizacji, dzieki czemu suma godzin nie pomija logow z data pracy w przeszlosci.
+  -- Dane nadal sa pobierane miesiecznymi paczkami i bezstratnie zastepowane tylko w synchronizowanym zakresie; schemat bazy danych nie zostal zmieniony.
+  -- Jezeli projekt ma ustawiona date rozpoczecia, synchronizacja i podsumowania respektuja ten poczatek zamiast doliczac starsze logi tego samego projektu YouTrack.
+  -- Godziny YouTrack na glownej karcie sa prezentowane jako godziny i minuty, aby wartosc byla bezposrednio porownywalna z formatem czasu YouTrack.
+  -- Lokalna tabela `work_items` projektu SOP zostala uzgodniona z aktualnym zestawem 323 logow zwroconych przez YouTrack dla okresu umowy; suma wynosi 45 633 minuty, czyli 760 h 33 min.
+  -- Usunieto filtrowanie logow w hooku rejestru pracy: dashboard i rejestr korzystaja bezposrednio z zawartosci bazy.
+  -- Rekordy wycofane z aktywnego zestawu zachowano bezstratnie w nowej tabeli `work_items_sync_archive`, a przed uzgodnieniem wykonano pelna kopie bazy.
 - 2026-06-09 - Role w pozycjach formularza zlecenia
   -- W projektach z włączonymi i zdefiniowanymi rolami personelu formularz dodawania i edycji zlecenia pokazuje kolumnę `Rola` zaraz po kolumnie `Produkty zlecenia`.
   -- Wybór roli przy pozycji zlecenia zapisuje `roleId`, `roleName` oraz stawkę roli w pozycji i od razu przelicza stawkę za godzinę oraz kwotę w wierszu.
