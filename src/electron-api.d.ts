@@ -42,7 +42,7 @@ declare global {
       getWorkRegistrySyncMeta: (projectId: string) => Promise<{ projectId: string; lastSyncDate: string; updatedAt: string } | null>;
       saveWorkRegistrySyncMeta: (data: { projectId: string; lastSyncDate: string }) => Promise<{ success: boolean }>;
       upsertWorkItems: (data: { items: any[], projectId: string }) => Promise<{ success: boolean }>;
-      replaceWorkItemsForPeriod: (data: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => Promise<{ success: boolean }>;
+      replaceWorkItemsForPeriod: (data: { items: any[], projectId: string, dateFrom: string, dateTo: string }) => Promise<{ success: boolean; archived: number; inserted: number }>;
       getOrderItemTemplate: (projectId: string) => Promise<{ names?: string[]; items?: Array<{ name: string; roleId?: string; roleName?: string }>; lastDate?: string } | null>;
       saveOrderItemTemplate: (data: { projectId: string, data: { names: string[]; items: Array<{ name: string; roleId?: string; roleName?: string }>; lastDate: string } }) => Promise<{ success: boolean }>;
       getIssueCategories: () => Promise<Record<string, string>>;

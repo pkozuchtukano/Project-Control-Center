@@ -87,6 +87,8 @@ export const syncWorkItems = async (
             status: 'syncing'
         });
 
+        const projectItems = new Map<string, WorkItem>();
+
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             onProgress({
@@ -118,16 +120,22 @@ export const syncWorkItems = async (
                 lastModified: new Date(log.date).toISOString()
             }));
 
-            await window.electron.replaceWorkItemsForPeriod({
-                items,
-                projectId,
-                dateFrom: chunk.from,
-                dateTo: chunk.to
-            });
+            items.forEach(item => projectItems.set(item.id, item));
 
             // Small delay to prevent hammering
             await new Promise(resolve => setTimeout(resolve, 300));
         }
+
+        if (typeof window.electron.replaceWorkItemsForPeriod !== 'function') {
+            throw new Error('Uruchom ponownie aplikacj\u0119, aby wczyta\u0107 nowy mechanizm synchronizacji bazy.');
+        }
+
+        await window.electron.replaceWorkItemsForPeriod({
+            items: Array.from(projectItems.values()),
+            projectId,
+            dateFrom,
+            dateTo
+        });
 
         onProgress({
             totalChunks: chunks.length,

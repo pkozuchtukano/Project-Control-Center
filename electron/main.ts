@@ -1646,8 +1646,42 @@ ipcMain.handle('replace-work-items-for-period', async (_, { items, projectId, da
         const toIso = toDate.toISOString();
         const fromMs = fromDate.getTime();
         const toMs = toDate.getTime();
+        const archivedAt = new Date().toISOString();
+        const archiveReason = `Automatic YouTrack range replacement ${dateFrom}..${dateTo}`;
 
         const transaction = db.transaction(() => {
+            const archived = db.prepare(`
+                INSERT INTO work_items_sync_archive (
+                    id, issueId, issueReadableId, issueSummary, issueType,
+                    author, authorName, date, minutes, description,
+                    lastModified, projectId, archivedAt, archiveReason
+                )
+                SELECT
+                    id, issueId, issueReadableId, issueSummary, issueType,
+                    author, authorName, date, minutes, description,
+                    lastModified, projectId, ?, ?
+                FROM work_items
+                WHERE projectId = ?
+                  AND (
+                    (date >= ? AND date <= ?)
+                    OR (datetime(date) IS NOT NULL AND datetime(date) >= datetime(?) AND datetime(date) <= datetime(?))
+                    OR (CAST(date AS INTEGER) >= ? AND CAST(date AS INTEGER) <= ?)
+                    OR (substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ?)
+                  )
+            `).run(
+                archivedAt,
+                archiveReason,
+                projectId,
+                fromIso,
+                toIso,
+                fromIso,
+                toIso,
+                fromMs,
+                toMs,
+                dateFrom,
+                dateTo
+            ).changes;
+
             db.prepare(`
                 DELETE FROM work_items
                 WHERE projectId = ?
@@ -1692,9 +1726,11 @@ ipcMain.handle('replace-work-items-for-period', async (_, { items, projectId, da
                     projectId
                 );
             }
+
+            return archived;
         });
-        transaction();
-        return { success: true };
+        const archived = transaction();
+        return { success: true, archived, inserted: items.length };
     } catch (error) {
         console.error('Błąd zastępowania work_items dla zakresu:', error);
         throw error;

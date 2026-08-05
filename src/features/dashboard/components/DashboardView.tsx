@@ -149,7 +149,16 @@ export const DashboardView = ({
 }) => {
   const { selectedProject, settings } = useProjectContext();
   const calculations = useProjectCalculations(selectedProject);
-  const { workItems, refresh: refreshWorkItems } = useWorkRegistry(selectedProject);
+  const { workItems: registryWorkItems, refresh: refreshWorkItems } = useWorkRegistry(selectedProject);
+  const projectDateFrom = selectedProject?.dateFrom;
+  const projectDateTo = selectedProject?.dateTo;
+  const workItems = useMemo(() => registryWorkItems.filter((item) => {
+    const workDate = item.date?.split('T')[0];
+    if (!workDate) return false;
+    if (projectDateFrom && workDate < projectDateFrom) return false;
+    if (projectDateTo && workDate > projectDateTo) return false;
+    return true;
+  }), [registryWorkItems, projectDateFrom, projectDateTo]);
   const [maintenanceEntries, setMaintenanceEntries] = useState<MaintenanceEntry[]>([]);
   const [pendingSettlementEntries, setPendingSettlementEntries] = useState<PendingSettlementEntry[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'pendingSettlement' | 'work' | 'settlements' | 'maintenance' | 'service' | 'status' | 'daily' | 'procedures' | 'youtrack' | 'estimation' | 'notes' | '__status_placeholder__'>('dashboard');

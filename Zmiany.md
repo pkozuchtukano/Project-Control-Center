@@ -810,6 +810,15 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
+- 2026-08-05 - Rozdzielenie historii YouTrack od okresu rozliczeniowego projektu
+  -- Rejestr pracy i baza zachowuja caly zakres pobrany z YouTrack, takze gdy synchronizacja rozpoczyna sie przed data umowy.
+  -- Dashboard, rozliczenia, bilanse i raporty projektu uwzgledniaja tylko logi z przedzialu `dateFrom` - `dateTo` skonfigurowanego w projekcie.
+  -- Dla SOP pelna historia od 2023 r. pozostaje dostepna w rejestrze, ale bilans umowy rozpoczetej 2025-05-07 nie dolicza starszych godzin.
+- 2026-08-05 - Atomowa synchronizacja czasu pracy w wybranym zakresie
+  -- Synchronizacja pobiera wszystkie miesieczne paczki wybranego zakresu YouTrack przed rozpoczeciem zapisu do lokalnej bazy.
+  -- Po poprawnym pobraniu archiwizowane i usuwane sa tylko aktywne rekordy projektu nalezace do zakresu `Data od` - `Data do`, a dane spoza zakresu pozostaja bez zmian.
+  -- Aktualny zestaw logow z wybranego zakresu jest zapisywany w jednej transakcji, dlatego synchronizacja jednego dnia nie usuwa pozostalych godzin umowy.
+  -- Blad dowolnej paczki API nie zmienia danych lokalnych i nie pozostawia czesciowo zsynchronizowanego zakresu.
 - 2026-08-03 - Pelna synchronizacja historycznych logow YouTrack
   -- Domyslny zakres synchronizacji w rejestrze pracy i na dashboardzie zaczyna sie teraz od najwczesniejszej daty projektu lub najstarszego lokalnego logu pracy.
   -- Ponowne pobranie obejmuje starsze wpisy dodane lub poprawione w YouTrack po ostatniej synchronizacji, dzieki czemu suma godzin nie pomija logow z data pracy w przeszlosci.
