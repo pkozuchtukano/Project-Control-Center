@@ -33,6 +33,7 @@ export const ProjectModal = ({
   const [formData, setFormData] = useState<Omit<Project, 'id'>>({
     code: '', name: '', contractNo: '', contractSubject: '',
     dateFrom: '', dateTo: '',
+    limitWorkHoursToProjectDates: false,
     minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
     hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0, maintenanceSettlementPeriodMonths: 1,
     taskTypes: [],
@@ -61,6 +62,7 @@ export const ProjectModal = ({
         contractSubject: projectToEdit.contractSubject || '',
         dateFrom: projectToEdit.dateFrom,
         dateTo: projectToEdit.dateTo,
+        limitWorkHoursToProjectDates: projectToEdit.limitWorkHoursToProjectDates ?? false,
         minHours: projectToEdit.minHours,
         maxHours: projectToEdit.maxHours,
         rateNetto: projectToEdit.rateNetto,
@@ -89,6 +91,7 @@ export const ProjectModal = ({
       setFormData({
         code: '', name: '', contractNo: '', contractSubject: '',
         dateFrom: '', dateTo: '',
+        limitWorkHoursToProjectDates: false,
         minHours: 0, maxHours: 0, rateNetto: 0, rateBrutto: 0, vatRate: 23, targetProfitPct: 20,
         hasMaintenance: false, maintenanceNetAmount: 0, maintenanceVatRate: DEFAULT_MAINTENANCE_VAT_RATE, maintenanceGrossAmount: 0, maintenanceSettlementPeriodMonths: 1,
         taskTypes: [],
@@ -363,6 +366,23 @@ export const ProjectModal = ({
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition [color-scheme:light] dark:[color-scheme:dark]" />
                     </div>
                   </div>
+                  <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      name="limitWorkHoursToProjectDates"
+                      checked={formData.limitWorkHoursToProjectDates ?? false}
+                      onChange={handleChange}
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <div>
+                      <span className="block text-sm font-medium text-gray-900 dark:text-white">
+                        {'Rozliczaj godziny dok\u0142adnie w zakresie dat projektu'}
+                      </span>
+                      <span className="block text-xs text-gray-500 dark:text-gray-400">
+                        {'Po w\u0142\u0105czeniu dashboard, bilanse i raporty uwzgl\u0119dniaj\u0105 tylko prac\u0119 od Daty Od do Daty Do. Pe\u0142na historia pozostaje w Rejestrze pracy.'}
+                      </span>
+                    </div>
+                  </label>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Min Godzin</label>

@@ -32,6 +32,7 @@ export type Project = {
   contractSubject?: string;
   dateFrom: string;
   dateTo: string;
+  limitWorkHoursToProjectDates?: boolean;
   minHours: number;
   maxHours: number;
   rateNetto: number;

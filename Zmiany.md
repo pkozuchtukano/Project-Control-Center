@@ -810,10 +810,16 @@
   -- Zlecenia z błędnie lub niespójnie wpisanym zakresem dat, takie jak rekord `62`, nie znikają już z wykresów i są rysowane w przedziale wynikającym z rzeczywiście dostępnych dat.
 
 ## Rejestr pracy
-- 2026-08-05 - Rozdzielenie historii YouTrack od okresu rozliczeniowego projektu
-  -- Rejestr pracy i baza zachowuja caly zakres pobrany z YouTrack, takze gdy synchronizacja rozpoczyna sie przed data umowy.
-  -- Dashboard, rozliczenia, bilanse i raporty projektu uwzgledniaja tylko logi z przedzialu `dateFrom` - `dateTo` skonfigurowanego w projekcie.
-  -- Dla SOP pelna historia od 2023 r. pozostaje dostepna w rejestrze, ale bilans umowy rozpoczetej 2025-05-07 nie dolicza starszych godzin.
+- 2026-08-05 - Opcjonalne rozliczanie godzin w datach projektu
+  -- W ustawieniach projektu dodano przelacznik `Rozliczaj godziny dokladnie w zakresie dat projektu`.
+  -- Domyslnie przelacznik jest wylaczony, dlatego istniejace projekty nadal uwzgledniaja cala zsynchronizowana historie, w tym prace zalogowana przed formalnym startem.
+  -- Po wlaczeniu dashboard, bilanse, rozliczenia i raporty uwzgledniaja tylko logi od `dateFrom` do `dateTo`, a pelna historia pozostaje dostepna w bazie i Rejestrze pracy.
+  -- Pole jest zapisywane w istniejacym obiekcie JSON projektu, dlatego zmiana jest bezstratna i nie wymaga migracji schematu SQLite.
+- 2026-08-05 - Godziny YouTrack wedlug zsynchronizowanego zakresu
+  -- Rejestr pracy, dashboard, rozliczenia, bilanse i raporty sumuja caly zestaw logow zapisany dla projektu w `work_items`.
+  -- Daty formalnego rozpoczecia i zakonczenia projektu nie odcinaja godzin YouTrack, poniewaz praca moze byc zalogowana przed rozpoczeciem umowy.
+  -- O zakresie danych decyduja pola `Data od` i `Data do` synchronizacji; ponowne pobranie zastepuje tylko rekordy z wybranego przedzialu.
+  -- Dla PMS2 uwzglednienie 51 h 20 min zalogowanych przed formalnym startem daje lacznie 81 785 min, czyli 1363 h 05 min zgodnie z YouTrack.
 - 2026-08-05 - Atomowa synchronizacja czasu pracy w wybranym zakresie
   -- Synchronizacja pobiera wszystkie miesieczne paczki wybranego zakresu YouTrack przed rozpoczeciem zapisu do lokalnej bazy.
   -- Po poprawnym pobraniu archiwizowane i usuwane sa tylko aktywne rekordy projektu nalezace do zakresu `Data od` - `Data do`, a dane spoza zakresu pozostaja bez zmian.
