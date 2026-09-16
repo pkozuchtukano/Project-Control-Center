@@ -1307,3 +1307,8 @@
   -- W glownym layoucie aplikacji dodano obsluge skrotu `Ctrl` + kolko myszy do zmiany bazowego rozmiaru czcionki.
   -- Ustawienie dziala globalnie we wszystkich zakladkach, jest ograniczone do zakresu od 80% do 140% i zapisuje sie w `localStorage` pod kluczem `pcc_font_scale`.
   -- Zmiana nie modyfikuje danych ani schematu bazy.
+## Autoryzacja Google
+- 2026-09-16 - Ponowna autoryzacja bez opuszczania widoku
+  -- Wygasle uprawnienia otwieraja osobny modal z komunikatem, przyciskiem Wyloguj i autoryzuj oraz polem na kod z Google, zamiast otwierac ustawienia.
+  -- Po zatwierdzeniu kodu aplikacja ponawia przerwana operacje. Anulowanie usuwa oczekujaca operacje; bledy autoryzacji pozostawiaja formularz otwarty.
+  -- Modal blokuje wielokrotne wysylanie kodu, obsluguje Escape i fokus klawiatury. Wykorzystuje istniejace API Google, bez zmian schematu i danych bazy.

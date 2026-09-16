@@ -18,6 +18,7 @@ import {
 } from './context/ProjectContext';
 import { Sidebar } from './components/Sidebar';
 import { ProjectModal } from './components/ProjectModal';
+import { GoogleReauthorizationModal } from './components/GoogleReauthorizationModal';
 import { SIDEBAR_COLLAPSED_STORAGE_KEY } from './utils/appCalculations';
 
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -74,7 +75,7 @@ const MainLayout = () => {
   useDarkMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [googleAuthPromptNonce, setGoogleAuthPromptNonce] = useState(0);
+  const [googleAuthActionTitle, setGoogleAuthActionTitle] = useState<string | null>(null);
   const pendingGoogleActionRef = useRef<PendingGoogleAction | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<'dashboard' | 'daily'>('dashboard');
@@ -138,9 +139,7 @@ const MainLayout = () => {
 
   const requestGoogleAuthorizationAndRetry = (action: PendingGoogleAction) => {
     pendingGoogleActionRef.current = action;
-    alert(`Wygasły uprawnienia Google.\n\nAutoryzuj ponownie dostęp do Google. Po poprawnej autoryzacji akcja zostanie wykonana automatycznie:\n${action.title}`);
-    setIsSettingsOpen(true);
-    setGoogleAuthPromptNonce((current) => current + 1);
+    setGoogleAuthActionTitle(action.title);
   };
 
   const handleGoogleAuthorized = async () => {
@@ -148,8 +147,12 @@ const MainLayout = () => {
     if (!pendingAction) return;
 
     pendingGoogleActionRef.current = null;
-    setIsSettingsOpen(false);
-    await pendingAction.run();
+    setGoogleAuthActionTitle(null);
+    try {
+      await pendingAction.run();
+    } catch {
+      alert('Autoryzacja Google powiodła się, ale nie udało się ponowić operacji. Spróbuj wykonać ją ponownie.');
+    }
   };
 
   const handleGoogleActionError = (error: unknown, action: PendingGoogleAction, fallbackMessage: string) => {
@@ -248,11 +251,19 @@ const MainLayout = () => {
           <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
-            googleAuthPromptNonce={googleAuthPromptNonce}
-            onGoogleAuthorized={handleGoogleAuthorized}
             onGoogleAuthorizationRequired={requestGoogleAuthorizationAndRetry}
           />
         </Suspense>
+      )}
+      {googleAuthActionTitle !== null && (
+        <GoogleReauthorizationModal
+          actionTitle={googleAuthActionTitle}
+          onAuthorized={handleGoogleAuthorized}
+          onClose={() => {
+            pendingGoogleActionRef.current = null;
+            setGoogleAuthActionTitle(null);
+          }}
+        />
       )}
     </div>
   );
