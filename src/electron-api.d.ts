@@ -82,6 +82,7 @@ declare global {
       deleteMaintenanceEntry: (id: string) => Promise<{ success: boolean }>;
       getPendingSettlementEntries: (projectId: string) => Promise<PendingSettlementEntry[]>;
       savePendingSettlementEntry: (data: PendingSettlementEntry) => Promise<{ success: boolean }>;
+      savePendingSettlementSelection: (data: { projectId: string; selectedIds: string[] }) => Promise<{ success: boolean }>;
       deletePendingSettlementEntry: (id: string) => Promise<{ success: boolean }>;
       getServiceOverview: (projectId: string) => Promise<{ obligations: ServiceObligation[]; tasks: ServiceTask[]; events: ServiceEvent[] }>;
       saveServiceObligation: (data: ServiceObligation) => Promise<{ success: boolean }>;

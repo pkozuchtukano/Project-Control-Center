@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
     getPendingSettlementEntries: (projectId: string) => ipcRenderer.invoke('get-pending-settlement-entries', projectId),
     savePendingSettlementEntry: (data: any) => ipcRenderer.invoke('save-pending-settlement-entry', data),
+    savePendingSettlementSelection: (data: { projectId: string; selectedIds: string[] }) => ipcRenderer.invoke('save-pending-settlement-selection', data),
     deletePendingSettlementEntry: (id: string) => ipcRenderer.invoke('delete-pending-settlement-entry', id),
     appendGoogleDoc: (data: { docLink: string, content: string, title: string, participants: string[] }) => ipcRenderer.invoke('append-google-doc', data),
     getGoogleAuthStatus: () => ipcRenderer.invoke('get-google-auth-status'),

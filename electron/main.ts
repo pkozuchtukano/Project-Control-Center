@@ -685,6 +685,9 @@ try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch (e) { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch (e) { }
+if (!(db.prepare('PRAGMA table_info(pending_settlement_entries)').all() as { name: string }[]).some(column => column.name === 'isSelected')) {
+    db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isSelected INTEGER NOT NULL DEFAULT 0');
+}
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch (e) { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch (e) { }
@@ -1005,6 +1008,9 @@ try { db.exec('ALTER TABLE work_items ADD COLUMN issueReadableId TEXT'); } catch
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueSummary TEXT'); } catch { }
 try { db.exec('ALTER TABLE work_items ADD COLUMN issueType TEXT'); } catch { }
 try { db.exec(`ALTER TABLE project_links ADD COLUMN visibleInTabs TEXT NOT NULL DEFAULT '[]'`); } catch { }
+if (!(db.prepare('PRAGMA table_info(pending_settlement_entries)').all() as { name: string }[]).some(column => column.name === 'isSelected')) {
+    db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isSelected INTEGER NOT NULL DEFAULT 0');
+}
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN isInProgress INTEGER NOT NULL DEFAULT 0'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN youtrackIssueUrl TEXT'); } catch { }
 try { db.exec('ALTER TABLE pending_settlement_entries ADD COLUMN teamEstimatedHours REAL NOT NULL DEFAULT 0'); } catch { }
@@ -2655,6 +2661,7 @@ const pruneScheduledDailyJson = (value: unknown): unknown => {
 
 const pendingSettlementEntrySelectSql = `
     SELECT
+        isSelected,
         id,
         projectId,
         externalId,
@@ -2691,6 +2698,7 @@ const pendingSettlementEntrySelectSql = `
 
 const mapPendingSettlementEntryRow = (row: any): PendingSettlementEntry => ({
     ...row,
+    isSelected: row.isSelected === 1,
     teamEstimatedHours: Number(row.teamEstimatedHours) || 0,
     marginPercent: Number(row.marginPercent) || 0,
     estimatedHours: Number(row.estimatedHours) || 0,
@@ -5379,6 +5387,18 @@ ipcMain.handle('get-pending-settlement-entries', async (_, projectId: string) =>
         console.error('Błąd pobierania wpisów do rozliczenia:', error);
         throw error;
     }
+});
+
+ipcMain.handle('save-pending-settlement-selection', (_, { projectId, selectedIds }: { projectId: string; selectedIds: string[] }) => {
+    if (typeof projectId !== 'string' || !Array.isArray(selectedIds) || selectedIds.some(id => typeof id !== 'string')) {
+        throw new Error('Invalid pending settlement selection');
+    }
+    db.transaction(() => {
+        db.prepare('UPDATE pending_settlement_entries SET isSelected = 0 WHERE projectId = ?').run(projectId);
+        const selectEntry = db.prepare('UPDATE pending_settlement_entries SET isSelected = 1 WHERE projectId = ? AND id = ?');
+        for (const id of new Set(selectedIds)) selectEntry.run(projectId, id);
+    })();
+    return { success: true };
 });
 
 ipcMain.handle('save-pending-settlement-entry', async (_, data: any) => {

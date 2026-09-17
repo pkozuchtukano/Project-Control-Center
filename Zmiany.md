@@ -1085,6 +1085,10 @@
   -- Umożliwia to podstawianie pełnego zakresu dat wybranego miesiąca bez ręcznego wpisywania początku i końca okresu rozliczeniowego.
 
 ## Do rozliczenia
+- 2026-09-17 – Trwałe zaznaczenia checkboxów
+  -- Zaznaczenia pozycji są zapisywane w SQLite i odtwarzane po zmianie zakładki, projektu oraz ponownym uruchomieniu aplikacji.
+  -- Dodano bezstratną migrację kolumny isSelected w obu ścieżkach inicjalizacji bazy oraz transakcyjny zapis zaznaczeń ograniczony do projektu.
+  -- Zachowano wybór zakresu z Shift i wybór widocznych pozycji; błąd zapisu jest pokazywany w widoku, a edycja pozycji nie nadpisuje zaznaczenia.
 - 2026-07-10 - Filtr zaznaczonych pozycji
   -- Do kafelkow filtrow w widoku `Do rozliczenia` dodano filtr `Zaznaczone`, liczony na podstawie pozycji zaznaczonych checkboxami na liscie.
   -- Klikniecie kafelka ogranicza liste do aktualnie zaznaczonych pozycji i dziala razem z istniejacym wyszukiwaniem oraz filtrami dat.

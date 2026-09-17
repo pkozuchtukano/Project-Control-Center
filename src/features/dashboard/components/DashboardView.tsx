@@ -3122,7 +3122,7 @@ export const DashboardView = ({
         )}
 
         {activeTab === 'pendingSettlement' && (
-          <PendingSettlementView project={selectedProject} onEntriesChanged={refreshPendingSettlementEntries} />
+          <PendingSettlementView key={selectedProject.id} project={selectedProject} onEntriesChanged={refreshPendingSettlementEntries} />
         )}
 
         {activeTab === '__status_placeholder__' && (
@@ -5872,7 +5872,9 @@ const PendingSettlementView = ({
   const [copiedExport, setCopiedExport] = useState(false);
   const [copiedEntryId, setCopiedEntryId] = useState<string | null>(null);
   const [savingStatusEntryId, setSavingStatusEntryId] = useState<string | null>(null);
-  const [selectedPendingSettlementIds, setSelectedPendingSettlementIds] = useState<Set<string>>(() => new Set());
+  const selectedPendingSettlementIds = new Set(entries.filter(entry => entry.isSelected).map(entry => entry.id));
+  const [isSavingSelection, setIsSavingSelection] = useState(false);
+  const selectionSaveInProgressRef = useRef(false);
   const lastSelectedPendingSettlementIdRef = useRef<string | null>(null);
 
   const formatPendingSettlementRequester = (value: string) => {
@@ -6129,13 +6131,23 @@ const PendingSettlementView = ({
     void loadEntries();
   }, [project.id]);
 
-  useEffect(() => {
-    setSelectedPendingSettlementIds((current) => {
-      const availableEntryIds = new Set(entries.map((entry) => entry.id));
-      const nextSelectedIds = new Set([...current].filter((entryId) => availableEntryIds.has(entryId)));
-      return nextSelectedIds.size === current.size ? current : nextSelectedIds;
-    });
-  }, [entries]);
+  const setSelectedPendingSettlementIds = async (update: (current: Set<string>) => Set<string>) => {
+    if (selectionSaveInProgressRef.current || !window.electron?.savePendingSettlementSelection) return;
+    const nextSelectedIds = update(selectedPendingSettlementIds);
+    selectionSaveInProgressRef.current = true;
+    setIsSavingSelection(true);
+    setError(null);
+    try {
+      await window.electron.savePendingSettlementSelection({ projectId: project.id, selectedIds: [...nextSelectedIds] });
+      setEntries(current => current.map(entry => ({ ...entry, isSelected: nextSelectedIds.has(entry.id) })));
+    } catch (selectionError) {
+      console.error('Pending settlement selection save failed:', selectionError);
+      setError('Nie uda\u0142o si\u0119 zapisa\u0107 zaznaczenia. Spr\u00f3buj ponownie.');
+    } finally {
+      selectionSaveInProgressRef.current = false;
+      setIsSavingSelection(false);
+    }
+  };
 
   const handleSave = async (entry: PendingSettlementEntry) => {
     if (!window.electron?.savePendingSettlementEntry) return;
@@ -6181,7 +6193,7 @@ const PendingSettlementView = ({
     setError(null);
     try {
       await window.electron.savePendingSettlementEntry(nextEntry);
-      setEntries((current) => current.map((item) => (item.id === entry.id ? nextEntry : item)));
+      setEntries((current) => current.map((item) => (item.id === entry.id ? { ...nextEntry, isSelected: item.isSelected } : item)));
       await onEntriesChanged?.();
     } catch (statusError: any) {
       setError(statusError?.message || 'Nie udało się zmienić statusu pozycji do rozliczenia.');
@@ -6565,6 +6577,7 @@ const PendingSettlementView = ({
                     <input
                       type="checkbox"
                       checked={areAllFilteredEntriesSelected}
+                      disabled={isSavingSelection}
                       onChange={toggleAllFilteredPendingSettlementSelection}
                       aria-label="Zaznacz wszystkie widoczne pozycje do rozliczenia"
                       title="Zaznacz wszystkie widoczne pozycje"
@@ -6591,6 +6604,7 @@ const PendingSettlementView = ({
                       <input
                         type="checkbox"
                         checked={selectedPendingSettlementIds.has(entry.id)}
+                        disabled={isSavingSelection}
                         onChange={() => undefined}
                         onClick={(event) => togglePendingSettlementSelection(entry.id, event)}
                         aria-label={`Zaznacz pozycję ${entry.externalId || entry.title}`}

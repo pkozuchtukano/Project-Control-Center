@@ -517,6 +517,7 @@ export type MaintenanceEntry = {
 };
 
 export type PendingSettlementEntry = {
+  isSelected?: boolean;
   id: string;
   projectId: string;
   externalId: string;
