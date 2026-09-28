@@ -504,6 +504,7 @@ export const fetchIssuesActivity = async (
                 timeline
             };
         } catch (err) {
+            if (String(err).includes('[YOUTRACK_AUTH_REQUIRED]')) throw err;
             console.error(`Błąd pobierania historii dla zadania ${issue.idReadable}:`, err);
             return { ...issue, timeline: [] }; // fallback for single issue error
         }

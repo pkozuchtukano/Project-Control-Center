@@ -1213,7 +1213,7 @@ export const DashboardView = ({
       <div className="w-full space-y-4">
 
         {/* HEADER */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+        {!['work', 'youtrack'].includes(activeTab) && <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <span className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-semibold text-xs rounded-full uppercase tracking-wider">
@@ -1263,7 +1263,7 @@ export const DashboardView = ({
               <Edit2 size={16} /> Edytuj szczegóły
             </button>
           </div>
-        </div>
+        </div>}
 
         {isDashboardSyncPanelOpen && (
           <div className="pcc-card-compact border-indigo-100 dark:border-indigo-900/40">
@@ -11746,12 +11746,14 @@ export const SettingsModal = ({
   googleAuthPromptNonce = 0,
   onGoogleAuthorized,
   onGoogleAuthorizationRequired,
+  onYouTrackAuthorizationRequired,
 }: {
   isOpen: boolean;
   onClose: () => void;
   googleAuthPromptNonce?: number;
   onGoogleAuthorized?: () => void | Promise<void>;
   onGoogleAuthorizationRequired?: GoogleAuthorizationRetryHandler;
+  onYouTrackAuthorizationRequired?: () => void;
 }) => {
   const { settings } = useProjectContext();
 
@@ -11772,6 +11774,14 @@ export const SettingsModal = ({
 
         <div className="p-6 overflow-y-auto">
           <div className="space-y-4">
+            {window.electron && onYouTrackAuthorizationRequired && <div>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">YouTrack / authentik</h3>
+              <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">{'Zaloguj aplikacj\u0119 linkiem otrzymanym na e-mail.'}</p>
+              <button type="button" onClick={onYouTrackAuthorizationRequired}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">
+                {'Zaloguj do YouTrack'}
+              </button>
+            </div>}
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Google Cloud (Docs API)</h3>
               <div className="space-y-4">

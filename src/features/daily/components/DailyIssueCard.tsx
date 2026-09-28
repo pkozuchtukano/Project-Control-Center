@@ -91,30 +91,6 @@ export const DailyIssueCard = ({
     return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
   };
 
-  const { spentTimeMins, estimationMins } = useMemo(() => {
-    return {
-      spentTimeMins: issue.spentTime?.minutes || 0,
-      estimationMins: issue.estimation?.minutes || 0
-    };
-  }, [issue]);
-
-  const progressPercent = useMemo(() => {
-    if (!estimationMins) return 0;
-    return Math.min(Math.round((spentTimeMins / estimationMins) * 100), 100);
-  }, [spentTimeMins, estimationMins]);
-
-  const progressColorClass = useMemo(() => {
-    if (progressPercent >= 100) return 'bg-red-500';
-    if (progressPercent >= 80) return 'bg-amber-500';
-    return 'bg-emerald-500';
-  }, [progressPercent]);
-
-  const progressTextClass = useMemo(() => {
-    if (progressPercent >= 100) return 'text-red-600 dark:text-red-500';
-    if (progressPercent >= 80) return 'text-amber-600 dark:text-amber-500';
-    return 'text-emerald-600 dark:text-emerald-500';
-  }, [progressPercent]);
-
   // Priority Initial and Color
   const priorityInfo = useMemo(() => {
     if (!issue.priority || issue.priority.name === 'Normal') return null;
@@ -402,11 +378,11 @@ export const DailyIssueCard = ({
   // FULL VIEW
   return (
     <div 
-      className="bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-lg transition-all flex flex-col group overflow-hidden"
+      className="bg-slate-900 rounded-xl border border-slate-800 shadow-sm hover:shadow-lg transition-all flex flex-col group overflow-hidden text-slate-100"
     >
       {/* Header */}
       <div
-        className={`bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2 border-b dark:border-gray-800 flex items-center justify-between ${isMinimalExpanded ? 'cursor-pointer hover:bg-gray-100/80 dark:hover:bg-gray-800/60 transition-colors' : ''}`}
+        className={`bg-slate-950/40 px-3 py-3 border-b border-slate-800 flex items-center justify-between ${isMinimalExpanded ? 'cursor-pointer hover:bg-slate-800/60 transition-colors' : ''}`}
         onClick={isMinimalExpanded ? () => setIsMinimalExpanded(false) : undefined}
         title={isMinimalExpanded ? 'Zwiń zadanie do widoku Min' : undefined}
       >
@@ -414,7 +390,7 @@ export const DailyIssueCard = ({
           <a 
             href={youtrackUrl}
             onClick={handleOpenYouTrack}
-            className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+            className="text-[10px] font-mono font-bold text-indigo-200 bg-indigo-950/80 px-2 py-1 rounded transition-colors hover:bg-indigo-900"
           >
             {issue.idReadable}
           </a>
@@ -423,23 +399,15 @@ export const DailyIssueCard = ({
             {typeInfo && (
               <span 
                 title={typeInfo.name}
-                className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm border border-black/5"
+                className="text-[10px] font-black px-2 py-1 rounded shadow-sm border border-black/5"
                 style={{ backgroundColor: typeInfo.color.background, color: typeInfo.color.foreground }}
               >
-                {typeInfo.initial}
-              </span>
-            )}
-            {priorityInfo && (
-              <span 
-                className="text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm border border-black/5"
-                style={{ backgroundColor: priorityInfo.color.background, color: priorityInfo.color.foreground }}
-              >
-                {priorityInfo.initial}
+                {typeInfo.name}
               </span>
             )}
             {showState && issue.state && (
               <span 
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm opacity-80"
+                className="text-[10px] font-bold px-2 py-1 rounded shadow-sm opacity-90"
                 style={{ backgroundColor: issue.state.color.background, color: issue.state.color.foreground }}
               >
                 {issue.state.name}
@@ -451,7 +419,7 @@ export const DailyIssueCard = ({
         {/* Triple Dot Menu */}
         <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
           <div className="relative group/menu">
-            <button type="button" className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors text-gray-400">
+            <button type="button" className="p-1 hover:bg-slate-700 rounded transition-colors text-slate-400">
               <MoreVertical size={14} />
             </button>
             <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 opacity-0 invisible group-hover/menu:opacity-100 group-hover/menu:visible transition-all z-20 overflow-hidden">
@@ -488,42 +456,26 @@ export const DailyIssueCard = ({
 
       {/* Body - Click to Open Details */}
       <div 
-        className="p-3 space-y-3 cursor-zoom-in hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors"
+        className="p-3 space-y-3 cursor-zoom-in hover:bg-slate-800/30 transition-colors"
         onClick={() => setIsDetailModalOpen(true)}
       >
-        <h4 className="text-sm font-bold text-gray-900 dark:text-white leading-tight break-words">
+        <h4 className="text-sm font-bold text-white leading-tight break-words">
           {issue.summary}
         </h4>
 
-        {/* Time Progress */}
-        {(estimationMins > 0 || spentTimeMins > 0) && (
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-end text-[10px]">
-              <span className="text-gray-400 font-medium">Czas: {spentTimeMins > 0 ? formatMins(spentTimeMins) : '0m'} / {estimationMins > 0 ? formatMins(estimationMins) : '-'}</span>
-              <span className={`font-black ${progressTextClass}`}>{progressPercent}%</span>
-            </div>
-            <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-              <div 
-                className={`h-full ${progressColorClass} transition-all duration-500 rounded-full shadow-sm`}
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Activity Preview (Only for Aktywności column or if showState is true) */}
-        {showState && periodActivities.length > 0 && (
-          <div className="pt-2 border-t dark:border-gray-800/50 space-y-2">
+        {showState && (
+          <div className="pt-2 border-t border-slate-800 space-y-2">
             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Aktywność ({periodActivities.length})</span>
             <div className="space-y-1.5">
               {periodActivities.map((act: any, idx: number) => (
                 <div key={idx} className="flex gap-2 items-start text-[11px] leading-tight">
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-1">{act.author.name}:</span>
-                    <span className="text-gray-500 dark:text-gray-400 italic break-words">
+                    <span className="font-bold text-slate-200 mr-1">{act.author?.name || act.author?.login || 'YouTrack'}:</span>
+                    <span className="text-slate-400 italic break-words">
                       {act.type === 'comment' && act.text}
-                      {act.type === 'field-change' && `${act.field}: ${act.added}`}
+                      {act.type === 'field-change' && `${act.field}: ${act.added ?? act.removed}`}
                       {act.type === 'work-item' && (
                         <>
                           Zalogowano {formatMins(act.minutes)}
@@ -548,14 +500,14 @@ export const DailyIssueCard = ({
       <div className="px-3 pb-3 pt-1 flex items-center justify-between mt-auto gap-2">
         <div className="flex items-center gap-2 overflow-hidden flex-1">
           <div 
-            className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 -ml-1 rounded-lg transition-colors overflow-hidden flex-1"
+            className="flex items-center gap-2 cursor-pointer hover:bg-slate-800 p-1 -ml-1 rounded-lg transition-colors overflow-hidden flex-1"
             onClick={handleAssigneeClick}
             title={`Filtruj po: ${issue.assignee?.name || 'Brak'}`}
           >
-            <div className="w-6 h-6 rounded-full bg-indigo-50 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-[10px] shrink-0">
+            <div className="w-6 h-6 rounded-full bg-indigo-950 flex items-center justify-center text-indigo-300 font-bold text-[10px] shrink-0">
               {issue.assignee?.name?.charAt(0).toUpperCase() || <User size={12} />}
             </div>
-            <span className="text-[11px] font-bold text-gray-600 dark:text-gray-400 truncate">
+            <span className="text-[11px] font-bold text-slate-300 truncate">
               {issue.assignee?.name || 'Nieprzypisane'}
             </span>
           </div>
@@ -563,7 +515,7 @@ export const DailyIssueCard = ({
             className={`shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
               skipInAi
                 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
             onClick={(e) => e.stopPropagation()}
             title="Pomiń to zadanie w eksporcie AI"

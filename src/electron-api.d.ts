@@ -30,6 +30,11 @@ declare global {
       readDb: () => Promise<{ projects: Project[], orders: Order[], settings?: Settings }>;
       writeDb: (data: { projects: Project[], orders: Order[] }) => Promise<{ success: boolean }>;
       fetchYouTrack: (options: any) => Promise<any>;
+      openYouTrackAuth: () => Promise<void>;
+      submitYouTrackAuthLink: (link: string) => Promise<void>;
+      checkYouTrackAuth: () => Promise<{ login: string }>;
+      closeYouTrackAuth: () => Promise<void>;
+      onYouTrackAuthRequired: (callback: () => void) => () => void;
       getExcludedIssues: () => Promise<string[]>;
       setIssueExcluded: (id: string, excluded: boolean) => Promise<{ success: boolean }>;
       getYoutrackTabs: (projectId: string) => Promise<{ id: string; projectId: string; name: string; statuses: string[]; includeFilters?: boolean; orderIndex?: number }[]>;

@@ -1,6 +1,6 @@
 ﻿import electron from 'electron';
 import type { BrowserWindow as BrowserWindowType } from 'electron';
-const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage, net } = electron;
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = electron;
 import path from 'path';
 import fs from 'fs/promises';
 import tls from 'tls';
@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import { addBusinessDays, addDays, addHours, addMonths } from 'date-fns';
 import { GoogleDocsService } from './googleDocsService.js';
 import { getEnvSettings } from './envConfig.js';
+import { createYouTrackAuth } from './youtrackAuth.js';
 import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource, ServiceObligation, ServiceTask, ServiceEvent, GeminiGenerateRequest, GeminiGenerateResponse, DailyAiAnalysis, PendingSettlementEntry, Procedure } from '../src/types.js';
 
 // To address '__filename is not defined' in built ESM Vite-Electron environments,
@@ -36,8 +37,8 @@ const configureSystemCertificateAuthorities = () => {
 
 configureSystemCertificateAuthorities();
 
-const fetchYouTrackResponse = (url: string, options?: RequestInit) =>
-    net.fetch(url, options);
+const youtrackAuth = createYouTrackAuth(envSettings, () => mainWindow);
+const fetchYouTrackResponse = youtrackAuth.fetchResponse;
 
 const getNetworkErrorMessage = (error: unknown) => {
     const requestError = error as Error & { cause?: Error & { code?: string } };

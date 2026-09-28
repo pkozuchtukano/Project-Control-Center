@@ -19,6 +19,7 @@ import {
 import { Sidebar } from './components/Sidebar';
 import { ProjectModal } from './components/ProjectModal';
 import { GoogleReauthorizationModal } from './components/GoogleReauthorizationModal';
+import { YouTrackAuthModal } from './components/YouTrackAuthModal';
 import { SIDEBAR_COLLAPSED_STORAGE_KEY } from './utils/appCalculations';
 
 export { useProjectContext, useOrders, useProjectCalculations, useDarkMode };
@@ -75,6 +76,12 @@ const MainLayout = () => {
   useDarkMode();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isYouTrackAuthOpen, setIsYouTrackAuthOpen] = useState(false);
+  const [youTrackAuthRequest, setYouTrackAuthRequest] = useState(0);
+  useEffect(() => window.electron?.onYouTrackAuthRequired(() => {
+    setYouTrackAuthRequest(request => request + 1);
+    setIsYouTrackAuthOpen(true);
+  }), []);
   const [googleAuthActionTitle, setGoogleAuthActionTitle] = useState<string | null>(null);
   const pendingGoogleActionRef = useRef<PendingGoogleAction | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -251,10 +258,12 @@ const MainLayout = () => {
           <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => setIsSettingsOpen(false)}
+            onYouTrackAuthorizationRequired={() => setIsYouTrackAuthOpen(true)}
             onGoogleAuthorizationRequired={requestGoogleAuthorizationAndRetry}
           />
         </Suspense>
       )}
+      {isYouTrackAuthOpen && <YouTrackAuthModal key={youTrackAuthRequest} onClose={() => setIsYouTrackAuthOpen(false)} />}
       {googleAuthActionTitle !== null && (
         <GoogleReauthorizationModal
           actionTitle={googleAuthActionTitle}

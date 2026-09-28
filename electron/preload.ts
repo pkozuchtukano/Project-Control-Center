@@ -5,6 +5,15 @@ contextBridge.exposeInMainWorld('electron', {
     readDb: () => ipcRenderer.invoke('read-db'),
     writeDb: (data: any) => ipcRenderer.invoke('write-db', data),
     fetchYouTrack: (options: any) => ipcRenderer.invoke('fetch-youtrack', options),
+    openYouTrackAuth: () => ipcRenderer.invoke('youtrack-auth-open'),
+    submitYouTrackAuthLink: (link: string) => ipcRenderer.invoke('youtrack-auth-link', link),
+    checkYouTrackAuth: () => ipcRenderer.invoke('youtrack-auth-check'),
+    closeYouTrackAuth: () => ipcRenderer.invoke('youtrack-auth-close'),
+    onYouTrackAuthRequired: (callback: () => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('youtrack-auth-required', listener);
+        return () => ipcRenderer.removeListener('youtrack-auth-required', listener);
+    },
     getExcludedIssues: () => ipcRenderer.invoke('get-excluded-issues'),
     setIssueExcluded: (id: string, excluded: boolean) => ipcRenderer.invoke('set-issue-excluded', { id, excluded }),
     getYoutrackTabs: (projectId: string) => ipcRenderer.invoke('get-youtrack-tabs', projectId),
