@@ -237,7 +237,7 @@ export const Editor = ({
         style={{ minHeight: `${Math.max(minHeight + 20, 120)}px` }}
         onMouseDown={(event) => {
           const target = event.target as HTMLElement | null;
-          if (target?.closest('.ProseMirror') && editor.view.hasFocus()) return;
+          if (target?.closest('.ProseMirror')) return;
           editor.chain().focus().run();
         }}
       >
