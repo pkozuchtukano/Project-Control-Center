@@ -1,6 +1,6 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import type { Estimation, EmailTemplate, Project, OrderProtocolStep } from '../../../types';
-import { ChevronDown, Copy, Sparkles } from 'lucide-react';
+import { ChevronDown, Copy } from 'lucide-react';
 import { getEstimationCustomVariableFields, getEstimationVariableDefinitions, resolveEstimationTemplate } from '../services/EstimationService';
 import { parseDateVariable } from '../../../utils/dateParsing';
 
@@ -11,7 +11,63 @@ interface EmailTemplateSectionProps {
   setEstimation: React.Dispatch<React.SetStateAction<Estimation | null>>;
 }
 
-export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ estimation, project, flowSteps = [], setEstimation }) => {
+export const EstimationVariablesSection: React.FC<EmailTemplateSectionProps> = ({ estimation, project, flowSteps = [], setEstimation }) => {
+  const variables = estimation.emailTemplate?.variables || {};
+  const fields = getEstimationCustomVariableFields(estimation, project, flowSteps);
+  const dateValue = parseDateVariable('data', variables.data)!.split('.').reverse().join('-');
+  const updateVariable = (token: string, value: string) => {
+    setEstimation(current => current ? {
+      ...current,
+      emailTemplate: {
+        to: '',
+        cc: '',
+        subject: '',
+        body: '',
+        ...current.emailTemplate,
+        variables: { ...current.emailTemplate?.variables, [token]: value },
+      },
+    } : current);
+  };
+
+  return (
+    <section className="pcc-card space-y-4" aria-label="Zmienne wyceny">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="font-bold text-gray-900 dark:text-white">Zmienne</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {'U\u017cywane w krokach flow i szablonie e-mail. Dodaj w tre\u015bci token, np. {{twoja_zmienna}}, aby pojawi\u0142o si\u0119 pole do uzupe\u0142nienia.'}
+          </p>
+        </div>
+        <label className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
+          <span>Data dla <code>{'{{data}}'}</code></span>
+          <input
+            type="date"
+            value={dateValue}
+            onChange={event => updateVariable('data', event.target.value.split('-').reverse().join('.'))}
+            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm [color-scheme:light] dark:[color-scheme:dark]"
+          />
+        </label>
+      </div>
+      {fields.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {fields.map(token => (
+            <label key={token} className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
+              <code>{`{{${token}}}`}</code>
+              <input
+                type="text"
+                value={variables[token] || ''}
+                onChange={event => updateVariable(token, event.target.value)}
+                className="rounded-lg border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+              />
+            </label>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
+export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ estimation, project, setEstimation }) => {
   const template = useMemo(() => estimation.emailTemplate || {
     to: '',
     cc: '',
@@ -20,9 +76,6 @@ export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ esti
     variables: {}
   }, [estimation.emailTemplate]);
 
-  const detectedVariables = useMemo(() => {
-    return getEstimationCustomVariableFields(estimation, project, flowSteps);
-  }, [estimation, project, flowSteps]);
   const availableVariables = useMemo(() => {
     return getEstimationVariableDefinitions(estimation, project, template.variables || {})
       .slice()
@@ -41,36 +94,6 @@ export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ esti
       };
     });
   };
-
-  const updateVariable = (name: string, value: string) => {
-    updateTemplate({
-      variables: {
-        ...template.variables,
-        [name]: value
-      }
-    });
-  };
-
-  // Auto-fill dates
-  useEffect(() => {
-    let changed = false;
-    const newVars = { ...template.variables };
-    detectedVariables.forEach(v => {
-      if (newVars[v] === undefined || newVars[v] === '') {
-        const parsedDate = parseDateVariable(v);
-        if (parsedDate) {
-          newVars[v] = parsedDate;
-          changed = true;
-        }
-      }
-    });
-
-    // Clean up variables that are no longer in text? Maybe better not, to keep user input
-    
-    if (changed) {
-      updateTemplate({ variables: newVars });
-    }
-  }, [detectedVariables]);
 
   const replaceVariables = (text: string) => {
     return resolveEstimationTemplate(text, estimation, project, template.variables || {});
@@ -170,70 +193,6 @@ export const EmailTemplateSection: React.FC<EmailTemplateSectionProps> = ({ esti
           </>
         )}
       </div>
-
-      {/* Dynamic Variables Section */}
-      {detectedVariables.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="p-1 bg-amber-100 dark:bg-amber-900/50 rounded text-amber-600 dark:text-amber-400">
-              <Sparkles size={14} />
-            </div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-              Uzupełnij zmienne z szablonu
-            </h4>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {detectedVariables.map(v => {
-              const isDate = parseDateVariable(v) !== null;
-              let displayValue = template.variables[v] || '';
-              
-              // If it's a date and we have a value like DD.MM.YYYY, convert to YYYY-MM-DD for native input
-              let dateValue = '';
-              if (isDate && displayValue) {
-                const parts = displayValue.split('.');
-                if (parts.length === 3) {
-                  dateValue = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                } else if (displayValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                  dateValue = displayValue;
-                }
-              }
-
-              const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                const val = e.target.value; // YYYY-MM-DD
-                if (!val) {
-                  updateVariable(v, '');
-                  return;
-                }
-                const [y, m, d] = val.split('-');
-                updateVariable(v, `${d}.${m}.${y}`);
-              };
-
-              return (
-                <div key={v} className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-amber-600/70 dark:text-amber-500/70 uppercase px-1">{v}</label>
-                  {isDate ? (
-                    <input
-                      type="date"
-                      value={dateValue}
-                      onChange={handleDateChange}
-                      className="bg-white dark:bg-gray-800 border border-amber-200/60 dark:border-amber-900/60 focus:ring-1 focus:ring-amber-500 rounded px-2 py-1 text-sm outline-none transition-shadow"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={displayValue}
-                      onChange={e => updateVariable(v, e.target.value)}
-                      placeholder={`Wartość dla ${v}...`}
-                      className="bg-white dark:bg-gray-800 border border-amber-200/60 dark:border-amber-900/60 focus:ring-1 focus:ring-amber-500 rounded px-2 py-1 text-sm outline-none transition-shadow"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Email Fields */}
       <div className="grid grid-cols-1 gap-4">

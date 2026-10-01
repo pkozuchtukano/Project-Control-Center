@@ -5357,12 +5357,8 @@ const resolveMaintenanceSettlementTemplate = (
   overrides?: Partial<Record<string, string>>,
 ) => {
   const variableMap = buildMaintenanceSettlementVariableMap(entry, project, overrides);
-  return template.replace(/{{\s*([^}]+)\s*}}/g, (_match, rawToken) => {
-    const normalizedToken = normalizeTemplateVariableKey(rawToken);
-    return Object.prototype.hasOwnProperty.call(variableMap, normalizedToken)
-      ? variableMap[normalizedToken]
-      : `{{${String(rawToken).trim()}}}`;
-  });
+  const templateWithResolvedFunctions = resolveTemplateFunctions(template, variableMap);
+  return templateWithResolvedFunctions.replace(/{{\s*([^{}]+?)\s*}}/g, (_match, rawToken) => resolveTemplateExpression(rawToken, variableMap));
 };
 
 const renderResolvedMaintenanceSettlementTemplate = (
@@ -7620,7 +7616,23 @@ const MaintenanceSettlementFlowModal = ({
   const completedStepIds = normalizedFlow.completedStepIds || [];
   const stepsToRender = isEditMode ? draftSteps : persistedSteps;
   const projectEmailTemplate = emailTemplateData?.emailTemplate || createEmptyEmailTemplate();
-  const availableVariables = getMaintenanceSettlementVariableDefinitions(entry, project);
+  const customVariableValues = projectEmailTemplate.variables || {};
+  const availableVariables = getMaintenanceSettlementVariableDefinitions(entry, project, customVariableValues);
+  const knownVariableKeys = new Set(
+    availableVariables.flatMap(variable => [variable.token, ...(variable.aliases || [])]).map(normalizeTemplateVariableKey)
+  );
+  const customVariableFields = Array.from(new Map(
+    [
+      ...stepsToRender.flatMap(step => [step.description || '', step.linkLabel || '', step.linkUrl || '']),
+      projectEmailTemplate.to || '',
+      projectEmailTemplate.cc || '',
+      projectEmailTemplate.subject || '',
+      projectEmailTemplate.body || '',
+    ].flatMap(extractTemplateVariableReferences)
+      .filter(token => !knownVariableKeys.has(normalizeTemplateVariableKey(token)))
+      .filter(token => !parseDateVariable(token, availableVariables.find(variable => variable.token === 'data')?.value))
+      .map(token => [normalizeTemplateVariableKey(token), token])
+  ).values()).sort((left, right) => left.localeCompare(right, 'pl', { sensitivity: 'base' }));
   const modalLabels = mode === 'invoice'
     ? {
         title: `Faktura FV utrzymania ${formatMaintenancePeriod(entry.month, entry.periodMonths)}`,
@@ -7752,7 +7764,7 @@ const MaintenanceSettlementFlowModal = ({
   };
 
   const handleCopyEmailField = async (value: string, fieldId: string) => {
-    const resolvedValue = resolveMaintenanceSettlementTemplate(value, entry, project);
+    const resolvedValue = resolveMaintenanceSettlementTemplate(value, entry, project, customVariableValues);
     try {
       await navigator.clipboard.writeText(resolvedValue);
       setCopiedField(fieldId);
@@ -7821,6 +7833,25 @@ const MaintenanceSettlementFlowModal = ({
               </div>
             </div>
           </section>
+
+          {customVariableFields.length > 0 && (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">{'Dodatkowe zmienne wykryte w flow'}</h3>
+              <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+                {'Wpisz warto\u015bci zmiennych z krok\u00f3w, link\u00f3w i e-maila. Zapisuj\u0105 si\u0119 automatycznie w projekcie.'}
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {customVariableFields.map(token => (
+                  <DynamicProtocolVariableField
+                    key={token}
+                    token={token}
+                    value={customVariableValues[token] ?? Object.entries(customVariableValues).find(([key]) => normalizeTemplateVariableKey(key) === normalizeTemplateVariableKey(token))?.[1] ?? ''}
+                    onChange={(token, value) => updateProjectEmailTemplate({ variables: { ...customVariableValues, [token]: value } })}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="pcc-card">
             <button
@@ -7922,7 +7953,7 @@ const MaintenanceSettlementFlowModal = ({
                     />
                     {step.description && (
                       <div className="mt-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/50 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                        {renderResolvedMaintenanceSettlementTemplate(step.description, entry, project)}
+                        {renderResolvedMaintenanceSettlementTemplate(step.description, entry, project, customVariableValues)}
                       </div>
                     )}
                   </div>
@@ -7949,9 +7980,9 @@ const MaintenanceSettlementFlowModal = ({
                 </div>
               ) : (
                 stepsToRender.map((step, index) => {
-                  const resolvedDescription = resolveMaintenanceSettlementTemplate(step.description || '', entry, project);
-                  const resolvedLinkLabel = resolveMaintenanceSettlementTemplate(step.linkLabel || '', entry, project);
-                  const resolvedLinkUrl = resolveMaintenanceSettlementTemplate(step.linkUrl || '', entry, project);
+                  const resolvedDescription = resolveMaintenanceSettlementTemplate(step.description || '', entry, project, customVariableValues);
+                  const resolvedLinkLabel = resolveMaintenanceSettlementTemplate(step.linkLabel || '', entry, project, customVariableValues);
+                  const resolvedLinkUrl = resolveMaintenanceSettlementTemplate(step.linkUrl || '', entry, project, customVariableValues);
                   const isCompleted = completedStepIds.includes(step.id);
 
                   return (
@@ -7996,7 +8027,7 @@ const MaintenanceSettlementFlowModal = ({
                             </div>
                           ) : (
                             <p className="text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
-                              {resolvedDescription ? renderResolvedMaintenanceSettlementTemplate(step.description || '', entry, project) : 'Brak opisu kroku.'}
+                              {resolvedDescription ? renderResolvedMaintenanceSettlementTemplate(step.description || '', entry, project, customVariableValues) : 'Brak opisu kroku.'}
                             </p>
                           )}
                         </div>

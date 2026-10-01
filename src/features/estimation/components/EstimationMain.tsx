@@ -3,7 +3,7 @@ import type { Project, Estimation, OrderProtocolFlow, OrderProtocolStep } from '
 import { FileSpreadsheet, Loader2, Calculator, Save, Copy, RotateCcw, Mail, Edit2, Plus, Trash2, ArrowUp, ArrowDown, CheckCircle2, X, ExternalLink, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import { EstimationTable } from './EstimationTable';
 import { ScheduleManager } from './ScheduleManager';
-import { EmailTemplateSection } from './EmailTemplateSection';
+import { EmailTemplateSection, EstimationVariablesSection } from './EmailTemplateSection';
 import { createDefaultEstimation, formatEstimationToHTML, formatScheduleToHTML, resolveEstimationTemplate } from '../services/EstimationService';
 import { exportEstimationToExcel } from '../services/estimationExcelService';
 import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
@@ -322,6 +322,13 @@ export const EstimationMain: React.FC<EstimationMainProps> = ({ project }) => {
           </button>
         </div>
       </div>
+
+      <EstimationVariablesSection
+        estimation={estimation}
+        project={project}
+        flowSteps={isFlowEditMode ? draftFlowSteps : persistedSteps}
+        setEstimation={setEstimation}
+      />
 
       <div className={`grid grid-cols-1 ${isFlowCollapsed ? 'xl:grid-cols-[4rem_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(320px,0.95fr)_minmax(0,1.55fr)]'} gap-6 items-start transition-[grid-template-columns] duration-200`}>
         {/* ESTIMATION TABLE */}
