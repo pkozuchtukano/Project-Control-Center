@@ -26,6 +26,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            emptyOutDir: true,
             rollupOptions: {
               external: ['fs/promises', 'path', 'url', 'fs', 'better-sqlite3', '@pdfsmaller/pdf-encrypt-lite']
             }

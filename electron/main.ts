@@ -3,6 +3,7 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu, nativeImage } = electron;
 import path from 'path';
 import fs from 'fs/promises';
+import { mkdirSync } from 'fs';
 import tls from 'tls';
 import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
@@ -18,6 +19,14 @@ import type { ScheduledTask, DailyHub, DailySection, ScheduledTaskContentSource,
 const isDev = !app.isPackaged;
 const appDir = app.getAppPath();
 const executableDir = path.dirname(app.getPath('exe'));
+
+// Keep packaged application data with the executable for portable use.
+if (!isDev) {
+    const portableProfileDir = path.join(executableDir, 'profil');
+    mkdirSync(portableProfileDir, { recursive: true });
+    app.setPath('userData', portableProfileDir);
+    app.setPath('sessionData', portableProfileDir);
+}
 const envSettings = getEnvSettings(appDir, executableDir);
 
 const configureSystemCertificateAuthorities = () => {

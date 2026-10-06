@@ -19,8 +19,15 @@
       "output": "release"
     },
     "win": {
-      "target": "dir"
-    }
+      "target": "dir",
+      "signAndEditExecutable": false
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "electron/tray-icon.png",
+      "package.json"
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
