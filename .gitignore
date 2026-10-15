@@ -40,3 +40,4 @@ backups/*.db
 
 # Portable runtime and personal data
 aplikacja/
+kopie-kompilacji/
