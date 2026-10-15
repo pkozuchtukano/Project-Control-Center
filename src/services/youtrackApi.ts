@@ -100,6 +100,7 @@ export interface WorkLogItem {
 }
 
 export interface IssueWithHistory extends YouTrackIssue {
+    statusScopeMember?: boolean;
     project?: {
         id: string;
         shortName: string;
@@ -114,6 +115,18 @@ const buildProjectWorkItemsQuery = (projectQuery: string) => {
 
     const projectValue = /\s/.test(trimmedQuery) ? `{${trimmedQuery}}` : trimmedQuery;
     return `project: ${projectValue}`;
+};
+
+export const buildStatusProjectScope = (mapping: string, projectCode?: string) => {
+    const value = mapping.trim();
+    const projectValue = (name: string) => name.startsWith('{') || !/\s/.test(name) ? name : `{${name}}`;
+    if (!value) throw new Error('Brak projektu YouTrack.');
+    if (value.includes(':')) {
+        if (/\bproject\s*:/i.test(value)) return value;
+        if (!projectCode?.trim()) throw new Error('Brak projektu dla filtra YouTrack.');
+        return `(project: ${projectValue(projectCode.trim())}) and (${value})`;
+    }
+    return `project: ${value.split(',').map(part => projectValue(part.trim())).filter(Boolean).join(', ')}`;
 };
 
 const getHeaders = (token: string) => ({
@@ -177,7 +190,8 @@ export const fetchIssuesActivity = async (
     tab: 'Aktywności' | 'Do zrobienia' = 'Aktywności',
     customStatuses?: string[],  // when provided, overrides tab logic with custom State filter
     tabName?: string, // used to detect "Zakończone"
-    includeFilters?: boolean // dodano parametr sterujący filtrem daty
+    includeFilters?: boolean, // dodano parametr sterujący filtrem daty
+    statusOptions?: { additionalIssueIds: string[]; projectCode?: string; onMissingIssue?: (id: string) => void; includeInactive?: boolean }
 ): Promise<IssueWithHistory[]> => {
     if (!baseUrl || !token) throw new Error("Brak konfiguracji YouTrack (URL lub Token).");
 
@@ -208,6 +222,16 @@ export const fetchIssuesActivity = async (
         query = `project: ${projectName} updated: ${dateFrom} .. ${dateTo}`;
     }
 
+    if (statusOptions) {
+        const scope = buildStatusProjectScope(projectName, statusOptions.projectCode);
+        if (!scope) throw new Error('Brak projektu YouTrack.');
+        // Later edits must not hide activity from an earlier meeting period.
+        const today = new Date();
+        const latest = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        // YouTrack requires explicit operators next to parenthesized expressions.
+        query = statusOptions.includeInactive ? `(${scope})` : `(${scope}) and (updated: ${dateFrom} .. ${dateTo > latest ? dateTo : latest})`;
+    }
+
     // Pobierz WSZYSTKIE zadania (paginacja - brak limitu)
     const issues: any[] = [];
     const ISSUES_PAGE = 100;
@@ -222,6 +246,7 @@ export const fetchIssuesActivity = async (
                 $top: ISSUES_PAGE,
                 $skip: issueSkip
             });
+            if (statusOptions && !Array.isArray(page)) throw new Error('Nieprawid\u0142owa lista zada\u0144.');
             if (!Array.isArray(page) || page.length === 0) break;
             issues.push(...page);
             if (page.length < ISSUES_PAGE) break;
@@ -259,15 +284,57 @@ export const fetchIssuesActivity = async (
         }
     }
 
+    if (statusOptions) {
+        issues.forEach(issue => { issue.statusScopeMember = true; });
+        const existing = new Set(issues.flatMap(issue => [issue.id, issue.idReadable]));
+        const missingIds = [...new Set([
+            ...statusOptions.additionalIssueIds,
+            ...issues.flatMap(issue => (issue.links || [])
+                .filter((link: any) => link.direction?.toLowerCase() === 'inward' && link.linkType?.name?.toLowerCase().includes('subtask'))
+                .flatMap((link: any) => (link.issues || []).map((parent: any) => parent.idReadable || parent.id)))
+        ])].filter(id => id && !existing.has(id));
+        // Explicit reads are only for parents and items carried from this project's reports.
+        for (const id of missingIds) {
+            try {
+                const issue = await makeRequest(`${apiBase}/issues/${encodeURIComponent(id)}`, token, { fields: issueFields });
+                if (!existing.has(issue.id)) {
+                    issue.statusScopeMember = false;
+                    issues.push(issue);
+                    existing.add(issue.id);
+                    existing.add(issue.idReadable);
+                }
+            } catch (error) {
+                if (String(error).includes('[YOUTRACK_AUTH_REQUIRED]') || !statusOptions.onMissingIssue) throw error;
+                statusOptions.onMissingIssue(id);
+            }
+        }
+    }
+
     // 2. For each issue, fetch full activity (comments + field changes)
     // We use Promise.all to fetch them concurrently. We limit fields to keep response light.
     const historyPromises = issues.map(async (issue) => {
         try {
             // Activities endpoint
-            const rawActivities = await makeRequest(`${apiBase}/issues/${issue.id}/activities`, token, {
+            const activityParams = {
                 categories: 'CommentsCategory,IssueCreatedCategory,ProjectCategory,IssueResolvedCategory,CustomFieldCategory,SummaryCategory,DescriptionCategory,WorkItemCategory,AttachmentCategory,TagsCategory',
                 fields: 'id,timestamp,author(name,login,email),category(id),added(name,text,presentation,duration(minutes,presentation),date,type(name),author(name,login,email)),removed(name,text,presentation,duration(minutes,presentation),date,type(name),author(name,login,email)),field(customField(name),name),targetMember,text'
-            }) || [];
+            };
+            const rawActivities: any[] = [];
+            // Old metadata is enough for inactive cards; only newer issues can have period activity.
+            const inactiveBeforePeriod = statusOptions?.includeInactive && Number.isFinite(issue.updated)
+                && issue.updated < new Date(`${dateFrom}T00:00:00`).getTime();
+            if (statusOptions && !inactiveBeforePeriod) {
+                for (let skip = 0; ; skip += 100) {
+                    const page = await makeRequest(`${apiBase}/issues/${issue.id}/activities`, token, {
+                        ...activityParams, $top: 100, $skip: skip
+                    });
+                    if (!Array.isArray(page)) throw new Error('Nieprawid\u0142owa historia zadania.');
+                    rawActivities.push(...page);
+                    if (page.length < 100) break;
+                }
+            } else if (!inactiveBeforePeriod) {
+                rawActivities.push(...(await makeRequest(`${apiBase}/issues/${issue.id}/activities`, token, activityParams) || []));
+            }
             const timeline: ActivityItem[] = [];
 
             // Dla WorkItemCategory agregujemy po dacie i autorze
@@ -285,7 +352,8 @@ export const fetchIssuesActivity = async (
                         author
                     });
                 } else if (catId === 'CommentsCategory') {
-                    const commentText = activity.added?.[0]?.text;
+                    const commentText = activity.added?.[0]?.text || (statusOptions && activity.removed?.[0]?.text
+                        ? `Usuni\u0119to komentarz: ${activity.removed[0].text}` : '');
                     if (commentText) {
                         timeline.push({
                             type: 'comment',
@@ -361,6 +429,20 @@ export const fetchIssuesActivity = async (
                         added: typeof newStr === 'string' ? newStr : ''
                     });
                 } else if (catId === 'WorkItemCategory') {
+                    if (statusOptions) {
+                        const workItem = activity.added?.[0] || activity.removed?.[0];
+                        timeline.push({
+                            type: 'work-item', id: activity.id, timestamp: activity.timestamp, author,
+                            minutes: workItem?.duration?.minutes,
+                            workComments: [
+                                !activity.added?.length ? 'Usuni\u0119to wpis pracy.' : '',
+                                workItem?.date ? `Data pracy: ${new Date(workItem.date).toLocaleDateString('pl-PL')}.` : '',
+                                workItem?.text || ''
+                            ].filter(Boolean),
+                            workItemType: workItem?.type?.name
+                        });
+                        return;
+                    }
                     // Dodany work item
                     const workItem = activity.added?.[0];
                     if (workItem && workItem.duration && workItem.duration.minutes) {
@@ -394,6 +476,12 @@ export const fetchIssuesActivity = async (
                             };
                         }
                     }
+                } else if (statusOptions && (catId === 'AttachmentCategory' || catId === 'TagsCategory')) {
+                    timeline.push({
+                        type: 'field-change', id: activity.id, timestamp: activity.timestamp, author,
+                        field: catId === 'AttachmentCategory' ? 'Za\u0142\u0105czniki' : 'Tagi',
+                        added: JSON.stringify(activity.added || []), removed: JSON.stringify(activity.removed || [])
+                    });
                 }
             });
 
@@ -501,9 +589,11 @@ export const fetchIssuesActivity = async (
                 tags: issue.tags || [],
                 links: issue.links || [],
                 rawCustomFields: issue.customFields || [],
-                timeline
+                timeline,
+                statusScopeMember: issue.statusScopeMember
             };
         } catch (err) {
+            if (statusOptions) throw new Error(`Nie uda\u0142o si\u0119 pobra\u0107 pe\u0142nej historii ${issue.idReadable}. ${String(err)}`);
             if (String(err).includes('[YOUTRACK_AUTH_REQUIRED]')) throw err;
             console.error(`Błąd pobierania historii dla zadania ${issue.idReadable}:`, err);
             return { ...issue, timeline: [] }; // fallback for single issue error

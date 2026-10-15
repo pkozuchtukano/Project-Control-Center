@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import type { StatusStory, StatusStoryComment } from '../../../types';
 import type { IssueWithHistory } from '../../../services/youtrackApi';
 import { formatMinutesToDuration } from '../../../services/youtrackApi';
@@ -182,17 +181,23 @@ export const sortStatusStories = (stories: StatusStory[]) => {
     return rightTimestamp - leftTimestamp;
   });
 
-  return standaloneStories.flatMap((story) => {
-    const children = [...(childrenByGroup.get(story.issueReadableId) || [])].sort(sortByRecentUpdate);
-    return [story, ...children];
-  });
+  const result: StatusStory[] = [];
+  const visited = new Set<string>();
+  const visit = (story: StatusStory) => {
+    if (visited.has(story.issueReadableId)) return;
+    visited.add(story.issueReadableId);
+    result.push(story);
+    [...(childrenByGroup.get(story.issueReadableId) || [])].sort(sortByRecentUpdate).forEach(visit);
+  };
+  standaloneStories.forEach(visit);
+  stories.forEach(visit);
+  return result;
 };
 
 const summarizeTechnicalContext = (issue: IssueWithHistory, fromTime: number, toTime: number) => {
   const description = stripHtml(issue.description);
   const fieldChanges = (issue.timeline || [])
     .filter(item => item.type === 'field-change' && item.timestamp >= fromTime && item.timestamp <= toTime)
-    .slice(-3)
     .map(item => `${item.field}: ${item.added || 'zmiana'}`);
 
   const firstLineParts = [
@@ -202,7 +207,7 @@ const summarizeTechnicalContext = (issue: IssueWithHistory, fromTime: number, to
 
   const lines = [
     firstLineParts.join(' | '),
-    description ? `Opis: ${description.slice(0, 280)}` : '',
+    description ? `Opis: ${description}` : '',
     fieldChanges.length ? `Ostatnie zmiany: ${fieldChanges.join('; ')}` : '',
   ].filter(Boolean);
 
@@ -214,10 +219,11 @@ export const buildStatusStories = (
   dailyComments: Record<string, string>,
   baseUrl: string,
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  includeInactive = false
 ): StatusStory[] => {
   const fromTime = new Date(`${dateFrom}T00:00:00`).getTime();
-  const toTime = new Date(`${dateTo}T23:59:59`).getTime();
+  const toTime = new Date(`${dateTo}T23:59:59.999`).getTime();
   const baseStories = issues
     .map((issue) => {
       const youTrackComments: StatusStoryComment[] = [];
@@ -235,9 +241,9 @@ export const buildStatusStories = (
             return;
           }
 
-          if (item.type === 'work-item' && item.minutes) {
+          if (item.type === 'work-item') {
             const note = [
-              `Zalogowano ${formatMinutesToDuration(item.minutes)}`,
+              item.minutes ? `Wpis pracy: ${formatMinutesToDuration(item.minutes)}` : 'Zmieniono wpis pracy',
               item.workItemType ? `(${item.workItemType})` : '',
               item.workComments?.filter(Boolean).join('; ')
             ].filter(Boolean).join(' ');
@@ -249,7 +255,20 @@ export const buildStatusStories = (
               text: note,
               source: 'work-item' as const
             });
+            return;
           }
+
+          if (item.type === 'comment') return;
+          const text = item.type === 'issue-created'
+            ? 'Utworzono zadanie.'
+            : `${item.field || 'Zmiana'}: ${String(item.removed || 'Brak')} → ${String(item.added || 'Brak')}`;
+          youTrackComments.push({
+            id: item.id,
+            author: item.author?.name || item.author?.login || 'YouTrack',
+            timestamp: item.timestamp,
+            text,
+            source: item.type
+          });
         });
 
       const dailyNote = dailyComments[issue.idReadable]?.trim();
@@ -286,10 +305,20 @@ export const buildStatusStories = (
         dailyNote,
         projectCode: issue.project?.shortName,
         stateName: issue.state?.name,
-        assigneeName: issue.assignee?.name || null
+        assigneeName: issue.assignee?.name || null,
+        description: stripHtml(issue.description),
+        stateColor: issue.state?.color,
+        activityCount: youTrackComments.length,
+        activitySummary: [
+          youTrackComments.filter(item => item.source === 'youtrack-comment').length ? `Komentarze: ${youTrackComments.filter(item => item.source === 'youtrack-comment').length}` : '',
+          youTrackComments.some(item => item.source === 'work-item') ? 'Wpisy pracy' : '',
+          youTrackComments.some(item => item.source === 'field-change' || item.source === 'description-change') ? 'Zmiany zadania' : '',
+          youTrackComments.some(item => item.source === 'issue-created') ? 'Nowe zadanie' : ''
+        ].filter(Boolean).join(' · '),
+        isContextOnly: youTrackComments.length === 0 || issue.statusScopeMember === false,
+        isScopeContext: issue.statusScopeMember === false
       } satisfies StatusStory;
-    })
-    .filter(story => story.comments.length > 0 || story.technicalSummary || story.title);
+    });
 
   const childrenByParent = new Map<string, string[]>();
   const storyByReadableId = new Map(baseStories.map((story) => [story.issueReadableId, story]));
@@ -299,6 +328,20 @@ export const buildStatusStories = (
     const group = childrenByParent.get(story.parentIssueReadableId) || [];
     group.push(story.issueReadableId);
     childrenByParent.set(story.parentIssueReadableId, group);
+  }
+
+  const includedIds = new Set(baseStories.filter(story => !story.isContextOnly).map(story => story.issueReadableId));
+  for (const story of baseStories) {
+    if (!includedIds.has(story.issueReadableId)) continue;
+    let current = story;
+    const visited = new Set<string>();
+    while (current.parentIssueReadableId && !visited.has(current.parentIssueReadableId)) {
+      visited.add(current.parentIssueReadableId);
+      includedIds.add(current.parentIssueReadableId);
+      const parent = storyByReadableId.get(current.parentIssueReadableId);
+      if (!parent) break;
+      current = parent;
+    }
   }
 
   return sortStatusStories(
@@ -319,78 +362,27 @@ export const buildStatusStories = (
           ].map((child) => [child.issueReadableId, child])
         ).values()
       )
-    }))
+    })).filter(story => includeInactive || includedIds.has(story.issueReadableId))
   );
 };
 
 export const buildStatusStoryHtml = (story: StatusStory) => {
   const commentsForCanvas = [...story.comments].sort((a, b) => a.timestamp - b.timestamp);
-  const commentsHtml = story.comments.length
-    ? `<ul style="margin:6px 0 0 18px;padding:0;">${commentsForCanvas.map(comment => `<li style="margin:0 0 4px 0;"><strong>${escapeHtml(comment.author)}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
-    : '<p style="margin:6px 0 0 0;">Brak komentarzy w wybranym zakresie.</p>';
-  const technicalSummaryHtml = (story.technicalSummary || 'Brak dodatkowego opisu technicznego.')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      if (/^Status:\s*Done$/i.test(line.trim())) {
-        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;">Zrobione</span></p>';
-      }
-
-      if (/^Status:\s*To Do$/i.test(line.trim())) {
-        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-weight:700;">Do zrobienia</span></p>';
-      }
-
-      if (/^Status:\s*In Progress$/i.test(line.trim())) {
-        return '<p style="margin:0 0 4px 0;"><strong>Status:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#fef3c7;color:#92400e;font-weight:700;">W trakcie pracy</span></p>';
-      }
-
-      return `<p style="margin:0 0 4px 0;">${escapeHtml(line)}</p>`;
-    })
-    .join('');
-  const childTitles = (story.childIssues || [])
-    .map((child) => child.title?.trim() || child.issueReadableId)
-    .filter(Boolean);
-  const relationInfoParts = [
-    story.parentIssueTitle || story.parentIssueReadableId
-      ? `Subtask zadania: ${story.parentIssueTitle || story.parentIssueReadableId}.`
-      : '',
-    childTitles.length ? `Powiązane podzadania: ${childTitles.join(', ')}.` : ''
-  ].filter(Boolean);
-  const relationInfoHtml = relationInfoParts.length
-    ? `<p style="margin:0 0 6px 0;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.72);font-size:12px;line-height:1.45;color:#6b7280;"><strong>Powiązania:</strong> ${escapeHtml(relationInfoParts.join(' '))}</p>`
-    : '';
-  const sectionStyle = story.parentIssueReadableId
-    ? 'position: relative; margin: 0 0 10px 18px; padding: 10px 12px; border-left: 3px solid #f59e0b; background: linear-gradient(180deg, rgba(255,251,235,0.95), rgba(255,255,255,0.95)); border-radius: 12px;'
-    : 'margin: 0 0 12px 0; padding: 12px 14px; border: 1px solid #dbeafe; background: linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.98)); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);';
-  const relationLineHtml = story.parentIssueReadableId
-    ? '<div style="position:absolute; left:-16px; top:-10px; width:12px; height:16px; border-left:2px solid #f59e0b; border-bottom:2px solid #f59e0b; border-bottom-left-radius:8px;"></div>'
-    : '';
-
+  const commentsHtml = commentsForCanvas.length
+    ? `<ul>${commentsForCanvas.map(comment => `<li><strong>${escapeHtml(comment.author)} · ${comment.source === 'daily-note' ? 'kontekst Daily' : escapeHtml(new Date(comment.timestamp).toLocaleString('pl-PL'))}:</strong> ${escapeHtml(comment.text)}</li>`).join('')}</ul>`
+    : '<p>Brak aktywności w wybranym okresie.</p>';
+  const descriptionHtml = (story.description || story.technicalSummary || '').split('\n').filter(Boolean)
+    .map(line => `<p>${escapeHtml(line)}</p>`).join('');
   return `
-    <section data-issue-id="${escapeHtml(story.issueReadableId)}" data-parent-issue-id="${escapeHtml(story.parentIssueReadableId || '')}" style="${sectionStyle}">
-      ${relationLineHtml}
-      <h2 style="margin:0 0 6px 0;font-size:16px;line-height:1.35;"><a href="${escapeHtml(story.issueUrl)}" target="_blank" rel="noreferrer">${escapeHtml(story.issueReadableId)}</a> ${escapeHtml(story.title)}</h2>
-      ${relationInfoHtml}
-      ${technicalSummaryHtml}
-      ${story.dailyNote ? `<blockquote style="margin:6px 0;padding-left:10px;border-left:3px solid #d1d5db;color:#6b7280;"><p style="margin:0;">${escapeHtml(story.dailyNote)}</p></blockquote>` : ''}
+    <section data-issue-id="${escapeHtml(story.issueReadableId)}">
+      <h2><a href="${escapeHtml(story.issueUrl)}" target="_blank" rel="noreferrer">${escapeHtml(story.issueReadableId)}</a> ${escapeHtml(story.title)}</h2>
+      ${story.parentIssueReadableId ? `<p><strong>Zadanie nadrzędne:</strong> ${escapeHtml(story.parentIssueReadableId)} ${escapeHtml(story.parentIssueTitle || '')}</p>` : ''}
+      <p><strong>Status:</strong> ${escapeHtml(story.stateName || 'Brak statusu')} · <strong>Przypisano:</strong> ${escapeHtml(story.assigneeName || 'Nieprzypisane')}</p>
+      ${descriptionHtml}
+      <h3>Aktywność i notatki</h3>
       ${commentsHtml}
     </section>
   `.replace(/>\s+</g, '><').trim();
-};
-
-export const buildStatusEditorHtml = (
-  projectCode: string,
-  title: string,
-  dateFrom: string,
-  dateTo: string
-) => {
-  const dateLabel = `${format(new Date(`${dateFrom}T00:00:00`), 'dd.MM.yyyy')} - ${format(new Date(`${dateTo}T00:00:00`), 'dd.MM.yyyy')}`;
-
-  return `
-    <h1>${escapeHtml(title)}</h1>
-    <p><strong>Projekt:</strong> ${escapeHtml(projectCode)}<br /><strong>Zakres:</strong> ${escapeHtml(dateLabel)}</p>
-    <p></p>
-  `;
 };
 
 export const stripRichText = stripHtml;

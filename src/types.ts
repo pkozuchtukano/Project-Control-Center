@@ -460,7 +460,7 @@ export type StatusStoryComment = {
   author: string;
   timestamp: number;
   text: string;
-  source: 'youtrack-comment' | 'work-item' | 'daily-note';
+  source: 'youtrack-comment' | 'work-item' | 'daily-note' | 'field-change' | 'description-change' | 'issue-created';
 };
 
 export type StatusRelatedIssue = {
@@ -487,6 +487,24 @@ export type StatusStory = {
   projectCode?: string;
   stateName?: string;
   assigneeName?: string | null;
+  description?: string;
+  activityCount?: number;
+  activitySummary?: string;
+  isContextOnly?: boolean;
+  isScopeContext?: boolean;
+  stateColor?: { background: string; foreground: string };
+};
+
+export type StatusAgendaItem = {
+  id: string;
+  title: string;
+  summaryHtml: string;
+  detailsHtml: string;
+  meetingNotesHtml?: string;
+  source?: StatusStory;
+  originReportId?: string;
+  originReportTitle?: string;
+  originItemId?: string;
 };
 
 export type StatusReport = {
@@ -499,6 +517,8 @@ export type StatusReport = {
   stories: StatusStory[];
   createdAt: string;
   updatedAt: string;
+  agenda?: StatusAgendaItem[];
+  version?: 2;
 };
 
 export type MaintenanceEntry = {

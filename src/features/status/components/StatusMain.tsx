@@ -1,917 +1,303 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Editor as TiptapEditor } from '@tiptap/react';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, subDays } from 'date-fns';
-import {
-  AlertCircle,
-  Calendar,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  FilePlus2,
-  ExternalLink,
-  Eye,
-  FileText,
-  Loader2,
-  RefreshCw,
-  RotateCcw,
-  Save,
-  Trash2,
-  X
-} from 'lucide-react';
-import type { Project, StatusReport } from '../../../types';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { Check, Eye, FilePlus2, History, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import type { Project, StatusAgendaItem, StatusReport, StatusStory } from '../../../types';
 import { useProjectContext } from '../../../context/ProjectContext';
-import { Editor } from '../../meeting-notes/components/Editor';
-import { DailyIssueDetailsModal } from '../../daily/components/DailyIssueDetailsModal';
+import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 import { useStatusStories } from '../hooks/useStatusStories';
 import { buildStatusStoryHtml, escapeHtml, stripRichText } from '../utils/statusUtils';
-import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
-
-interface StatusMainProps {
-  project: Project;
-}
+import { agendaDepth, buildAgendaHtml, createAgendaItem, createStatusId, getReportAgenda, mergeAgenda, moveAgenda, orderAgenda, refreshAgendaSources, statusDraftKey } from '../utils/agendaUtils';
+import { StatusAgendaCard } from './StatusAgendaCard';
+import { StatusSources } from './StatusSources';
+import './status.css';
 
 interface StatusDraft {
   title: string;
   dateFrom: string;
   dateTo: string;
-  editorContent: string;
-  removedSourceIds: Record<string, boolean>;
-  updatedAt: string;
+  agenda: StatusAgendaItem[];
+  reportId?: string;
 }
 
-const buildDefaultTitle = (projectCode: string, dateTo: string) =>
-  `Status projektu ${projectCode} - ${format(new Date(`${dateTo}T00:00:00`), 'dd.MM.yyyy')}`;
+const defaultTitle = (project: Project, date: string) => {
+  const parsed = new Date(`${date}T12:00:00`);
+  return `Status projektu ${project.code} — ${format(Number.isNaN(parsed.getTime()) ? new Date() : parsed, 'dd.MM.yyyy')}`;
+};
+const inputClass = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
+const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800';
+const headerButtonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-gray-200 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800';
+const headerInputClass = 'h-8 rounded-md border border-gray-200 bg-transparent px-2 text-sm text-gray-900 dark:border-gray-700 dark:text-white';
 
-const createReportId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `status_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const readDraft = (project: Project): StatusDraft => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const fallback = { title: defaultTitle(project, today), dateFrom: format(subDays(new Date(), 7), 'yyyy-MM-dd'), dateTo: today, agenda: [] };
+  try {
+    const raw = localStorage.getItem(statusDraftKey(project.id));
+    if (raw) {
+      const parsed = JSON.parse(raw) as StatusDraft;
+      if (Array.isArray(parsed.agenda) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dateFrom) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dateTo)) return parsed;
+    }
+    const legacy = localStorage.getItem(`status_canvas_draft_${project.id}`);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      return { ...fallback, title: parsed.title || fallback.title, dateFrom: parsed.dateFrom || fallback.dateFrom, dateTo: parsed.dateTo || today,
+        agenda: parsed.editorContent?.trim() ? [{ id: createStatusId(), title: 'Dotychczasowa treść statusu', summaryHtml: parsed.editorContent, detailsHtml: '' }] : [] };
+    }
+  } catch (error) { console.error('Status draft restore failed:', error); }
+  return fallback;
+};
 
-const getStatusDraftKey = (projectId: string) => `status_canvas_draft_${projectId}`;
-const getStatusTitleKey = (projectId: string) => `status_title_${projectId}`;
-const getDefaultStatusDateFrom = (latestReport?: StatusReport) =>
-  latestReport?.dateTo || format(subDays(new Date(), 7), 'yyyy-MM-dd');
-
-export const StatusMain = ({ project }: StatusMainProps) => {
+const StatusWorkspace = ({ project }: { project: Project }) => {
   const { settings } = useProjectContext();
-  const { stories, issues, isLoading, error, refreshStories, setStories, setIssues } = useStatusStories();
+  const [initialDraft] = useState(() => readDraft(project));
+  const [title, setTitle] = useState(initialDraft.title);
+  const [dateFrom, setDateFrom] = useState(initialDraft.dateFrom);
+  const [dateTo, setDateTo] = useState(initialDraft.dateTo);
+  const [agenda, setAgenda] = useState(initialDraft.agenda);
+  const [reportId, setReportId] = useState(initialDraft.reportId);
   const [reports, setReports] = useState<StatusReport[]>([]);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
-  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [title, setTitle] = useState(buildDefaultTitle(project.code, format(new Date(), 'yyyy-MM-dd')));
-  const [editorContent, setEditorContent] = useState('');
-  const [, setIsDirty] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [activePreview, setActivePreview] = useState<StatusReport | null>(null);
-  const [activeIssueDetailsId, setActiveIssueDetailsId] = useState<string | null>(null);
-  const [selectionText, setSelectionText] = useState('');
-  const [isSourcesCollapsed, setIsSourcesCollapsed] = useState(false);
-  const [includedSourceIds, setIncludedSourceIds] = useState<Record<string, boolean>>({});
-  const [removedSourceIds, setRemovedSourceIds] = useState<Record<string, boolean>>({});
-  const [isDraftSaving, setIsDraftSaving] = useState(false);
-  const [isDraftSaved, setIsDraftSaved] = useState(false);
-  const [activeRefreshAction, setActiveRefreshAction] = useState<'sources' | null>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const editorApiRef = useRef<TiptapEditor | null>(null);
+  const [message, setMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [meeting, setMeeting] = useState(false);
+  const [tab, setTab] = useState<'activity' | 'previous'>('activity');
+  const [historyId, setHistoryId] = useState('');
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<StatusReport | StatusStory | null>(null);
+  const [selection, setSelection] = useState('');
+  const [newItemId, setNewItemId] = useState('');
+  const agendaRef = useRef(agenda);
+  const alive = useRef(true);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const { stories, allStories, isLoading, error, warning, loadedRange, refreshStories } = useStatusStories();
+  const range = `${dateFrom}/${dateTo}`;
+  const sourcesStale = loadedRange !== range;
+  const orderedAgenda = useMemo(() => orderAgenda(agenda), [agenda]);
+  const included = useMemo(() => new Set(agenda.flatMap(item => item.source ? [item.source.issueReadableId] : [])), [agenda]);
+  const historyReport = reports.find(report => report.id === historyId) || reports.find(report => report.id !== reportId) || reports[0];
+  const historyAgenda = useMemo(() => historyReport ? getReportAgenda(historyReport) : [], [historyReport]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  useEffect(() => { agendaRef.current = agenda; }, [agenda]);
+  useEffect(() => {
+    if (newItemId) document.getElementById(`agenda-${newItemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [newItemId]);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
 
   const loadReports = useCallback(async () => {
-    setIsHistoryLoading(true);
-    try {
-      if (window.electron?.getStatusReports) {
-        const saved = await window.electron.getStatusReports(project.id);
-        setReports(saved || []);
-        return saved || [];
-      }
-
-      const local = localStorage.getItem(`status_reports_${project.id}`);
-      const parsed = local ? JSON.parse(local) : [];
-      setReports(parsed);
-      return parsed;
-    } catch (loadError) {
-      console.error('Status history load failed:', loadError);
-      setReports([]);
-      return [];
-    } finally {
-      setIsHistoryLoading(false);
-    }
+    const saved: StatusReport[] = window.electron?.getStatusReports
+      ? await window.electron.getStatusReports(project.id)
+      : JSON.parse(localStorage.getItem(`status_reports_${project.id}`) || '[]');
+    return saved.filter(report => report.projectId === project.id);
   }, [project.id]);
 
   useEffect(() => {
-    setReports([]);
-    setStories([]);
-    setIssues([]);
-    setEditorContent('');
-    setSelectionText('');
-    setIsDirty(false);
-    setIsInitialized(false);
-    setActiveIssueDetailsId(null);
-    setIsDraftSaving(false);
-    setIsDraftSaved(false);
-    setIsSourcesCollapsed(false);
-    setRemovedSourceIds({});
-    setTitle(buildDefaultTitle(project.code, format(new Date(), 'yyyy-MM-dd')));
-
-    try {
-      const savedIncluded = localStorage.getItem(`status_included_sources_${project.id}`);
-      setIncludedSourceIds(savedIncluded ? JSON.parse(savedIncluded) : {});
-    } catch {
-      setIncludedSourceIds({});
-    }
-  }, [project.id, project.code, setIssues, setStories]);
-
-  useEffect(() => {
-    localStorage.setItem(`status_included_sources_${project.id}`, JSON.stringify(includedSourceIds));
-  }, [includedSourceIds, project.id]);
-
-  useEffect(() => {
     let active = true;
-
-    const bootstrap = async () => {
-      const savedReports = await loadReports();
+    loadReports().then(saved => {
       if (!active) return;
-
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const latest = savedReports[0];
-      const fallbackDateTo = today;
-      const fallbackDateFrom = getDefaultStatusDateFrom(latest);
-      const savedTitle = localStorage.getItem(getStatusTitleKey(project.id));
-      const fallbackTitle = savedTitle?.trim() || buildDefaultTitle(project.code, today);
-
-      try {
-        const rawDraft = localStorage.getItem(getStatusDraftKey(project.id));
-        if (rawDraft) {
-          const draft = JSON.parse(rawDraft) as Partial<StatusDraft>;
-          const draftTitle = draft.title?.trim();
-          const shouldRefreshDraftTitle =
-            !draftTitle ||
-            draftTitle === buildDefaultTitle(project.code, draft.dateTo || fallbackDateTo);
-
-          setDateTo(fallbackDateTo);
-          setDateFrom(fallbackDateFrom);
-          setTitle(shouldRefreshDraftTitle ? buildDefaultTitle(project.code, fallbackDateTo) : draftTitle);
-          setEditorContent(draft.editorContent || '');
-          setRemovedSourceIds(draft.removedSourceIds || {});
-          setIsDirty(!!draft.editorContent?.trim());
-          setIsDraftSaved(!!draft.editorContent || !!draft.title);
-          setIsInitialized(true);
-          return;
-        }
-      } catch (draftError) {
-        console.error('Status draft restore failed:', draftError);
-      }
-
-      setDateTo(fallbackDateTo);
-      setDateFrom(fallbackDateFrom);
-      setTitle(fallbackTitle);
-      setIsInitialized(true);
-    };
-
-    bootstrap();
-
-    return () => {
-      active = false;
-    };
-  }, [loadReports, project.id, project.code]);
-
-  const loadSources = async () => refreshStories({
-    project,
-    dateFrom,
-    dateTo,
-    youtrackBaseUrl: settings?.youtrackBaseUrl,
-    youtrackToken: settings?.youtrackToken
-  });
-
-  const refreshSourcesOnly = async () => {
-    await loadSources();
-  };
+      setReports(saved);
+      if (!localStorage.getItem(statusDraftKey(project.id)) && !localStorage.getItem(`status_canvas_draft_${project.id}`) && saved[0]) setDateFrom(saved[0].dateTo);
+    }).catch(err => { if (active) setSaveError(`Nie udało się odczytać historii. ${String(err)}`); })
+      .finally(() => { if (active) setReady(true); });
+    return () => { active = false; };
+  }, [loadReports, project.id]);
 
   useEffect(() => {
-    if (!isInitialized) return;
-
-    setIsDraftSaving(true);
-    setIsDraftSaved(false);
-
-    let savedIndicatorTimer: number | undefined;
-
-    const saveTimer = window.setTimeout(() => {
-      const draft: StatusDraft = {
-        title,
-        dateFrom,
-        dateTo,
-        editorContent,
-        removedSourceIds,
-        updatedAt: new Date().toISOString()
-      };
-
-      localStorage.setItem(getStatusDraftKey(project.id), JSON.stringify(draft));
-      setIsDraftSaving(false);
-      setIsDraftSaved(true);
-      savedIndicatorTimer = window.setTimeout(() => {
-        setIsDraftSaved(false);
-      }, 2200);
-    }, 350);
-
-    return () => {
-      window.clearTimeout(saveTimer);
-      if (savedIndicatorTimer) {
-        window.clearTimeout(savedIndicatorTimer);
-      }
+    if (!ready) return;
+    const draft: StatusDraft = { title, dateFrom, dateTo, agenda, reportId };
+    const saveDraft = () => {
+      try { localStorage.setItem(statusDraftKey(project.id), JSON.stringify(draft)); }
+      catch (err) { console.error('Status draft save failed:', err); if (alive.current) setSaveError('Nie udało się zapisać szkicu. Zapisz agendę w historii.'); }
     };
-  }, [dateFrom, dateTo, editorContent, isInitialized, project.id, removedSourceIds, title]);
+    const timer = window.setTimeout(saveDraft, 350);
+    // Flush the latest edit when switching projects or leaving the tab.
+    return () => { window.clearTimeout(timer); saveDraft(); };
+  }, [agenda, dateFrom, dateTo, project.id, ready, reportId, title]);
 
-  useEffect(() => {
-    localStorage.setItem(getStatusTitleKey(project.id), title.trim() || buildDefaultTitle(project.code, dateTo));
-  }, [dateTo, project.code, project.id, title]);
+  const refreshSources = useCallback(async () => {
+    if (!dateFrom || !dateTo || dateFrom > dateTo) return;
+    const mapped = await refreshStories({ project, dateFrom, dateTo,
+      youtrackBaseUrl: settings?.youtrackBaseUrl, youtrackToken: settings?.youtrackToken,
+      additionalIssueIds: agendaRef.current.flatMap(item => item.source?.issueId ? [item.source.issueReadableId] : [])
+    });
+    if (mapped && alive.current) setAgenda(current => refreshAgendaSources(current, mapped));
+  }, [dateFrom, dateTo, project, refreshStories, settings?.youtrackBaseUrl, settings?.youtrackToken]);
 
-  useEffect(() => {
-    if (!activePreview) return;
-
-    const handleSelection = () => {
-      const selection = window.getSelection();
-      if (!selection || !previewRef.current || selection.rangeCount === 0) {
-        setSelectionText('');
-        return;
-      }
-
-      const range = selection.getRangeAt(0);
-      const node = range.commonAncestorContainer;
-      const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement;
-      setSelectionText(element && previewRef.current.contains(element) ? selection.toString().trim() : '');
-    };
-
-    document.addEventListener('selectionchange', handleSelection);
-    return () => document.removeEventListener('selectionchange', handleSelection);
-  }, [activePreview]);
-
-  const handleRefreshSources = async () => {
-    setActiveRefreshAction('sources');
-    try {
-      await refreshSourcesOnly();
-    } finally {
-      setActiveRefreshAction(null);
-    }
+  const openIssue = (url: string) => {
+    if (window.electron?.openExternal) void window.electron.openExternal(url);
+    else window.open(url, '_blank', 'noopener,noreferrer');
   };
-
-  const saveReportsLocal = (nextReports: StatusReport[]) => {
-    localStorage.setItem(`status_reports_${project.id}`, JSON.stringify(nextReports));
+  const addSource = (source: StatusStory) => {
+    const existing = agenda.find(item => item.source?.issueReadableId === source.issueReadableId);
+    if (existing) { document.getElementById(`agenda-${existing.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    const item = createAgendaItem(source);
+    setNewItemId(item.id);
+    setAgenda(current => mergeAgenda(current, [item]));
   };
-
-  const handleSaveReport = async () => {
-    if (!editorContent.trim()) return;
-
+  const addManual = (text?: string, label?: string) => {
+    const item = { ...createAgendaItem(), title: label || 'Nowy temat', summaryHtml: text ? `<p>${escapeHtml(text)}</p>` : '' };
+    setNewItemId(item.id);
+    setAgenda(current => [...current, item]);
+  };
+  const saveReport = async () => {
+    if (!agenda.length || !dateFrom || !dateTo || dateFrom > dateTo) return null;
+    setIsSaving(true);
+    setSaveError('');
     const now = new Date().toISOString();
     const report: StatusReport = {
-      id: createReportId(),
-      projectId: project.id,
-      title: title.trim() || buildDefaultTitle(project.code, dateTo),
-      dateFrom,
-      dateTo,
-      content: editorContent,
-      stories,
-      createdAt: now,
-      updatedAt: now
+      id: reportId || createStatusId(), projectId: project.id, title: title.trim() || defaultTitle(project, dateTo), dateFrom, dateTo,
+      content: buildAgendaHtml(orderedAgenda), agenda: orderedAgenda, stories: orderedAgenda.flatMap(item => item.source ? [item.source] : []),
+      version: 2, createdAt: reports.find(item => item.id === reportId)?.createdAt || now, updatedAt: now
     };
-
-    setIsSaving(true);
     try {
       if (window.electron?.saveStatusReport) {
-        await window.electron.saveStatusReport({ projectId: project.id, data: report });
-      } else {
-        saveReportsLocal([report, ...reports]);
-      }
-      await loadReports();
-      setIsDirty(false);
-      localStorage.removeItem(getStatusDraftKey(project.id));
-      setIsDraftSaved(false);
-    } catch (saveError) {
-      console.error('Status history save failed:', saveError);
-      alert('Nie udało się zapisać historii statusu.');
-    } finally {
-      setIsSaving(false);
-    }
+        const result = await window.electron.saveStatusReport({ projectId: project.id, data: report });
+        if (!result.success) throw new Error('Zapis nie został potwierdzony.');
+      } else localStorage.setItem(`status_reports_${project.id}`, JSON.stringify([report, ...reports.filter(item => item.id !== report.id)]));
+      if (!alive.current) return report;
+      setReports(current => [report, ...current.filter(item => item.id !== report.id)].sort((a, b) => b.dateTo.localeCompare(a.dateTo) || b.updatedAt.localeCompare(a.updatedAt)));
+      setReportId(report.id);
+      setMessage('Zapisano w historii tego projektu.');
+      return report;
+    } catch (err) { if (alive.current) setSaveError(`Nie udało się zapisać statusu. ${String(err)}`); return null; }
+    finally { if (alive.current) setIsSaving(false); }
   };
-
-  const handleDeleteReport = async (reportId: string) => {
-    if (!window.confirm('Usunąć zapisany raport statusowy?')) return;
-
+  const startNext = async () => {
+    if (agenda.length && !window.confirm('Zapisać bieżącą agendę w historii i rozpocząć kolejny status?')) return;
+    const saved = agenda.length ? await saveReport() : null;
+    if ((agenda.length && !saved) || !alive.current) return;
+    if (agendaRef.current !== agenda) {
+      setMessage('Agenda zmieniła się podczas zapisu. Sprawdź ją przed rozpoczęciem kolejnego statusu.');
+      return;
+    }
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const start = saved?.dateTo || reports[0]?.dateTo || dateFrom;
+    const end = start > today ? start : today;
+    setAgenda([]); setReportId(undefined); setDateFrom(start); setDateTo(end); setTitle(defaultTitle(project, end));
+    setHistoryId(saved?.id || ''); setTab('previous'); setMessage('Wybierz tematy do kontynuowania.');
+  };
+  const carryOver = (items: StatusAgendaItem[]) => {
+    if (!historyReport || historyReport.projectId !== project.id) return;
+    const refreshed = sourcesStale ? items : refreshAgendaSources(items, allStories);
+    setAgenda(current => mergeAgenda(current, refreshed, historyReport));
+    if (!agenda.length && !reportId) {
+      setDateFrom(historyReport.dateTo);
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const end = today < historyReport.dateTo ? historyReport.dateTo : today;
+      setDateTo(end);
+      setTitle(defaultTitle(project, end));
+    }
+    setMessage('Przeniesiono tematy. Opisy i szczegóły zachowano.');
+  };
+  const deleteReport = async (report: StatusReport) => {
+    if (!window.confirm('Usunąć ten status z historii projektu?')) return;
     try {
-      if (window.electron?.deleteStatusReport) {
-        await window.electron.deleteStatusReport(reportId);
-      } else {
-        saveReportsLocal(reports.filter(report => report.id !== reportId));
-      }
-      await loadReports();
-      if (activePreview?.id === reportId) {
-        setActivePreview(null);
-        setSelectionText('');
-      }
-    } catch (deleteError) {
-      console.error('Status history delete failed:', deleteError);
-      alert('Nie udało się usunąć raportu.');
-    }
+      if (window.electron?.deleteStatusReport) await window.electron.deleteStatusReport(report.id);
+      else localStorage.setItem(`status_reports_${project.id}`, JSON.stringify(reports.filter(item => item.id !== report.id)));
+      if (!alive.current) return;
+      setReports(current => current.filter(item => item.id !== report.id));
+      setPreview(null);
+      if (reportId === report.id) setReportId(undefined);
+    } catch (err) { if (alive.current) setSaveError(`Nie udało się usunąć statusu. ${String(err)}`); }
   };
 
-  const openIssue = async (url: string) => {
-    if (window.electron?.openExternal) {
-      await window.electron.openExternal(url);
-      return;
-    }
-
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const appendHtmlToCanvas = (html: string) => {
-    const editor = editorApiRef.current;
-
-    if (editor) {
-      editor.chain().focus().insertContent(html).run();
-      setIsDirty(true);
-      return;
-    }
-
-    setEditorContent(prev => `${prev}${html}`);
-    setIsDirty(true);
-  };
-
-  const insertStoryIntoCanvas = (storyId: string) => {
-    const story = stories.find(item => item.id === storyId);
-    if (!story) return;
-
-    appendHtmlToCanvas(buildStatusStoryHtml(story));
-  };
-
-  const toggleIncludedSource = (sourceId: string) => {
-    setIncludedSourceIds(prev => ({
-      ...prev,
-      [sourceId]: !prev[sourceId]
-    }));
-  };
-
-  const removeStoryFromCanvas = (sourceId: string, issueReadableId: string) => {
-    if (typeof window === 'undefined') return;
-
-    const parser = new DOMParser();
-    const documentFragment = parser.parseFromString(editorContent, 'text/html');
-    const headings = Array.from(documentFragment.querySelectorAll('h2'));
-    const targetHeading = headings.find((heading) => {
-      const text = heading.textContent?.trim() || '';
-      return text.startsWith(issueReadableId);
-    });
-
-    if (!targetHeading) {
-      setRemovedSourceIds(prev => ({
-        ...prev,
-        [sourceId]: true
-      }));
-      return;
-    }
-
-    let current: Element | null = targetHeading;
-    while (current) {
-      const next: Element | null = current.nextElementSibling;
-      current.remove();
-      if (!next || next.tagName.toLowerCase() === 'h2') {
-        break;
-      }
-      current = next;
-    }
-
-    setEditorContent(documentFragment.body.innerHTML.trim());
-    setRemovedSourceIds(prev => ({
-      ...prev,
-      [sourceId]: true
-    }));
-    setIsDirty(true);
-  };
-
-  const restoreStoryToCanvas = (storyId: string) => {
-    const story = stories.find(item => item.id === storyId);
-    if (!story) return;
-
-    appendHtmlToCanvas(buildStatusStoryHtml(story));
-    setRemovedSourceIds(prev => ({
-      ...prev,
-      [storyId]: false
-    }));
-  };
-
-  const sourceItems = useMemo(
-    () => stories.map((story) => ({
-      id: story.id,
-      issueReadableId: story.issueReadableId,
-      issueUrl: story.issueUrl,
-      title: story.title,
-      stateName: story.stateName || 'Brak statusu',
-      parentIssueReadableId: story.parentIssueReadableId || null,
-      childIssueReadableIds: story.childIssueReadableIds || [],
-      isSubtask: !!story.parentIssueReadableId
-    })),
-    [stories]
-  );
-
-  const sourceChildrenMap = useMemo(() => {
-    const childrenMap = new Map<string, typeof sourceItems>();
-
-    sourceItems.forEach((item) => {
-      if (!item.parentIssueReadableId) {
-        return;
-      }
-
-      const currentChildren = childrenMap.get(item.parentIssueReadableId) || [];
-      currentChildren.push(item);
-      childrenMap.set(item.parentIssueReadableId, currentChildren);
-    });
-
-    return childrenMap;
-  }, [sourceItems]);
-
-  const issuesPresentInCanvas = useMemo(() => {
-    if (typeof window === 'undefined' || !editorContent.trim()) {
-      return new Set<string>();
-    }
-
-    const parser = new DOMParser();
-    const documentFragment = parser.parseFromString(editorContent, 'text/html');
-    const issueIds = new Set<string>();
-
-    documentFragment.querySelectorAll('section[data-issue-id]').forEach((section) => {
-      const issueId = section.getAttribute('data-issue-id');
-      if (issueId) {
-        issueIds.add(issueId);
-      }
-    });
-
-    documentFragment.querySelectorAll('h2').forEach((heading) => {
-      const text = heading.textContent?.trim() || '';
-      const match = text.match(/^([A-Z][A-Z0-9]+-\d+)/);
-      if (match?.[1]) {
-        issueIds.add(match[1]);
-      }
-    });
-
-    return issueIds;
-  }, [editorContent]);
-
-  const activeIssueDetails = useMemo(
-    () => issues.find((issue) => issue.id === activeIssueDetailsId || issue.idReadable === activeIssueDetailsId) || null,
-    [activeIssueDetailsId, issues]
-  );
-
-  const renderSourceCard = (
-    story: typeof sourceItems[number],
-    options?: {
-      childStories?: typeof sourceItems;
-    }
-  ) => {
-    const isIncluded = !!includedSourceIds[story.id];
-    const isRemoved = !!removedSourceIds[story.id];
-    const isPresentInCanvas = issuesPresentInCanvas.has(story.issueReadableId);
-    const childStories = options?.childStories || [];
-    const shouldRenderAsParent = childStories.length > 0;
-
-    return (
-      <article
-        key={story.id}
-        className={`relative rounded-xl px-3 py-2.5 transition-all ${
-          story.parentIssueReadableId && !shouldRenderAsParent
-            ? 'border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20'
-            : childStories.length
-              ? 'border border-indigo-300 dark:border-indigo-700 bg-white/95 dark:bg-indigo-950/20 shadow-sm'
-              : 'border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-950/20'
-        } ${isIncluded ? 'opacity-45 saturate-50' : ''}`}
-      >
-        {story.parentIssueReadableId && !shouldRenderAsParent && (
-          <div className="mb-2 text-[11px] font-bold text-amber-700 dark:text-amber-300">
-            Sub:{' '}
-            {(() => {
-              const parentStory = sourceItems.find((item) => item.issueReadableId === story.parentIssueReadableId);
-              const parentLabel = parentStory?.title?.trim()
-                ? `${story.parentIssueReadableId} - ${parentStory.title}`
-                : story.parentIssueReadableId;
-
-              return (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (parentStory) {
-                      void openIssue(parentStory.issueUrl);
-                    }
-                  }}
-                  className="text-left underline decoration-dotted underline-offset-2 whitespace-normal break-words"
-                  title={parentLabel}
-                >
-                  {parentLabel}
-                </button>
-              );
-            })()}
-          </div>
-        )}
-        <div className="space-y-2">
-          <div className="min-w-0">
-            <button
-              type="button"
-              onClick={() => openIssue(story.issueUrl)}
-              className={`text-[11px] font-black hover:underline inline-flex items-center gap-1 ${
-                story.parentIssueReadableId && !shouldRenderAsParent ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'
-              }`}
-            >
-              {story.issueReadableId}
-              <ExternalLink size={12} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveIssueDetailsId(story.id || story.issueReadableId)}
-              className="block text-left text-sm leading-5 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1.5 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-              title={story.title}
-            >
-              {story.title}
-            </button>
-          </div>
-
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => insertStoryIntoCanvas(story.id)}
-              className="p-1.5 rounded-lg border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 transition-colors"
-              title="Wstaw treść w miejscu kursora"
-            >
-              <FilePlus2 size={14} />
-            </button>
-            <span
-              className={`p-1.5 rounded-lg border ${
-                isPresentInCanvas
-                  ? 'bg-indigo-100 border-indigo-200 text-indigo-700 dark:bg-indigo-900/40 dark:border-indigo-800 dark:text-indigo-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600'
-              }`}
-              title={isPresentInCanvas ? 'Źródło jest obecne w treści statusu' : 'Źródło nie występuje w treści statusu'}
-            >
-              <FileText size={14} />
-            </span>
-            {isRemoved ? (
-              <button
-                type="button"
-                onClick={() => restoreStoryToCanvas(story.id)}
-                className="p-1.5 rounded-lg border bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/40 dark:border-amber-800 dark:text-amber-300 transition-colors"
-                title="Przywróć zadanie do treści statusu"
-              >
-                <RotateCcw size={14} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => removeStoryFromCanvas(story.id, story.issueReadableId)}
-                className="p-1.5 rounded-lg border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-600 hover:border-red-300 transition-colors"
-                title="Usuń zadanie z przygotowanej treści"
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => toggleIncludedSource(story.id)}
-              className={`p-1.5 rounded-lg border transition-colors ${
-                isIncluded
-                  ? 'bg-emerald-100 border-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:border-emerald-800 dark:text-emerald-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-emerald-600 hover:border-emerald-300'
-              }`}
-              title={isIncluded ? 'Oznaczone jako uwzględnione' : 'Oznacz jako uwzględnione'}
-            >
-              <CheckCircle2 size={14} />
-            </button>
-
-            <span className="shrink-0 px-2 py-1 rounded-full bg-white dark:bg-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-              {story.stateName}
-            </span>
-          </div>
+  return <div className="space-y-4">
+    <section className="pcc-card-compact status-header space-y-2" aria-label="Ustawienia statusu">
+      <div className="flex h-9 min-w-0 items-center gap-2">
+        <h2 className="shrink-0 text-sm font-bold text-gray-900 dark:text-white">Status</h2>
+        {meeting ? <p title={title} className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</p>
+          : <input aria-label="Tytuł statusu" title={title} className={`${headerInputClass} min-w-0 flex-1`} value={title} onChange={event => setTitle(event.target.value)} />}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className="status-header-links"><ProjectLinksDropdown project={project} visibleInTab="status" /></div>
+          <button type="button" onClick={() => { setMeeting(false); setTab('previous'); }} title="Poprzednie statusy" aria-label="Poprzednie statusy" className={headerButtonClass}><History size={15} /></button>
+          <button type="button" onClick={() => setMeeting(!meeting)} title={meeting ? 'Przygotowanie' : 'Widok spotkania'} aria-label={meeting ? 'Przygotowanie' : 'Widok spotkania'} aria-pressed={meeting} className={headerButtonClass}><Eye size={15} /><span className="hidden sm:inline">{meeting ? 'Przygotowanie' : 'Spotkanie'}</span></button>
         </div>
-      </article>
-    );
-  };
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,7.4fr)_minmax(300px,2.6fr)] gap-4">
-        <div className="space-y-6">
-        <section className="pcc-card-compact xl:p-5">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Spotkanie statusowe</h2>
-              <ProjectLinksDropdown project={project} visibleInTab="status" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-[repeat(2,minmax(140px,180px))_minmax(260px,1fr)_auto_auto] gap-3 items-end">
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                  <Calendar size={14} /> Data od
-                </span>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  max={dateTo}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                  <Calendar size={14} /> Data do
-                </span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  min={dateFrom}
-                  onChange={(e) => {
-                    const nextDateTo = e.target.value;
-                    const currentDefaultTitle = buildDefaultTitle(project.code, dateTo);
-                    const shouldUpdateTitle = !title.trim() || title.trim() === currentDefaultTitle;
-
-                    setDateTo(nextDateTo);
-                    if (shouldUpdateTitle) {
-                      setTitle(buildDefaultTitle(project.code, nextDateTo));
-                    }
-                    setIsDirty(true);
-                  }}
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:light] dark:[color-scheme:dark]"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Tytuł statusu</span>
-                <input
-                  value={title}
-                  onChange={(e) => {
-                    setTitle(e.target.value);
-                    setIsDirty(true);
-                  }}
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleRefreshSources}
-                disabled={isLoading}
-                title="Odśwież źródła z YouTrack"
-                className="h-11 w-11 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
-              >
-                {activeRefreshAction === 'sources' ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveReport}
-                disabled={isSaving || !editorContent.trim()}
-                title="Zapisz w historii"
-                className="h-11 w-11 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-900 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center"
-              >
-                {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-            {isDraftSaving && (
-              <span className="h-8 w-8 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 inline-flex items-center justify-center" title="Zapisywanie zmian">
-                <Loader2 size={14} className="animate-spin" />
-              </span>
-            )}
-            {!isDraftSaving && isDraftSaved && (
-              <span className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 inline-flex items-center justify-center" title="Zapisano zmiany">
-                <CheckCircle2 size={14} />
-              </span>
-            )}
-            {isLoading && (
-              <span className="px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 font-semibold inline-flex items-center gap-2">
-                <Loader2 size={14} className="animate-spin" />
-                Pobieranie danych z YouTrack i Daily...
-              </span>
-            )}
-            {error && (
-              <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 font-semibold inline-flex items-center gap-2">
-                <AlertCircle size={14} />
-                {error}
-              </span>
-            )}
-            {!isLoading && !sourceItems.length && (
-              <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-semibold inline-flex items-center gap-2">
-                <RotateCcw size={14} />
-                YouTrack nie odświeża się automatycznie po wejściu. Użyj przycisku odświeżania.
-              </span>
-            )}
-          </div>
-        </section>
-
-        <section className="pcc-card-compact xl:p-5 status-editor">
-          <Editor
-            content={editorContent}
-            onChange={(value) => {
-              setEditorContent(value);
-              setIsDirty(true);
-            }}
-            onEditorReady={(editor) => {
-              editorApiRef.current = editor;
-            }}
-            placeholder="Wprowadź narrację statusową dla klienta..."
-            openLinksOnClick
-            minHeight={520}
-          />
-        </section>
-        </div>
-
-        <aside className="pcc-card-compact xl:p-5 sticky top-4 self-start max-h-[calc(100vh-2rem)] flex flex-col min-h-0">
-          <div className="min-h-0 overflow-y-auto pr-1">
-            <section>
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <button
-                type="button"
-                onClick={() => setIsSourcesCollapsed(prev => !prev)}
-                className="flex-1 flex items-start justify-between gap-3 text-left"
-              >
-                <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {isSourcesCollapsed ? (
-                    <ChevronRight size={16} className="text-gray-400 shrink-0" />
-                  ) : (
-                    <ChevronDown size={16} className="text-gray-400 shrink-0" />
-                  )}
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Źródła do statusu</h3>
-                </div>
-              </div>
-                <span className="text-xs font-bold px-2 py-1 rounded-full bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 shrink-0">
-                  {sourceItems.length}
-                </span>
-              </button>
-            </div>
-
-            {!isSourcesCollapsed && (
-              <>
-                {!(isLoading && !sourceItems.length) && (
-                  <div className="space-y-3">
-                    {sourceItems.map((story) => renderSourceCard(story, { childStories: sourceChildrenMap.get(story.issueReadableId) || [] }))}
-
-                    {!sourceItems.length && !isLoading && (
-                      <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
-                        Brak aktywności i notatek dla wybranego zakresu dat.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-            </section>
-          </div>
-        </aside>
       </div>
-
-      <section className="pcc-card-compact xl:p-5">
-        <div className="flex items-center justify-between gap-3 mb-5">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Historia statusów</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Podgląd poprzednich spotkań i kopiowanie do bieżącej wersji.</p>
-          </div>
-          <span className="text-xs font-bold px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-            {reports.length}
-          </span>
+      <div className="flex h-9 min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto whitespace-nowrap">
+          {meeting ? <p className="text-xs text-gray-600 dark:text-gray-300">{dateFrom} — {dateTo}</p> : <>
+            <label className="flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">Od<input type="date" className={`${headerInputClass} w-[132px]`} value={dateFrom} max={dateTo} onChange={event => setDateFrom(event.target.value)} /></label>
+            <label className="flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">Do<input type="date" className={`${headerInputClass} w-[132px]`} value={dateTo} min={dateFrom} onChange={event => { const next = event.target.value; if (next && title === defaultTitle(project, dateTo)) setTitle(defaultTitle(project, next)); setDateTo(next); }} /></label>
+            <button type="button" onClick={() => void refreshSources()} disabled={isLoading || !ready || !dateFrom || !dateTo || dateFrom > dateTo} title="Odśwież źródła" aria-label="Odśwież źródła" className={headerButtonClass}>{isLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}</button>
+            <button type="button" disabled={isSaving || !ready} onClick={() => void startNext()} title="Nowy status" aria-label="Nowy status" className={headerButtonClass}><FilePlus2 size={15} /></button>
+          </>}
         </div>
+        <span role="status" title={message || 'Szkic zapisywany automatycznie dla tego projektu'} className="max-w-48 truncate text-xs text-gray-500 dark:text-gray-400">{message || 'Szkic auto'}</span>
+        <button type="button" disabled={isSaving || !ready || !agenda.length || !dateFrom || !dateTo || dateFrom > dateTo} onClick={() => void saveReport()} title="Zapisz w historii" aria-label="Zapisz w historii" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-indigo-600 px-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-40">{isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Zapisz</button>
+      </div>
+    </section>
+    {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{saveError}</p>}
 
-        {isHistoryLoading ? (
-          <div className="py-12 flex flex-col items-center justify-center text-gray-500">
-            <Loader2 className="animate-spin mb-3" />
-            Ładowanie historii...
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {reports.map((report) => (
-              <div key={report.id} className="relative rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50/80 dark:bg-gray-900/40">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="font-semibold text-gray-900 dark:text-white truncate">{report.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{report.dateFrom} {'->'} {report.dateTo}</p>
-                    <p className="pt-2 text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
-                      {stripRichText(report.content).slice(0, 160) || 'Brak treści podglądu.'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 self-start">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActivePreview(report);
-                        setSelectionText('');
-                      }}
-                      className="p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
-                      title="Podgląd"
-                    >
-                      <Eye size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteReport(report.id)}
-                      className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-white dark:hover:bg-gray-800 transition-colors"
-                      title="Usuń"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {!reports.length && (
-              <div className="py-10 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl">
-                <FileText className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">Brak zapisanych raportów statusowych.</p>
-              </div>
-            )}
-          </div>
-        )}
+    <div className={`grid grid-cols-1 items-start gap-4 ${meeting ? '' : 'lg:grid-cols-[minmax(0,1fr)_minmax(310px,380px)]'}`}>
+      <section className={`min-w-0 ${meeting ? 'status-meeting-document bg-white dark:bg-gray-900' : 'space-y-3'}`}>
+        <div className={`flex items-center gap-2 ${meeting ? 'justify-end' : 'justify-between'}`}><h2 className={meeting ? 'sr-only' : 'text-lg font-bold text-gray-900 dark:text-white'}>Agenda spotkania <span className="text-sm font-normal text-gray-500">({agenda.length})</span></h2>
+          <button type="button" disabled={!ready} onClick={() => addManual(undefined, meeting ? 'Notatka ze spotkania' : undefined)} className={meeting ? 'inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-50 hover:text-indigo-600 disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800' : buttonClass}><Plus size={15} />{meeting ? 'Dodaj notatkę' : 'Własny temat'}</button>
+        </div>
+        {!ready ? <p className="p-6 text-sm text-gray-500">Odczytywanie statusu projektu...</p> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (over) setAgenda(current => moveAgenda(current, String(active.id), String(over.id))); }}>
+          <SortableContext items={orderedAgenda.map(item => item.id)} strategy={verticalListSortingStrategy}>
+            <div className={meeting ? 'status-meeting-topics' : 'space-y-3'}>{orderedAgenda.map((item, index) => <StatusAgendaCard key={`${item.id}-${meeting}`} item={item} index={index} depth={agendaDepth(item, orderedAgenda)} meeting={meeting} initiallyEditing={newItemId === item.id}
+              activityState={item.source ? sourcesStale ? 'stale' : allStories.some(source => source.issueReadableId === item.source?.issueReadableId) ? (allStories.find(source => source.issueReadableId === item.source?.issueReadableId)?.activityCount ? 'active' : 'inactive') : 'missing' : undefined}
+              onChange={updated => setAgenda(current => current.map(candidate => candidate.id === updated.id ? updated : candidate))}
+              onRemove={() => { setAgenda(current => current.filter(candidate => candidate.id !== item.id)); setMessage('Usunięto temat z agendy. Możesz dodać go ponownie ze źródeł lub historii.'); }}
+              onSource={source => { setSelection(''); setPreview(source); }} onOpenIssue={openIssue} />)}</div>
+          </SortableContext>
+        </DndContext>}
+        {ready && !agenda.length && <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center text-sm leading-6 text-gray-500 dark:border-gray-700 dark:text-gray-400">Dodaj zadania z aktywności lub przenieś tematy z poprzedniego statusu.<br />Każdy temat ma własny opis, szczegóły i miejsce w agendzie.</div>}
       </section>
 
-      {activeIssueDetails && (
-        <DailyIssueDetailsModal
-          issue={activeIssueDetails}
-          isOpen={!!activeIssueDetails}
-          onClose={() => setActiveIssueDetailsId(null)}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-        />
-      )}
-
-      {activePreview && (
-        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-5xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-500">Archiwalny status</p>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mt-1">{activePreview.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Zakres: {activePreview.dateFrom} {'->'} {activePreview.dateTo}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActivePreview(null);
-                  setSelectionText('');
-                }}
-                className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="Zamknij"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] max-h-[calc(90vh-76px)]">
-              <div className="overflow-y-auto p-6">
-                <div
-                  ref={previewRef}
-                  className="prose dark:prose-invert max-w-none prose-a:text-indigo-600"
-                  dangerouslySetInnerHTML={{ __html: activePreview.content }}
-                />
-              </div>
-              <div className="border-l border-gray-200 dark:border-gray-800 p-6 bg-gray-50/70 dark:bg-gray-950/40 space-y-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500 mb-2">Akcje</p>
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (selectionText.trim()) {
-                          appendHtmlToCanvas(`<blockquote><p>${escapeHtml(selectionText)}</p><p><strong>Źródło:</strong> ${escapeHtml(activePreview.title)}</p></blockquote>`);
-                        }
-                      }}
-                      disabled={!selectionText}
-                      className="w-full px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      <Copy size={16} />
-                      Kopiuj zaznaczenie
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => appendHtmlToCanvas(`<hr /><h2>${escapeHtml(activePreview.title)}</h2>${activePreview.content}`)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-900 flex items-center justify-center gap-2"
-                    >
-                      <FileText size={16} />
-                      Wstaw cały raport
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500 mb-2">Zaznaczenie</p>
-                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 min-h-[160px] text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                    {selectionText || 'Zaznacz fragment w podglądzie raportu, a potem wstaw go do bieżącego statusu.'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      {!meeting && <aside className="pcc-card-compact sticky top-4 max-h-[calc(100vh-2rem)] space-y-4 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
+          <button type="button" onClick={() => setTab('activity')} className={`rounded-md px-2 py-2 text-xs font-semibold ${tab === 'activity' ? 'bg-white text-indigo-600 shadow-sm dark:bg-gray-900 dark:text-indigo-300' : 'text-gray-500'}`}>Aktywność w okresie</button>
+          <button type="button" onClick={() => setTab('previous')} className={`rounded-md px-2 py-2 text-xs font-semibold ${tab === 'previous' ? 'bg-white text-indigo-600 shadow-sm dark:bg-gray-900 dark:text-indigo-300' : 'text-gray-500'}`}>Poprzedni status</button>
         </div>
-      )}
+        {tab === 'activity' ? <>
+          <div><h3 className="font-bold text-gray-900 dark:text-white">Źródła do statusu</h3><p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{project.youtrackQuery || project.code} · {stories.filter(story => !story.isContextOnly).length} zadań z aktywnością</p></div>
+          {isLoading && <p role="status" className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-300"><Loader2 size={16} className="animate-spin" />Pobieranie pełnej historii...</p>}
+          {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
+          {warning && <p role="status" className="text-xs leading-5 text-amber-700 dark:text-amber-300">{warning}</p>}
+          {sourcesStale && !isLoading && <p className="text-xs text-amber-700 dark:text-amber-300">Kliknij „Odśwież źródła”, aby pobrać aktywność dla wybranego okresu.</p>}
+          <StatusSources projectId={project.id} stories={allStories} included={included} stale={sourcesStale || isLoading} onAdd={addSource} onPreview={source => { setSelection(''); setPreview(source); }} onOpenIssue={openIssue} />
+          {!isLoading && !error && !sourcesStale && !allStories.length && <p className="py-6 text-center text-sm text-gray-500">Brak zadań dla tego projektu. Tematy możesz przenieść z poprzedniego statusu.</p>}
+        </> : <>
+          <h3 className="font-bold text-gray-900 dark:text-white">Historia tego projektu</h3>
+          {historyReport ? <>
+            <select aria-label="Poprzedni status" className={inputClass} value={historyReport.id} onChange={event => { setHistoryId(event.target.value); setSelectedHistoryIds([]); }}>
+              {reports.map(report => <option key={report.id} value={report.id}>{report.title} ({report.dateTo})</option>)}
+            </select>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Okres: {historyReport.dateFrom} — {historyReport.dateTo}</p>
+            {!historyReport.agenda && <p className="text-xs leading-5 text-amber-700 dark:text-amber-300">Starszy raport zachowuje wspólną treść. Przenieś ją w całości lub skopiuj wybrany fragment z podglądu.</p>}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => carryOver(historyAgenda)} className={buttonClass}>Przenieś wszystkie</button>
+              <button type="button" onClick={() => { setSelection(''); setPreview(historyReport); }} className={buttonClass}><Eye size={14} />Podgląd</button>
+            </div>
+            <div className="space-y-2">{historyAgenda.map(item => <label key={item.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <input type="checkbox" checked={selectedHistoryIds.includes(item.id)} onChange={event => setSelectedHistoryIds(current => event.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} className="mt-1" />
+              <span className="min-w-0"><span className="block text-xs font-bold text-indigo-600 dark:text-indigo-300">{item.source?.issueReadableId || 'Własna treść'}</span><span className="mt-1 block text-sm font-semibold text-gray-800 dark:text-gray-100">{item.title}</span><span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{stripRichText(item.summaryHtml).slice(0, 160)}</span>{item.source && included.has(item.source.issueReadableId) && <span className="mt-1 block text-xs font-semibold text-emerald-600">Już w agendzie</span>}</span>
+            </label>)}</div>
+            <button type="button" disabled={!selectedHistoryIds.length} onClick={() => { carryOver(historyAgenda.filter(item => selectedHistoryIds.includes(item.id))); setSelectedHistoryIds([]); }} className={`${buttonClass} w-full`}><Check size={15} />Przenieś wybrane ({selectedHistoryIds.length})</button>
+          </> : <p className="py-6 text-center text-sm text-gray-500">Ten projekt nie ma jeszcze zapisanych statusów.</p>}
+        </>}
+      </aside>}
     </div>
-  );
+
+    {preview && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+      <div role="dialog" aria-modal="true" aria-label={preview.title} className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-900">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 p-5 dark:border-gray-700"><div><p className="text-xs font-semibold text-indigo-500">{'projectId' in preview ? 'Archiwalny status tego projektu' : 'Materiał źródłowy'}</p><h3 className="mt-1 font-bold text-gray-900 dark:text-white">{preview.title}</h3></div><button type="button" onClick={() => setPreview(null)} className={buttonClass} aria-label="Zamknij podgląd"><X size={17} /></button></div>
+        <div ref={historyRef} onMouseUp={() => { const selected = window.getSelection(); if (selected?.anchorNode && selected.focusNode && historyRef.current?.contains(selected.anchorNode) && historyRef.current.contains(selected.focusNode)) setSelection(selected.toString().trim()); }} className="status-rich-text prose max-w-none overflow-y-auto p-5 text-gray-900 dark:prose-invert dark:text-gray-100" dangerouslySetInnerHTML={{ __html: 'projectId' in preview ? preview.content : buildStatusStoryHtml(preview) }} />
+        <div className="flex flex-wrap justify-between gap-2 border-t border-gray-200 p-4 dark:border-gray-700">
+          <button type="button" disabled={!selection} onClick={() => { addManual(selection, `Fragment: ${preview.title}`); setPreview(null); }} className={buttonClass}>Dodaj zaznaczony fragment</button>
+          {'projectId' in preview && <button type="button" onClick={() => void deleteReport(preview)} className={`${buttonClass} text-red-600`}><Trash2 size={15} />Usuń z historii</button>}
+        </div>
+      </div>
+    </div>}
+  </div>;
 };
 
+// Remount every project to isolate drafts, editors and pending requests.
+export const StatusMain = ({ project }: { project: Project }) => <StatusWorkspace key={project.id} project={project} />;

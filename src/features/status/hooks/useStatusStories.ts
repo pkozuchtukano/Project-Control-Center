@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Project, StatusStory } from '../../../types';
-import { fetchIssuesActivity, type IssueWithHistory } from '../../../services/youtrackApi';
+import { fetchIssuesActivity } from '../../../services/youtrackApi';
 import { buildStatusStories } from '../utils/statusUtils';
 
 interface StatusStoriesParams {
@@ -9,78 +9,53 @@ interface StatusStoriesParams {
   dateTo: string;
   youtrackBaseUrl?: string;
   youtrackToken?: string;
+  additionalIssueIds: string[];
 }
 
 export const useStatusStories = () => {
   const [stories, setStories] = useState<StatusStory[]>([]);
-  const [issues, setIssues] = useState<IssueWithHistory[]>([]);
+  const [allStories, setAllStories] = useState<StatusStory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState('');
+  const [loadedRange, setLoadedRange] = useState('');
+  const requestId = useRef(0);
+  useEffect(() => () => { requestId.current++; }, []);
 
-  const refreshStories = async ({
-    project,
-    dateFrom,
-    dateTo,
-    youtrackBaseUrl,
-    youtrackToken
-  }: StatusStoriesParams) => {
+  const refreshStories = useCallback(async ({ project, dateFrom, dateTo, youtrackBaseUrl, youtrackToken, additionalIssueIds }: StatusStoriesParams) => {
+    const request = ++requestId.current;
+    setLoadedRange('');
     if (!youtrackBaseUrl || !youtrackToken) {
-      setError('Brak konfiguracji YouTrack. Uzupełnij URL i token w ustawieniach.');
-      setIssues([]);
-      setStories([]);
-      return [];
+      setError('Uzupełnij połączenie z YouTrack w ustawieniach.');
+      setIsLoading(false);
+      return null;
     }
-
     setIsLoading(true);
     setError(null);
-
+    setWarning('');
     try {
-      const query = project.youtrackQuery || project.code;
-      const fetchedIssues = await fetchIssuesActivity(
-        youtrackBaseUrl,
-        youtrackToken,
-        query,
-        dateFrom,
-        dateTo,
-        'Aktywności',
-        undefined,
-        '',
-        false
+      const missing: string[] = [];
+      const issues = await fetchIssuesActivity(
+        youtrackBaseUrl, youtrackToken, project.youtrackQuery || project.code,
+        dateFrom, dateTo, 'Aktywności', undefined, '', false, {
+          additionalIssueIds, projectCode: project.code, onMissingIssue: id => missing.push(id), includeInactive: true
+        }
       );
-
-      const dailyComments = window.electron?.getDailyComments
-        ? await window.electron.getDailyComments()
-        : {};
-
-      const mappedStories = buildStatusStories(
-        fetchedIssues,
-        (dailyComments || {}) as Record<string, string>,
-        youtrackBaseUrl,
-        dateFrom,
-        dateTo
-      );
-
-      setIssues(fetchedIssues);
-      setStories(mappedStories);
-      return mappedStories;
-    } catch (err: unknown) {
-      console.error('Status stories refresh failed:', err);
-      setError(err instanceof Error ? err.message : 'Nie udało się pobrać danych statusu.');
-      setIssues([]);
-      setStories([]);
-      return [];
+      const notes = window.electron?.getDailyComments ? await window.electron.getDailyComments() : {};
+      if (request !== requestId.current) return null;
+      const mapped = buildStatusStories(issues, (notes || {}) as Record<string, string>, youtrackBaseUrl, dateFrom, dateTo, true);
+      setAllStories(mapped);
+      setStories(buildStatusStories(issues, (notes || {}) as Record<string, string>, youtrackBaseUrl, dateFrom, dateTo));
+      setLoadedRange(`${dateFrom}/${dateTo}`);
+      setWarning(missing.length ? `Nie odświeżono części zadań z historii lub powiązań: ${missing.join(', ')}. Zachowano wcześniejsze dane tych tematów.` : '');
+      return mapped;
+    } catch (err) {
+      if (request === requestId.current) setError(err instanceof Error ? err.message : 'Nie udało się pobrać źródeł.');
+      return null;
     } finally {
-      setIsLoading(false);
+      if (request === requestId.current) setIsLoading(false);
     }
-  };
+  }, []);
 
-  return {
-    stories,
-    issues,
-    isLoading,
-    error,
-    refreshStories,
-    setStories,
-    setIssues
-  };
+  return { stories, allStories, isLoading, error, warning, loadedRange, refreshStories };
 };

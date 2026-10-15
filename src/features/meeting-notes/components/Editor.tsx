@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
-import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
+import { useEffect, useMemo } from 'react';
+import { useEditor, useEditorState, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
+import { Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
@@ -10,8 +12,26 @@ import {
   Bold, Italic, Underline as UnderlineIcon,
   List, ListOrdered,
   Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, Pilcrow,
-  Quote, Undo, Redo
+  Quote, Undo, Redo, Highlighter, Eraser
 } from 'lucide-react';
+
+const Highlight = Mark.create({
+  name: 'highlight',
+  addAttributes() {
+    return {
+      color: {
+        default: '#fde047',
+        parseHTML: element => element.getAttribute('data-color') || element.style.backgroundColor || '#fde047',
+        renderHTML: attributes => ({
+          'data-color': attributes.color,
+          style: `background-color: ${attributes.color}; color: #111827`,
+        }),
+      },
+    };
+  },
+  parseHTML() { return [{ tag: 'mark' }]; },
+  renderHTML({ HTMLAttributes }) { return ['mark', HTMLAttributes, 0]; },
+});
 
 interface EditorProps {
   content: string;
@@ -20,12 +40,13 @@ interface EditorProps {
   stakeholders?: { id: string, name: string }[];
   openLinksOnClick?: boolean;
   minHeight?: number;
+  toolbar?: 'fixed' | 'selection';
   onEditorReady?: (editor: TiptapEditor | null) => void;
 }
 
 const MenuButton = ({
   onClick,
-  isActive = false,
+  isActive,
   disabled = false,
   children,
   title
@@ -41,6 +62,9 @@ const MenuButton = ({
     onClick={onClick}
     disabled={disabled}
     title={title}
+    aria-label={title}
+    aria-pressed={isActive}
+    onMouseDown={event => event.preventDefault()}
     className={`p-2 rounded-md transition-colors ${
       isActive
         ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400'
@@ -58,6 +82,7 @@ export const Editor = ({
   stakeholders = [],
   openLinksOnClick = false,
   minHeight = 380,
+  toolbar = 'fixed',
   onEditorReady
 }: EditorProps) => {
   const effectivePlaceholder = placeholder.includes('Ä')
@@ -71,6 +96,7 @@ export const Editor = ({
         underline: false,
       }),
       Underline,
+      Highlight,
       Link.configure({
         openOnClick: openLinksOnClick,
       }),
@@ -96,10 +122,19 @@ export const Editor = ({
     ],
     content,
     editable: true,
+    editorProps: { attributes: { style: `min-height: ${minHeight}px` } },
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
   });
+
+  useEditorState({ editor, selector: ({ transactionNumber }) => transactionNumber });
+
+  const bubbleMenuOptions = useMemo(() => ({
+    strategy: 'fixed', placement: 'top', offset: 8,
+    flip: { padding: 8 }, shift: { padding: 8 },
+    scrollTarget: editor?.view.dom.closest<HTMLElement>('.overflow-y-auto, .overflow-auto') || window,
+  } as const), [editor]);
 
   useEffect(() => {
     onEditorReady?.(editor ?? null);
@@ -113,9 +148,8 @@ export const Editor = ({
     return null;
   }
 
-  return (
-    <div className="flex flex-col w-full border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900/50 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
-      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+  const menu = (
+      <div role="toolbar" aria-label="Formatowanie tekstu" className={`flex flex-wrap items-center gap-1 p-2 ${toolbar === 'selection' ? 'max-w-[min(640px,calc(100vw-24px))] rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-900' : 'border-b border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/50'}`}>
         <MenuButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           isActive={editor.isActive('bold')}
@@ -230,8 +264,31 @@ export const Editor = ({
         >
           <Redo size={18} />
         </MenuButton>
+        {toolbar === 'selection' && <>
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+          {[
+            { color: '#fca5a5', title: 'Wyróżnij na czerwono' },
+            { color: '#fde047', title: 'Wyróżnij na żółto' },
+            { color: '#86efac', title: 'Wyróżnij na zielono' },
+          ].map(({ color, title }) => (
+            <MenuButton key={color} title={title}
+              isActive={editor.isActive('highlight', { color })}
+              onClick={() => editor.chain().focus().toggleMark('highlight', { color }).run()}>
+              <Highlighter size={18} style={{ backgroundColor: color, color: '#111827', borderRadius: 3 }} />
+            </MenuButton>
+          ))}
+          <MenuButton title="Usuń wyróżnienie" disabled={!editor.isActive('highlight')}
+            onClick={() => editor.chain().focus().unsetMark('highlight').run()}><Eraser size={18} /></MenuButton>
+        </>}
       </div>
+  );
 
+  return (
+    <div className="flex flex-col w-full border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900/50 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
+      {toolbar === 'selection' ? <BubbleMenu editor={editor} appendTo={document.body} updateDelay={100}
+        style={{ zIndex: 60 }} options={bubbleMenuOptions}>
+        {menu}
+      </BubbleMenu> : menu}
       <div
         className="p-4 cursor-text"
         style={{ minHeight: `${Math.max(minHeight + 20, 120)}px` }}
@@ -265,7 +322,6 @@ export const Editor = ({
           height: 0;
         }
         .ProseMirror {
-          min-height: ${minHeight}px;
           outline: none;
           color: #111827;
           caret-color: #4f46e5;
