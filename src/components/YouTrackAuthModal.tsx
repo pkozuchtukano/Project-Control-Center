@@ -52,7 +52,9 @@ export const YouTrackAuthModal = ({ onClose }: { onClose: () => void }) => {
         setMessage(`Po\u0142\u0105czono z YouTrack jako ${result.login}. Oczekuj\u0105ce pobieranie danych jest wznawiane automatycznie.`);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Nie uda\u0142o si\u0119 po\u0142\u0105czy\u0107 z YouTrack.');
+      const detail = cause instanceof Error ? cause.message : 'Nie uda\u0142o si\u0119 po\u0142\u0105czy\u0107 z YouTrack.';
+      setError(detail.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, '')
+        .replace(/^\[YOUTRACK_AUTH_REQUIRED\]\s*/, ''));
     } finally {
       busyRef.current = false;
       setBusy(false);

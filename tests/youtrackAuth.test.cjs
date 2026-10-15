@@ -25,12 +25,14 @@ test('YouTrack login shares a persistent session, protects tokens and verifies A
             super();
             this.options = options;
             this.webContents = new EventEmitter();
+            this.webContents.getURL = () => this.currentUrl;
             this.webContents.setWindowOpenHandler = (callback) => { this.popupHandler = callback; };
             this.urls = [];
             windows.push(this);
         }
         async loadURL(url) {
             this.urls.push(url);
+            this.currentUrl = url;
             if (url === 'https://yt.example/youtrack') {
                 this.webContents.emit('will-redirect', {}, 'https://auth.example/if/flow/login/', false, true);
             }
@@ -101,15 +103,33 @@ test('YouTrack login shares a persistent session, protects tokens and verifies A
     win.webContents.emit('will-navigate', { preventDefault: () => { blocked = true; } }, 'file:///secret');
     assert.equal(blocked, true);
 
+    const originalLoadURL = win.loadURL.bind(win);
+    win.loadURL = async (url) => {
+        await originalLoadURL(url);
+        win.currentUrl = 'https://auth.example/if/flow/login/?token=secret';
+    };
+    const beforeIncompleteCheck = requests.length;
+    await assert.rejects(invoke('check'), error => /Logowanie nie/.test(error.message) && !error.message.includes('token=secret'));
+    assert.equal(requests.length, beforeIncompleteCheck, 'do not call the API while login is still on authentik');
+    assert.equal(win.isDestroyed(), false, 'keep the login window and pending synchronization open');
+    assert.equal(completed, false);
+    win.loadURL = originalLoadURL;
+
     reply = () => new Response('<html>Login</html>', { headers: { 'content-type': 'text/html' } });
     await assert.rejects(invoke('check'), /YOUTRACK_AUTH_REQUIRED/);
     assert.equal(win.isDestroyed(), false, 'HTML is not a successful login');
     reply = () => new Response('{}', { headers: { 'content-type': 'application/json' } });
     await assert.rejects(invoke('check'), /potwierdzi/);
-    reply = () => new Response(JSON.stringify({ id: '1-1', login: 'piotr' }), {
-        headers: { 'content-type': 'application/json' },
-    });
+    let gatewayReady = false;
+    win.loadURL = async (url) => {
+        await originalLoadURL(url);
+        if (url === 'https://yt.example/youtrack') gatewayReady = true;
+    };
+    reply = () => gatewayReady
+        ? new Response(JSON.stringify({ id: '1-1', login: 'piotr' }), { headers: { 'content-type': 'application/json' } })
+        : new Response('<html>Login</html>', { headers: { 'content-type': 'text/html' } });
     assert.equal((await invoke('check')).login, 'piotr');
+    assert.equal(win.urls.at(-1), 'https://yt.example/youtrack', 'return to YouTrack to establish the gateway session before checking the API');
     assert.equal((await firstRead).status, 200);
     assert.equal((await parallelRead).status, 200);
     assert.equal(flushed, true);

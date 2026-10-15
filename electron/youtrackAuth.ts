@@ -160,6 +160,21 @@ export function createYouTrackAuth(
     ipcMain.handle('youtrack-auth-check', async (event) => {
         assertSender(event);
         if (!config.youtrackToken.trim()) throw new Error('Brak skonfigurowanego tokena API YouTrack.');
+        if (loginWindow && !loginWindow.isDestroyed()) {
+            const win = loginWindow;
+            try {
+                // Complete the gateway callback in a top-level navigation after the email flow.
+                await win.loadURL(baseUrl().href);
+            } catch {
+                throw new Error('Nie uda\u0142o si\u0119 wr\u00f3ci\u0107 do YouTrack. Sprawd\u017a okno logowania i spr\u00f3buj ponownie.');
+            }
+            if (win.isDestroyed()) throw new Error('Otw\u00f3rz ponownie okno logowania.');
+            if (httpsUrl(win.webContents.getURL()).origin !== baseUrl().origin) {
+                win.show();
+                win.focus();
+                throw new Error('Logowanie nie zosta\u0142o zako\u0144czone. Doko\u0144cz je w otwartym oknie, a nast\u0119pnie sprawd\u017a po\u0142\u0105czenie ponownie. Je\u015bli link wygas\u0142, popro\u015b o nowy.');
+            }
+        }
         const url = new URL(`${baseUrl().href.replace(/\/+$/, '')}/api/users/me`);
         url.searchParams.set('fields', 'id,login');
         const response = await fetchResponse(url.href, {
