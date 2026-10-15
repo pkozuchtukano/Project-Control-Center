@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // config
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     react({
       babel: {
@@ -26,7 +26,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            emptyOutDir: true,
+            emptyOutDir: command === 'build',
             rollupOptions: {
               external: ['fs/promises', 'path', 'url', 'fs', 'better-sqlite3', '@pdfsmaller/pdf-encrypt-lite']
             }
@@ -35,6 +35,18 @@ export default defineConfig({
       },
       {
         entry: 'electron/preload.ts',
+        vite: {
+          build: {
+            lib: false,
+            rollupOptions: {
+              input: 'electron/preload.ts',
+              output: {
+                format: 'cjs',
+                entryFileNames: 'preload.cjs',
+              },
+            },
+          },
+        },
         onstart(options) {
           options.reload()
         }
@@ -47,4 +59,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-})
+}))

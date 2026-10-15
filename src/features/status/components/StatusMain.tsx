@@ -525,7 +525,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
             <button
               type="button"
               onClick={() => setActiveIssueDetailsId(story.id || story.issueReadableId)}
-              className="text-left text-[12px] leading-4 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+              className="block text-left text-sm leading-5 font-semibold text-gray-900 dark:text-white whitespace-normal break-words mt-1.5 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
               title={story.title}
             >
               {story.title}
@@ -706,7 +706,7 @@ export const StatusMain = ({ project }: StatusMainProps) => {
           </div>
         </section>
 
-        <section className="pcc-card-compact xl:p-5">
+        <section className="pcc-card-compact xl:p-5 status-editor">
           <Editor
             content={editorContent}
             onChange={(value) => {

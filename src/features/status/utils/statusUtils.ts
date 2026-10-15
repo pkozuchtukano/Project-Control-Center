@@ -375,7 +375,7 @@ export const buildStatusStoryHtml = (story: StatusStory) => {
       ${story.dailyNote ? `<blockquote style="margin:6px 0;padding-left:10px;border-left:3px solid #d1d5db;color:#6b7280;"><p style="margin:0;">${escapeHtml(story.dailyNote)}</p></blockquote>` : ''}
       ${commentsHtml}
     </section>
-  `;
+  `.replace(/>\s+</g, '><').trim();
 };
 
 export const buildStatusEditorHtml = (

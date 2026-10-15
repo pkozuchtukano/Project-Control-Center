@@ -76,6 +76,32 @@
   }
 }
 
+.status-editor .ProseMirror h2 {
+  font-size: 1.125em;
+  line-height: 1.35;
+  margin-top: 0.75em;
+  margin-bottom: 0.35em;
+}
+
+.status-editor .ProseMirror p {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+  line-height: 1.4;
+}
+
+.status-editor .ProseMirror ul,
+.status-editor .ProseMirror ol,
+.status-editor .ProseMirror blockquote {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.status-editor .ProseMirror li,
+.status-editor .ProseMirror li p {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
+}
+
 /* Subtle Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
