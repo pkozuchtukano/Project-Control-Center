@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, ExternalLink, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { StatusStory } from '../../../types';
 import { filterStatusSources, statusSourceFilterKey } from '../utils/agendaUtils';
@@ -17,6 +17,8 @@ interface Props {
 export const StatusSources = ({ projectId, stories, included, stale, onAdd, onPreview, onOpenIssue }: Props) => {
   const [query, setQuery] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const [saveError, setSaveError] = useState('');
   const [visibleStatuses, setVisibleStatuses] = useState<string[]>(() => {
     try {
@@ -64,9 +66,17 @@ export const StatusSources = ({ projectId, stories, included, stale, onAdd, onPr
       <Search size={15} aria-hidden="true" className="shrink-0 text-gray-400" />
       <input type="search" value={query} onChange={event => { setQuery(event.target.value); setCollapsed({}); }} aria-label="Szukaj w źródłach statusu" placeholder="Szukaj zadania, osoby, treści..." className="min-w-0 flex-1 bg-transparent py-2 text-sm text-gray-900 outline-none dark:text-white" />
       {query && <button type="button" onClick={() => setQuery('')} aria-label="Wyczyść wyszukiwanie" className="rounded p-1 text-gray-500 hover:text-indigo-600"><X size={14} /></button>}
-      <button type="button" onClick={() => setSettingsOpen(current => !current)} title="Ustawienia źródeł" aria-label="Ustawienia źródeł" aria-expanded={settingsOpen} aria-controls={`status-source-settings-${projectId}`} className={`shrink-0 rounded p-1.5 hover:bg-indigo-50 dark:hover:bg-gray-800 ${settingsOpen ? 'text-indigo-600 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}><SlidersHorizontal size={16} /></button>
-    </div>
-    {settingsOpen && <fieldset id={`status-source-settings-${projectId}`} className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+      <div className="shrink-0">
+        <button ref={settingsButtonRef} type="button" popoverTarget={`status-source-settings-${projectId}`} onClick={event => {
+          const panel = settingsRef.current;
+          if (!panel) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          panel.style.top = `${rect.bottom + 8}px`;
+          panel.style.right = `${Math.max(12, window.innerWidth - rect.right)}px`;
+          panel.style.maxHeight = `${Math.max(100, window.innerHeight - rect.bottom - 24)}px`;
+        }} title="Ustawienia źródeł" aria-label="Ustawienia źródeł" aria-expanded={settingsOpen} aria-controls={`status-source-settings-${projectId}`} className={`rounded p-1.5 hover:bg-indigo-50 dark:hover:bg-gray-800 ${settingsOpen ? 'text-indigo-600 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}><SlidersHorizontal size={16} /></button>
+    <div ref={settingsRef} id={`status-source-settings-${projectId}`} popover="auto" onToggle={event => setSettingsOpen(event.newState === 'open')} className="fixed bottom-auto left-auto m-0 w-72 max-w-[calc(100vw-3rem)] overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 text-gray-900 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+    <fieldset className="space-y-3">
       <legend className="px-1 text-xs font-semibold text-gray-700 dark:text-gray-200">Widoczne statusy</legend>
       <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Zaznaczone statusy pokazują też zadania bez aktywności. Zadania z aktywnością w okresie są widoczne zawsze.</p>
       <div className="flex gap-3 text-xs font-semibold text-indigo-600 dark:text-indigo-300">
@@ -78,7 +88,11 @@ export const StatusSources = ({ projectId, stories, included, stale, onAdd, onPr
       </label>)}</div>
       {!statuses.length && <p className="text-xs text-gray-500 dark:text-gray-400">Odśwież źródła, aby wczytać statusy projektu.</p>}
       <p className="text-xs text-gray-500 dark:text-gray-400">Ustawienie dotyczy tylko tego projektu. Zadania nadrzędne pozostają jako kontekst.</p>
-    </fieldset>}
+      <button type="button" onClick={() => { settingsRef.current?.hidePopover(); settingsButtonRef.current?.focus(); }} className="w-full rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Gotowe</button>
+    </fieldset>
+    </div>
+      </div>
+    </div>
     {saveError && <p role="alert" className="text-xs text-red-600 dark:text-red-300">{saveError}</p>}
     {stories.length > 0 && <p role="status" className="text-xs text-gray-500 dark:text-gray-400">{all.length ? `Widoczne zadania: ${all.filter(story => story.issueId).length}` : query.trim() ? 'Brak pasujących zadań.' : 'Brak aktywności w okresie. W ustawieniach wybierz statusy, aby pokazać także zadania bez zmian.'}</p>}
     {(roots.length ? roots : all.slice(0, 1)).map(story => render(story, new Set()))}
