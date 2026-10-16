@@ -1,0 +1,121 @@
+.meeting-notes-view {
+  --meeting-canvas: #f5f5f5;
+  --meeting-panel: #ffffff;
+  --meeting-field: #fafafa;
+  --meeting-border: #d4d4d4;
+  --meeting-text: #262626;
+  --meeting-muted: #525252;
+  --meeting-placeholder: #666666;
+  --meeting-focus: #6366f1;
+  min-width: 0;
+  padding: clamp(12px, 2vw, 24px);
+  border-radius: 28px;
+  background: var(--meeting-canvas);
+  color: var(--meeting-text);
+}
+
+.dark .meeting-notes-view {
+  --meeting-canvas: #141414;
+  --meeting-panel: #202020;
+  --meeting-field: #1e1e1e;
+  --meeting-border: #383838;
+  --meeting-text: #f5f5f5;
+  --meeting-muted: #c4c4c4;
+  --meeting-placeholder: #b0b0b0;
+  --meeting-focus: #a5b4fc;
+  color-scheme: dark;
+}
+
+.meeting-notes-view :is(.pcc-card, .pcc-card-compact, .meeting-notes-form, .meeting-notes-variables) {
+  border: 1px solid var(--meeting-border);
+  border-radius: 24px;
+  background: var(--meeting-panel);
+  color: var(--meeting-text);
+  box-shadow: none;
+  transform: none;
+}
+
+.meeting-notes-view :is(.pcc-card, .pcc-card-compact)::before {
+  display: none;
+}
+
+.meeting-notes-view .meeting-notes-form {
+  padding: clamp(16px, 2vw, 26px);
+}
+
+.meeting-notes-form > :is(.pcc-card, .pcc-card-compact) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.meeting-notes-view :is(h2, h3, h4, .meeting-notes-label) {
+  color: var(--meeting-text);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.meeting-notes-view .meeting-notes-label {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.meeting-notes-view :is(input:not([type='checkbox']), textarea),
+.meeting-notes-view .meeting-notes-editor > div {
+  border: 1px solid var(--meeting-border);
+  border-radius: 16px;
+  background: var(--meeting-field);
+  color: var(--meeting-text);
+  box-shadow: none;
+}
+
+.meeting-notes-view :is(input:not([type='checkbox']), textarea) {
+  padding: 14px 16px;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.meeting-notes-view .meeting-notes-title {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.meeting-notes-view :is(input, textarea):focus-visible,
+.meeting-notes-view .meeting-notes-editor > div:focus-within {
+  outline: 2px solid var(--meeting-focus);
+  outline-offset: 2px;
+}
+
+.meeting-notes-view :is(input, textarea)::placeholder,
+.meeting-notes-view .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--meeting-placeholder);
+  opacity: 1;
+}
+
+.meeting-notes-view .ProseMirror {
+  color: var(--meeting-text);
+  caret-color: var(--meeting-focus);
+  font-size: 1rem;
+}
+
+.meeting-notes-view .ProseMirror blockquote,
+.meeting-notes-view .meeting-notes-variables p,
+.meeting-notes-view .meeting-notes-absent {
+  color: var(--meeting-muted);
+}
+
+.meeting-notes-view .meeting-notes-variables p {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.meeting-notes-view .meeting-notes-step {
+  border-color: var(--meeting-border);
+  box-shadow: none;
+}
+
+.meeting-notes-view .meeting-notes-step:not(.meeting-notes-step-done) {
+  background: var(--meeting-field);
+}

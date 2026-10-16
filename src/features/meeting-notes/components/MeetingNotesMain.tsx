@@ -6,6 +6,7 @@ import { exportNoteToWord } from '../services/wordExportService';
 import { parseDateVariable } from '../../../utils/dateParsing';
 import { ProjectLinksDropdown } from '../../project-links/components/ProjectLinksMain';
 import { Editor } from './Editor';
+import './MeetingNotesMain.css';
 
 interface MeetingNotesMainProps {
   project: Project;
@@ -645,7 +646,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="meeting-notes-view space-y-6 animate-in fade-in duration-300">
       {/* HEADER */}
       <div className="pcc-card-compact flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -713,14 +714,14 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* LEFT COLUMN: FLOW */}
-        <div className="lg:col-span-3 flex flex-col gap-4">
+        <div className="meeting-notes-form lg:col-span-3 flex min-w-0 flex-col gap-6">
           <div className="order-3 space-y-2">
-            <label className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Tytuł spotkania / Nagłówek</label>
+            <label className="meeting-notes-label text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Tytuł spotkania / Nagłówek</label>
             <input
               value={data.titleTemplate}
               onChange={e => setData(prev => ({ ...prev, titleTemplate: e.target.value }))}
               placeholder="np. Daily PRJ-01 - 2026-03-10"
-              className="w-full text-lg font-bold bg-white dark:bg-gray-800 border-none rounded-xl p-4 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+              className="meeting-notes-title w-full text-lg font-bold bg-white dark:bg-gray-800 border-none rounded-xl p-4 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
             />
           </div>
 
@@ -778,7 +779,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                   )}
 
                   {draftFlowSteps.map((step, index) => (
-                    <div key={step.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 p-4 space-y-4">
+                    <div key={step.id} className="meeting-notes-step rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 p-4 space-y-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">
@@ -819,7 +820,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etykieta linku</label>
+                          <label className="meeting-notes-label block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Etykieta linku</label>
                           <input
                             type="text"
                             value={step.linkLabel || ''}
@@ -829,7 +830,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link</label>
+                          <label className="meeting-notes-label block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Link</label>
                           <input
                             type="text"
                             value={step.linkUrl || ''}
@@ -841,7 +842,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis kroku</label>
+                        <label className="meeting-notes-label block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Opis kroku</label>
                         <textarea
                           value={step.description}
                           onChange={(event) => handleFlowStepChange(step.id, 'description', event.target.value)}
@@ -875,9 +876,9 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                   return (
                     <div
                       key={step.id}
-                      className={`rounded-2xl border shadow-sm transition-all ${
+                      className={`meeting-notes-step rounded-2xl border shadow-sm transition-all ${
                         isCompleted
-                          ? 'border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800/60 dark:bg-emerald-900/10'
+                          ? 'meeting-notes-step-done border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800/60 dark:bg-emerald-900/10'
                           : 'border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-900/40'
                       }`}
                     >
@@ -956,10 +957,12 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
             </div>
           </section>
 
-          <section className="order-4 space-y-2">
-            <label className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Treść notatki</label>
+          <section className="meeting-notes-editor order-4 space-y-2">
+            <label className="meeting-notes-label text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Treść notatki</label>
             <Editor
               key={`meeting-notes-editor-${editorResetKey}`}
+              minHeight={460}
+              toolbar="selection"
               content={data.content}
               onChange={handleEditorChange}
               stakeholders={project.stakeholders}
@@ -988,7 +991,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                 ].map(field => (
                   <div key={field.id} className="flex flex-col gap-1">
                     <div className="flex justify-between items-center px-1">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                      <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
                       <div className="flex items-center gap-2">
                         {copiedField === field.id && (
                           <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
@@ -1014,7 +1017,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
               <div className="flex flex-col gap-1">
                 <div className="flex justify-between items-center px-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
+                  <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
                   <div className="flex items-center gap-2">
                     {copiedField === 'subject' && (
                       <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
@@ -1038,7 +1041,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
               <div className="flex flex-col gap-1">
                 <div className="flex justify-between items-center px-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{'Tre\u015b\u0107 wiadomo\u015bci:'}</label>
+                  <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">{'Tre\u015b\u0107 wiadomo\u015bci:'}</label>
                   <div className="flex items-center gap-2">
                     {copiedField === 'body' && (
                       <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">{'Skopiowano tre\u015b\u0107!'}</span>
@@ -1099,7 +1102,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
           {/* TEMPLATE VARIABLES UI */}
           {detectedVariables.length > 0 && (
-            <div className="order-1 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-6 animate-in slide-in-from-top duration-300">
+            <div className="meeting-notes-variables order-1 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-2xl p-6 animate-in slide-in-from-top duration-300">
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles size={16} className="text-amber-500" />
                 <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">Uzupełnij zmienne z szablonu</h3>
@@ -1115,7 +1118,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                   
                   return (
                     <div key={v} className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-amber-600/70 dark:text-amber-500/70 uppercase tracking-widest px-1">{v}</label>
+                      <label className="meeting-notes-label text-[10px] font-bold text-amber-600/70 dark:text-amber-500/70 uppercase tracking-widest px-1">{v}</label>
                       {isDate ? (
                         <input
                           type="date"
@@ -1174,7 +1177,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                         className={`w-full flex items-center justify-between p-2 rounded-xl transition-all border ${
                           s.isPresent
                             ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
-                            : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
+                            : 'meeting-notes-absent bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
                         }`}
                       >
                         <button className="flex-1 flex flex-col items-start text-left px-1 outline-none" onClick={() => togglePresence(s.id)}>
@@ -1207,7 +1210,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
                         className={`w-full flex items-center justify-between p-2 rounded-xl transition-all border ${
                           s.isPresent
                             ? 'bg-emerald-50 border-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50 dark:text-emerald-300'
-                            : 'bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
+                            : 'meeting-notes-absent bg-gray-50 border-gray-100 text-gray-400 dark:bg-gray-900/50 dark:border-gray-800 dark:text-gray-600 grayscale'
                         }`}
                       >
                         <button className="flex-1 flex flex-col items-start text-left px-1 outline-none" onClick={() => togglePresence(s.id)}>
@@ -1292,7 +1295,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
             ].map(field => (
               <div key={field.id} className="flex flex-col gap-1">
                 <div className="flex justify-between items-center px-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
+                  <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">{field.label}</label>
                   <div className="flex items-center gap-2">
                     {copiedField === field.id && (
                       <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
@@ -1318,7 +1321,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
           <div className="flex flex-col gap-1">
             <div className="flex justify-between items-center px-1">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
+              <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temat:</label>
               <div className="flex items-center gap-2">
                 {copiedField === 'subject' && (
                   <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano!</span>
@@ -1342,7 +1345,7 @@ export const MeetingNotesMain = ({ project, onGoogleAuthorizationRequired }: Mee
 
           <div className="flex flex-col gap-1">
             <div className="flex justify-between items-center px-1">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Treść wiadomości:</label>
+              <label className="meeting-notes-label text-[10px] font-bold text-gray-400 uppercase tracking-wider">Treść wiadomości:</label>
               <div className="flex items-center gap-2">
                 {copiedField === 'body' && (
                   <span className="text-[10px] text-emerald-500 font-bold animate-in fade-in slide-in-from-right-1">Skopiowano treść!</span>
